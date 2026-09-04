@@ -384,12 +384,29 @@ PLAN.md                 Implementation history and roadmap
 TESTRESULT.md           Detailed regression report
 ```
 
-## Roadmap
+## Remaining Features
 
-Planned areas include arrays and lists, richer standard-library functionality, better
-source locations, more complete expressions, improved portability, and a reproducible
-benchmark suite. The roadmap is intentionally separate from the implemented syntax;
-check [SYNTAX.md](SYNTAX.md) before relying on a feature.
+The compiler's core milestone is complete. The following language features are listed
+as planned and are not implemented yet:
+
+- `else if` chaining
+- Arrays and lists
+- String methods such as `length` and `substring`
+- Ternary expressions (`condition ? a : b`)
+- `switch` statements
+- Explicit type casting and numeric conversion
+- A character or byte type
+- Multiple return values or tuples
+- Named constants and immutable bindings
+- Namespaces and modules across multiple `.hmx` files
+- Variadic parameters and default parameter values
+- Function pointers, higher-order functions, and closures
+- Unicode identifiers
+
+Engineering work still needed around the language includes better source locations,
+more complete expressions, improved portability, a standard library, and a reproducible
+cross-language benchmark suite. The roadmap is intentionally separate from implemented
+syntax; check [SYNTAX.md](SYNTAX.md) before relying on a feature.
 
 ## Contributing
 
@@ -404,5 +421,4 @@ Please keep the `.hmx` extension strict in new examples and tests.
 
 ## License
 
-No license has been declared yet. Treat the repository as all-rights-reserved until a
-license is added by the project owner.
+This project is available under the [MIT License](LICENSE).
