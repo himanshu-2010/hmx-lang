@@ -1,0 +1,9 @@
+fn main() {
+    const answer: int = true ? 40 + 2 : 0
+    const decimal_value = 7 as decimal
+    let rounded = decimal_value as int
+    let nested = false ? 1 : true ? 2 : 3
+    print(answer)
+    print(rounded)
+    print(nested)
+}

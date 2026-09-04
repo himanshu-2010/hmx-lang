@@ -19,6 +19,11 @@ struct FunctionSig {
     bool has_return = false;
 };
 
+struct Symbol {
+    TypeKind type;
+    bool is_mutable;
+};
+
 class TypeResolver {
 public:
     void resolve(Program& program);
@@ -27,7 +32,7 @@ public:
     const FunctionSig* get_function(const std::string& name) const;
 
 private:
-    std::vector<std::unordered_map<std::string, TypeKind>> scopes_;
+    std::vector<std::unordered_map<std::string, Symbol>> scopes_;
     std::unordered_map<std::string, FunctionSig> functions_;
     TypeKind current_return_ = TypeKind::Unknown;
     bool in_function_ = false;
@@ -36,7 +41,8 @@ private:
 
     void push_scope();
     void pop_scope();
-    void define(const std::string& name, TypeKind type);
+    void define(const std::string& name, TypeKind type, bool is_mutable = true);
+    const Symbol* find_symbol(const std::string& name) const;
     int line() const { return current_line_; }
 
     TypeKind resolve_expr(Expression* expr);

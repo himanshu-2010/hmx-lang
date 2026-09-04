@@ -16,6 +16,8 @@ The current compiler supports:
 - Arithmetic, comparisons, boolean logic, and text concatenation
 - `if` / `else` conditionals
 - `else if` conditional chains
+- Ternary expressions and explicit numeric casts
+- Immutable `const` bindings
 - `loop`, `while`, `for`, and `do ... while` loops
 - Functions with typed parameters and return values
 - Function calls, forward calls, and recursion
@@ -126,12 +128,12 @@ These words are reserved and cannot be used as variable or function names:
 
 | Category | Keywords |
 | --- | --- |
-| Declarations | `let`, `fn` |
+| Declarations | `let`, `const`, `fn` |
 | Control flow | `if`, `else`, `loop`, `while`, `for`, `do` |
 | Functions and output | `return`, `print` |
 | Boolean values | `true`, `false` |
 | Boolean operators | `and`, `or`, `not` |
-| Types | `int`, `decimal`, `text`, `bool` |
+| Types and casts | `int`, `decimal`, `text`, `bool`, `as` |
 
 Keywords are case-sensitive. For example, `loop` is a keyword but `Loop` is an
 ordinary identifier.
@@ -215,6 +217,26 @@ value--
 Assignments are statements, not expressions. Variables must already exist, and the
 assigned value must have the variable's type.
 
+Constants use `const` and cannot be modified:
+
+```hmx
+const limit: int = 10
+print(limit)
+```
+
+Numeric conversions are explicit and support only `int` and `decimal`:
+
+```hmx
+let precise = 7 as decimal
+let whole = precise as int
+```
+
+Ternary expressions require a boolean condition and matching branch types:
+
+```hmx
+let label = score >= 60 ? "pass" : "fail"
+```
+
 ## Control Flow
 
 ```hmx
@@ -243,7 +265,7 @@ fn main() {
 - `while` and `do ... while` conditions require `bool`.
 - `for` uses `for (initializer; condition; update)`.
 - A variable declared in a `for` initializer is scoped to that loop.
-- `else if`, ternary expressions, arrays, and lists are not currently implemented.
+- Arrays and lists are not currently implemented.
 
 ## Functions
 
@@ -334,10 +356,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | 23 `.hmx` fixtures | 23/23 passed |
-| Negative | Type, syntax, and resolver errors | 35/35 passed |
-| Stress/output | Recursion, loops, strings, output, exit codes | 14/14 passed |
-| Total | 72 test cases | 72/72 passed |
+| Integration | 25 `.hmx` fixtures | 25/25 passed |
+| Negative | Type, syntax, and resolver errors | 45/45 passed |
+| Stress/output | Recursion, loops, strings, output, exit codes | 15/15 passed |
+| Total | 85 test cases | 85/85 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is
@@ -394,12 +416,9 @@ as planned and are not implemented yet:
 
 - Arrays and lists
 - String methods such as `length` and `substring`
-- Ternary expressions (`condition ? a : b`)
 - `switch` statements
-- Explicit type casting and numeric conversion
 - A character or byte type
 - Multiple return values or tuples
-- Named constants and immutable bindings
 - Namespaces and modules across multiple `.hmx` files
 - Variadic parameters and default parameter values
 - Function pointers, higher-order functions, and closures

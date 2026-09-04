@@ -180,6 +180,45 @@ test_error "else_if_cond_non_bool" \
     }' \
     "if condition must be bool"
 
+test_error "ternary_cond_non_bool" \
+    'fn main() {
+        let value = 1 ? 2 : 3
+    }' \
+    "ternary condition must be bool"
+
+test_error "ternary_branch_type_mismatch" \
+    'fn main() {
+        let value = true ? 1 : 2.0
+    }' \
+    "ternary branches must have the same type"
+
+test_error "invalid_cast" \
+    'fn main() {
+        let value = "text" as int
+    }' \
+    "casts are only supported between int and decimal"
+
+test_error "const_assignment" \
+    'fn main() {
+        const value = 1
+        value = 2
+    }' \
+    "cannot modify immutable variable"
+
+test_error "const_compound_assignment" \
+    'fn main() {
+        const value = 1
+        value += 2
+    }' \
+    "cannot modify immutable variable"
+
+test_error "const_increment" \
+    'fn main() {
+        const value = 1
+        value++
+    }' \
+    "cannot modify immutable variable"
+
 test_error "undef_var_read" \
     'fn main() {
         print(nope)

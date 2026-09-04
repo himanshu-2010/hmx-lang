@@ -74,6 +74,21 @@ struct NotExpr : Expression {
     explicit NotExpr(ExprPtr o) : operand(std::move(o)) {}
 };
 
+struct ConditionalExpr : Expression {
+    ExprPtr condition;
+    ExprPtr then_expr;
+    ExprPtr else_expr;
+    ConditionalExpr(ExprPtr c, ExprPtr t, ExprPtr e)
+        : condition(std::move(c)), then_expr(std::move(t)), else_expr(std::move(e)) {}
+};
+
+struct CastExpr : Expression {
+    TypeKind target_type;
+    ExprPtr operand;
+    CastExpr(TypeKind target, ExprPtr value)
+        : target_type(target), operand(std::move(value)) {}
+};
+
 struct CallExpr : Expression {
     std::string name;
     std::vector<ExprPtr> args;
@@ -93,6 +108,7 @@ struct VarDecl : Statement {
     std::string name;
     TypeKind annotation = TypeKind::Unknown;
     bool has_annotation = false;
+    bool is_mutable = true;
     ExprPtr initializer;
 };
 

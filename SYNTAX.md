@@ -257,6 +257,14 @@ let count = 5
 let total: int = 0
 ```
 
+`const` declares an immutable value. Constants can be read but cannot be assigned,
+incremented, or changed with compound assignment.
+
+```stardance
+const limit: int = 10
+print(limit)
+```
+
 ### 7.2 Assignment
 
 Variables can be reassigned after declaration with the plain assignment operator.
@@ -292,6 +300,16 @@ an expression is the pre-incremented value).
 let count = 5
 count++          // count is now 6
 count--          // count is now 5
+```
+
+### 7.5 Explicit Numeric Casts
+
+Use `as` for explicit conversion between `int` and `decimal`. There is no implicit
+numeric promotion, and casts involving `text` or `bool` are rejected.
+
+```stardance
+let precise = 7 as decimal
+let whole = precise as int
 ```
 
 ---
@@ -372,6 +390,16 @@ if (a > 0 and b > 0) { }    // parens optional but recommended
 if (not ready) { }
 ```
 
+### 8.4 Ternary Operator
+
+The ternary operator evaluates one of two expressions. Its condition must be `bool`,
+and both branches must have the same type. Ternaries associate from right to left.
+
+```stardance
+let label = score >= 60 ? "pass" : "fail"
+let value = ready ? 1 : enabled ? 2 : 3
+```
+
 ---
 
 ## 9. Expressions
@@ -381,7 +409,9 @@ evaluates to a value.
 
 **Grammar (core):**
 ```ebnf
-expression   : logical_or
+expression   : conditional
+conditional  : logical_or "?" expression ":" expression
+             | logical_or
 logical_or   : logical_or ("or" | "||") logical_and
              | logical_and
 logical_and  : logical_and ("and" | "&&") equality

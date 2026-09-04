@@ -34,7 +34,7 @@ Program* g_program = nullptr;
     TypeKind tkind;
 }
 
-%token LET FN LOOP FOR WHILE DO PRINT RETURN TRUE FALSE
+%token LET CONST FN LOOP FOR WHILE DO PRINT RETURN TRUE FALSE
 %token IF ELSE
 %token TYPE_INT TYPE_DECIMAL TYPE_TEXT TYPE_BOOL
 %token NUMBER DECIMAL STRING IDENTIFIER
@@ -42,11 +42,12 @@ Program* g_program = nullptr;
 %token AND OR NOT
 %token PLUS_EQ MINUS_EQ STAR_EQ SLASH_EQ INCR DECR
 %token ARROW
+%token AS
 
 %type <ival> NUMBER
 %type <fval> DECIMAL
 %type <sval> STRING IDENTIFIER
-%type <expr> expression logical_or logical_and equality relational additive term factor
+%type <expr> expression conditional logical_or logical_and equality relational additive term factor
 %type <stmt> statement var_decl assign_stmt print_stmt loop_stmt while_stmt for_stmt do_while_stmt if_stmt return_stmt call_stmt fn_decl
 %type <stmt> for_init for_update
 %type <params> param_list
@@ -102,6 +103,7 @@ var_decl
             auto* v = new VarDecl();
             v->name = $2;
             v->has_annotation = false;
+            v->is_mutable = true;
             v->initializer = ExprPtr($4);
             v->line = yylineno;
             free($2);
@@ -112,6 +114,7 @@ var_decl
             auto* v = new VarDecl();
             v->name = $2;
             v->has_annotation = true;
+            v->is_mutable = true;
             v->annotation = TypeKind::Int;
             v->initializer = ExprPtr($6);
             v->line = yylineno;
@@ -123,6 +126,7 @@ var_decl
             auto* v = new VarDecl();
             v->name = $2;
             v->has_annotation = true;
+            v->is_mutable = true;
             v->annotation = TypeKind::Decimal;
             v->initializer = ExprPtr($6);
             v->line = yylineno;
@@ -134,6 +138,7 @@ var_decl
             auto* v = new VarDecl();
             v->name = $2;
             v->has_annotation = true;
+            v->is_mutable = true;
             v->annotation = TypeKind::Text;
             v->initializer = ExprPtr($6);
             v->line = yylineno;
@@ -145,7 +150,66 @@ var_decl
             auto* v = new VarDecl();
             v->name = $2;
             v->has_annotation = true;
+            v->is_mutable = true;
             v->annotation = TypeKind::Bool;
+            v->initializer = ExprPtr($6);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | CONST IDENTIFIER '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->is_mutable = false;
+            v->initializer = ExprPtr($4);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | CONST IDENTIFIER ':' TYPE_INT '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->annotation = TypeKind::Int;
+            v->is_mutable = false;
+            v->initializer = ExprPtr($6);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | CONST IDENTIFIER ':' TYPE_DECIMAL '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->annotation = TypeKind::Decimal;
+            v->is_mutable = false;
+            v->initializer = ExprPtr($6);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | CONST IDENTIFIER ':' TYPE_TEXT '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->annotation = TypeKind::Text;
+            v->is_mutable = false;
+            v->initializer = ExprPtr($6);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | CONST IDENTIFIER ':' TYPE_BOOL '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->annotation = TypeKind::Bool;
+            v->is_mutable = false;
             v->initializer = ExprPtr($6);
             v->line = yylineno;
             free($2);
@@ -471,7 +535,18 @@ fn_decl
     ;
 
 expression
-    : logical_or
+    : conditional
+        {
+            $$ = $1;
+        }
+    ;
+
+conditional
+    : logical_or '?' expression ':' expression
+        {
+            $$ = new ConditionalExpr(ExprPtr($1), ExprPtr($3), ExprPtr($5));
+        }
+    | logical_or
         {
             $$ = $1;
         }
@@ -612,6 +687,14 @@ factor
             auto* call = new CallExpr(std::string($1), {});
             free($1);
             $$ = call;
+        }
+    | factor AS TYPE_INT
+        {
+            $$ = new CastExpr(TypeKind::Int, ExprPtr($1));
+        }
+    | factor AS TYPE_DECIMAL
+        {
+            $$ = new CastExpr(TypeKind::Decimal, ExprPtr($1));
         }
     | '(' expression ')'
         {

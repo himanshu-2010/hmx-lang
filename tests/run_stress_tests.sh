@@ -221,6 +221,14 @@ test_output "all_loop_forms_nested" \
     }' \
     "12"
 
+test_output "ternary_cast_const" \
+    'fn main() {
+        const base = 7
+        let value = true ? base as decimal : 0.0
+        print(value as int)
+    }' \
+    "7"
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

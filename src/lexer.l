@@ -25,6 +25,7 @@
 "//".*            { /* skip line comments */ }
 
 "let"             { return LET; }
+"const"           { return CONST; }
 "fn"              { return FN; }
 "loop"            { return LOOP; }
 "for"             { return FOR; }
@@ -39,6 +40,7 @@
 "and"             { return AND; }
 "or"              { return OR; }
 "not"             { return NOT; }
+"as"              { return AS; }
 
 "int"             { return TYPE_INT; }
 "decimal"         { return TYPE_DECIMAL; }
@@ -70,6 +72,7 @@
 ":"               { return ':'; }
 "="               { return '='; }
 ","               { return ','; }
+"?"               { return '?'; }
 "->"              { return ARROW; }
 "+="              { return PLUS_EQ; }
 "-="              { return MINUS_EQ; }

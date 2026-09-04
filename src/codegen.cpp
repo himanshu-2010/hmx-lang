@@ -114,6 +114,18 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         out_ << "!(";
         emit_expr(not_expr->operand.get());
         out_ << ")";
+    } else if (auto* conditional = dynamic_cast<ConditionalExpr*>(expr)) {
+        out_ << "(";
+        emit_expr(conditional->condition.get());
+        out_ << " ? ";
+        emit_expr(conditional->then_expr.get());
+        out_ << " : ";
+        emit_expr(conditional->else_expr.get());
+        out_ << ")";
+    } else if (auto* cast = dynamic_cast<CastExpr*>(expr)) {
+        out_ << "(" << type_to_c(cast->target_type) << ")(";
+        emit_expr(cast->operand.get());
+        out_ << ")";
     } else if (auto* bin = dynamic_cast<BinaryExpr*>(expr)) {
         if (bin->kind == ExprKind::Arithmetic && bin->op == "+" &&
             get_expr_type(bin->left.get()) == TypeKind::Text) {
@@ -145,7 +157,8 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
 void CodeGen::emit_stmt(Statement* stmt) {
     if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
         emit_line_directive(var->line, source_file_);
-        out_ << "    " << type_to_c(var->annotation) << " " << var->name << " = ";
+        out_ << "    " << (var->is_mutable ? "" : "const ")
+             << type_to_c(var->annotation) << " " << var->name << " = ";
         emit_expr(var->initializer.get());
         out_ << ";\n";
     } else if (auto* assign = dynamic_cast<AssignStmt*>(stmt)) {

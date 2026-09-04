@@ -8,26 +8,28 @@ void TypeResolver::pop_scope() {
     scopes_.pop_back();
 }
 
-void TypeResolver::define(const std::string& name, TypeKind type) {
+void TypeResolver::define(const std::string& name, TypeKind type, bool is_mutable) {
     if (scopes_.back().count(name)) {
         throw CompileError(line(), "duplicate declaration of variable '" + name + "'");
     }
-    scopes_.back()[name] = type;
+    scopes_.back()[name] = {type, is_mutable};
+}
+
+const Symbol* TypeResolver::find_symbol(const std::string& name) const {
+    for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
+        auto found = it->find(name);
+        if (found != it->end()) return &found->second;
+    }
+    return nullptr;
 }
 
 bool TypeResolver::has_type(const std::string& name) const {
-    for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
-        if (it->count(name)) return true;
-    }
-    return false;
+    return find_symbol(name) != nullptr;
 }
 
 TypeKind TypeResolver::get_type(const std::string& name) const {
-    for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
-        auto found = it->find(name);
-        if (found != it->end()) return found->second;
-    }
-    return TypeKind::Unknown;
+    const Symbol* symbol = find_symbol(name);
+    return symbol ? symbol->type : TypeKind::Unknown;
 }
 
 const FunctionSig* TypeResolver::get_function(const std::string& name) const {
@@ -92,6 +94,27 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             }
             result = TypeKind::Unknown;
         }
+    } else if (auto* conditional = dynamic_cast<ConditionalExpr*>(expr)) {
+        TypeKind condition_type = resolve_expr(conditional->condition.get());
+        if (condition_type != TypeKind::Bool) {
+            throw CompileError(line(), "ternary condition must be bool, got " +
+                type_to_string(condition_type));
+        }
+        TypeKind then_type = resolve_expr(conditional->then_expr.get());
+        TypeKind else_type = resolve_expr(conditional->else_expr.get());
+        if (then_type != else_type) {
+            throw CompileError(line(), "ternary branches must have the same type, got " +
+                type_to_string(then_type) + " and " + type_to_string(else_type));
+        }
+        result = then_type;
+    } else if (auto* cast = dynamic_cast<CastExpr*>(expr)) {
+        TypeKind operand_type = resolve_expr(cast->operand.get());
+        bool numeric = (operand_type == TypeKind::Int || operand_type == TypeKind::Decimal) &&
+                       (cast->target_type == TypeKind::Int || cast->target_type == TypeKind::Decimal);
+        if (!numeric) {
+            throw CompileError(line(), "casts are only supported between int and decimal");
+        }
+        result = cast->target_type;
     } else if (auto* bin = dynamic_cast<BinaryExpr*>(expr)) {
         TypeKind lt = resolve_expr(bin->left.get());
         TypeKind rt = resolve_expr(bin->right.get());
@@ -158,14 +181,14 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                     type_to_string(var->annotation) + " but initialized with " +
                     type_to_string(init_type));
             }
-            define(var->name, var->annotation);
+            define(var->name, var->annotation, var->is_mutable);
         } else {
             if (init_type == TypeKind::Unknown) {
                 throw CompileError(var->line,
                     "cannot infer type for '" + var->name + "'");
             }
             var->annotation = init_type;
-            define(var->name, init_type);
+            define(var->name, init_type, var->is_mutable);
         }
     } else if (auto* assign = dynamic_cast<AssignStmt*>(stmt)) {
         if (!has_type(assign->name)) {
@@ -173,6 +196,11 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 "undefined variable '" + assign->name + "'");
         }
         TypeKind var_type = get_type(assign->name);
+        const Symbol* symbol = find_symbol(assign->name);
+        if (symbol && !symbol->is_mutable) {
+            throw CompileError(stmt->line,
+                "cannot modify immutable variable '" + assign->name + "'");
+        }
         if (assign->op == "++" || assign->op == "--") {
             if (var_type != TypeKind::Int && var_type != TypeKind::Decimal) {
                 throw CompileError(stmt->line,

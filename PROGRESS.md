@@ -107,6 +107,7 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - bison shift/reduce conflict is only the harmless `return` ambiguity (resolved by shift).
 - Duplicate declarations and missing definite returns are rejected by the type resolver.
 - `else if` chains are implemented and covered by `else_if.hmx`.
+- Ternary expressions, explicit numeric casts, and immutable `const` bindings are implemented.
 
 ## Relevant files
 - `src/lexer.l`, `src/parser.y`, `src/ast.hpp/cpp`, `src/type_resolver.hpp/cpp`, `src/codegen.hpp/cpp`, `src/main.cpp`
