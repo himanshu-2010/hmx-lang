@@ -37,7 +37,7 @@ standard C reference documentation, but uses Stardance's own syntax, types, and 
 
 ### 1.1 Program Structure
 
-A Stardance program is a sequence of statements and function declarations in a `.sd` file.
+A Stardance program is a sequence of statements and function declarations in a `.hmx` file.
 Execution begins in the `main` function.
 
 ```stardance
@@ -51,7 +51,7 @@ fn main() {
 Stardance source is transpiled to C, then compiled with `gcc -O2` to a native executable:
 
 ```
-yourfile.sd  --[Stardance Compiler]-->  build_temp.c  --[gcc -O2]-->  native executable
+yourfile.hmx  --[Stardance Compiler]-->  build_temp.c  --[gcc -O2]-->  native executable
 ```
 
 ### 1.3 Blocks
@@ -744,7 +744,7 @@ Error [line 6]: undefined variable 'nope'
 
 - **Lex/parse failure** → print syntax error, do not proceed.
 - **Type-resolution failure** → print type error, do not proceed to codegen.
-- **`gcc` compile failure** → print `gcc`'s stderr as-is (it references `.sd` lines
+- **`gcc` compile failure** → print `gcc`'s stderr as-is (it references `.hmx` lines
   via `#line` directives); preserve `build_temp.c` for inspection.
 - **Runtime** → execute the binary and pass through its exit code.
 
@@ -766,7 +766,7 @@ are **not** part of the current core spec or compiler. None of them are usable y
 | Character / byte type | A single character type distinct from `text`. |
 | Multiple return values | Functions returning tuples. |
 | Named constants | `const` / immutable bindings. |
-| Namespaces / modules | Splitting a program across `.sd` files. |
+| Namespaces / modules | Splitting a program across `.hmx` files. |
 
 > **Note:** as features are confirmed and added, they will be moved from this roadmap
 > into their proper section above and, where relevant, implemented in the compiler.

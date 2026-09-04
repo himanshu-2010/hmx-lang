@@ -14,7 +14,7 @@ test_error() {
     local code="$2"
     local expected_pattern="$3"
 
-    local file="$TMPDIR/${test_name}.sd"
+    local file="$TMPDIR/${test_name}.hmx"
     printf '%s\n' "$code" > "$file"
 
     local output

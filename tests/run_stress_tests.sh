@@ -14,7 +14,7 @@ test_output() {
     local code="$2"
     local expected_output="$3"
 
-    local file="$TMPDIR/${test_name}.sd"
+    local file="$TMPDIR/${test_name}.hmx"
     printf '%s\n' "$code" > "$file"
 
     local actual_output
@@ -41,7 +41,7 @@ test_exit_code() {
     local code="$2"
     local expected_code="$3"
 
-    local file="$TMPDIR/${test_name}.sd"
+    local file="$TMPDIR/${test_name}.hmx"
     printf '%s\n' "$code" > "$file"
 
     set +e

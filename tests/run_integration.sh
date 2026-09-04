@@ -6,8 +6,8 @@ BIN="build/stardance"
 PASS=0
 FAIL=0
 
-for f in tests/fixtures/*.sd; do
-    name=$(basename "$f" .sd)
+for f in tests/fixtures/*.hmx; do
+    name=$(basename "$f" .hmx)
     "$BIN" run "$f" > /dev/null 2>&1
     if [ $? -eq 0 ]; then
         echo "PASS: $name"

@@ -6,8 +6,8 @@ Implement the Stardance transpiler's 8-phase plan (from `PLAN.md`) so users can 
 
 ## Build / Test
 - Build: `cd build && cmake .. && make` (workspace: `/home/himanshu/Documents/hack-club/stardance`)
-- Tests: `./tests/run_integration.sh` runs `tests/fixtures/*.sd`; fixtures must exit 0.
-- CLI: `./build/stardance run|build <file.sd> [-keep-c]`
+- Tests: `./tests/run_integration.sh` runs `tests/fixtures/*.hmx`; fixtures must exit 0.
+- CLI: `./build/stardance run|build <file.hmx> [-keep-c]`
 - Deps: flex 2.6.4, bison 3.8.2, cmake 4.4.3, gcc/g++ 16.2.1.
 
 ## Language decisions (locked)
@@ -22,24 +22,24 @@ Implement the Stardance transpiler's 8-phase plan (from `PLAN.md`) so users can 
 - `main()` exit code: `fn main() -> int { return N }` → C exit code N; main without `-> int` appends `return 0`.
 - Error format: `Error [line N]: ...` / `Parse error [line N]: ... near '...'`.
 - Comments: `//` and `/* */` (non-nesting).
-- Extension: `.sd`.
+- Extension: `.hmx`.
 
 ## Progress
 
 ### Phase 1 — Block comments `/* */` — DONE
 - Lexer `%x BLOCK_COMMENT`; unterminated comment → `Error [line N]: unterminated block comment`, exit 1.
-- Fixture: `block_comments.sd`.
+- Fixture: `block_comments.hmx`.
 
 ### Phase 2 — Comparison ops `== != < > <= >=` — DONE
 - `ExprKind` (Arithmetic/Comparison/Logical) on `BinaryExpr`; tokens `EQ NEQ LT GT LEQ GEQ`.
 - Precedence: expression→equality→relational→additive→term→factor.
 - Result type Bool; text ordering rejected; codegen `strcmp` for text `==`/`!=`.
-- Added `current_line_` to resolver. Fixture: `comparisons.sd`.
+- Added `current_line_` to resolver. Fixture: `comparisons.hmx`.
 
 ### Phase 3 — Boolean ops — DONE
 - Lexer `and/or/not` + `&&/||/!` → `AND/OR/NOT`; AST `NotExpr`.
 - Parser layers logical_or→logical_and→equality; unary NOT factor.
-- Bool-only operands; codegen `&&`/`||`/`!`. Fixture: `booleans.sd`.
+- Bool-only operands; codegen `&&`/`||`/`!`. Fixture: `booleans.hmx`.
 
 ### Phase 4 — if/else — DONE
 - Lexer `if/else`; AST `IfStmt`; parser `if_stmt`; resolver requires bool condition.
@@ -48,7 +48,7 @@ Implement the Stardance transpiler's 8-phase plan (from `PLAN.md`) so users can 
 ### Phase 5 — Assignment — DONE
 - Lexer `+= -= *= /= ++ --`; AST `AssignStmt`; parser `assign_stmt`.
 - Resolver: lhs defined, `=` rhs type matches, compound/++/-- need int/decimal.
-- Fixture: `assignment.sd`.
+- Fixture: `assignment.hmx`.
 
 ### Phase 6 — Function params & return values — DONE
 - Lexer `return`, `->` (ARROW), `,`. AST: `FunctionDecl` params/return_type/has_return_type, `ReturnStmt`.
@@ -56,7 +56,7 @@ Implement the Stardance transpiler's 8-phase plan (from `PLAN.md`) so users can 
 - Resolver: `FunctionSig`, `functions_` map, `collect_functions()`, return tracking.
 - Codegen: `emit_function_signature()` (typed params + return); main-appends `return 0` only when no `-> int`.
 - Fixed main exit-code propagation (used `WEXITSTATUS` in main.cpp).
-- Fixture: `fn_params.sd`. Note: harmless bison shift/reduce conflict on `return expr` vs bare `return`.
+- Fixture: `fn_params.hmx`. Note: harmless bison shift/reduce conflict on `return expr` vs bare `return`.
 
 ### Phase 7 — Function calls — DONE
 - AST: `CallExpr` (name + args), `ExprStmt` (for void-call statements).
@@ -65,13 +65,13 @@ Implement the Stardance transpiler's 8-phase plan (from `PLAN.md`) so users can 
 - Codegen: CallExpr emission, ExprStmt emission (this was the dropped-`greet("Boss")` bug — the emit_stmt ExprStmt branch was never added and is now fixed).
 - Prototype-first emission (all `fn` signatures before definitions) so forward/reordered calls compile.
 - Verified error cases: cannot call main, undefined fn, arg count mismatch, arg type mismatch, void fn used as value.
-- Fixture: `calls.sd` (10/10 pass). Bison shift/reduce conflict is only the harmless `return` ambiguity (resolved by shift).
+- Fixture: `calls.hmx` (10/10 pass). Bison shift/reduce conflict is only the harmless `return` ambiguity (resolved by shift).
 
 ### Next / remaining
 
 ### Phase 8 — Finalise — DONE
 - Updated `SYNTAX.md`: all `[Spec]` tags for implemented features (assignment, compound/increment, comparison, boolean, full expression grammar, if, params, returns, calls) → `[Implemented]`; updated §12.1 main/exit-code and §12.3 (recursion now works via prototypes); documented void-fn-as-statement + call-order rules; removed stale recursion out-of-scope note.
-- Added `recursion.sd` fixture (fib) — proves recursion + calls + params + returns + if work end-to-end.
+- Added `recursion.hmx` fixture (fib) — proves recursion + calls + params + returns + if work end-to-end.
 - Full regression: 11/11 fixtures pass.
 
 ## Language is hello-world-capable
@@ -86,7 +86,7 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - Codegen: emits static `sd_concat(a, b)` runtime helper (`malloc`-based) in generated C;
   `text + text` lowers to `sd_concat(...)`; left-associative for chains. `print(...)` on a
   concat uses `%s`.
-- Fixture: `string_concat.sd` (18/18 integration pass).
+- Fixture: `string_concat.hmx` (18/18 integration pass).
 - Docs: SYNTAX.md §8.1 updated; removed roadmap "string concatenation undefined" note.
 
 ### Full loop family — DONE
@@ -98,7 +98,7 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   loop header/body.
 - Added `do { ... } while (cond)` with bool condition checks and no trailing semicolon in
   Stardance source.
-- Fixtures: `for.sd`, `for_assignment_init.sd`, `do_while.sd`, `loops_nested.sd`.
+- Fixtures: `for.hmx`, `for_assignment_init.hmx`, `do_while.hmx`, `loops_nested.hmx`.
 - Full regression: 23/23 integration, 35/35 negative, 14/14 stress/output.
 
 ## Known issues / deferred
@@ -108,5 +108,5 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 
 ## Relevant files
 - `src/lexer.l`, `src/parser.y`, `src/ast.hpp/cpp`, `src/type_resolver.hpp/cpp`, `src/codegen.hpp/cpp`, `src/main.cpp`
-- `tests/fixtures/*.sd`, `tests/run_integration.sh`
+- `tests/fixtures/*.hmx`, `tests/run_integration.sh`
 - `PLAN.md`, `SYNTAX.md`

@@ -17,10 +17,10 @@ extern int yyparse();
 extern Program* g_program;
 
 void print_usage() {
-    fprintf(stderr, "Usage: stardance <command> <file.sd> [options]\n");
+    fprintf(stderr, "Usage: stardance <command> <file.hmx> [options]\n");
     fprintf(stderr, "Commands:\n");
-    fprintf(stderr, "  run   <file.sd>        Transpile, compile, execute\n");
-    fprintf(stderr, "  build <file.sd>        Transpile and compile only\n");
+    fprintf(stderr, "  run   <file.hmx>        Transpile, compile, execute\n");
+    fprintf(stderr, "  build <file.hmx>        Transpile and compile only\n");
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "  -keep-c                Keep intermediate .c file\n");
 }
@@ -52,6 +52,11 @@ int main(int argc, char* argv[]) {
     if (command != "run" && command != "build") {
         fprintf(stderr, "Error: unknown command '%s'\n", command.c_str());
         print_usage();
+        return 1;
+    }
+
+    if (source_file.size() < 4 || source_file.compare(source_file.size() - 4, 4, ".hmx") != 0) {
+        fprintf(stderr, "Error: expected .hmx file\n");
         return 1;
     }
 

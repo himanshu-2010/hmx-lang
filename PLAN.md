@@ -68,7 +68,7 @@ prior fixtures, and lands one complete feature.
 - **parser.y:** new statement; optional `else`.
 - **type_resolver:** condition must be `bool`; each branch gets its own scope.
 - **codegen:** C `if`/`else` blocks.
-- **Verify fixture:** ifelse.sd exercising both branches.
+- **Verify fixture:** ifelse.hmx exercising both branches.
 
 ## Phase 5 — Assignment `=` / `+= -= *= /=` / `++ --`
 
@@ -107,5 +107,5 @@ prior fixtures, and lands one complete feature.
 ## Phase 8 — Docs & full regression
 
 - Move implemented sections from `[Spec]` → `[Implemented]` in `SYNTAX.md`.
-- Run all fixtures + `hello.sd`.
+- Run all fixtures + `hello.hmx`.
 - Clean build with no warnings.

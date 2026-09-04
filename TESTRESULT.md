@@ -36,33 +36,33 @@ A comprehensive, rigorous re-test was conducted against the Stardance transpiler
 
 ### 1. Integration Fixtures (23/23 Passed)
 
-These tests compile Stardance (`.sd`) source files into native C binaries via GCC and verify clean execution and output correctness.
+These tests compile Stardance (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
 | Test Case Name | Feature Tested | Description | Status |
 | :--- | :--- | :--- | :---: |
-| `assignment.sd` | Assignment Ops | Tests `=`, `+=`, `-=`, `*=`, `/=`, `++`, `--` statements inside loops and functions | **PASS** |
-| `block_comments.sd` | Lexer Comments | Multi-line `/* ... */` comment stripping without affecting code execution | **PASS** |
-| `booleans.sd` | Logical Operators | Both keyword (`and`, `or`, `not`) and symbol (`&&`, `\|\|`, `!`) boolean operations | **PASS** |
-| `calls.sd` | Function Calls | Void function calls, parameter passing, and returning values | **PASS** |
-| `comparisons.sd` | Relational Ops | `==`, `!=`, `<`, `>`, `<=`, `>=` comparisons on integer literals and expressions | **PASS** |
-| `complex_math.sd` | Precedence | Operator precedence (`*`/`/` over `+`/`-`), grouping `()`, left-associativity, `decimal` ops | **PASS** |
-| `control_flow_nested.sd` | Control Flow | Nested `loop(N)` blocks inside nested `if`/`else` branches | **PASS** |
-| `do_while.sd` | Do-While Loop | Body executes once, then checks boolean condition | **PASS** |
-| `expressions.sd` | Expressions | Complex arithmetic expression trees with variables and constants | **PASS** |
-| `fn_params.sd` | Function Params | Functions with multiple typed parameters (`a: int, b: text`) and explicit return types (`-> int`) | **PASS** |
-| `for.sd` | For Loop | C-style `for (let i = 0; i < n; i++)` loop | **PASS** |
-| `for_assignment_init.sd` | For Assignment Init | `for` header using an existing variable assignment as initializer | **PASS** |
-| `forward_calls.sd` | Prototypes | Out-of-order function declarations (calling functions declared later in source) | **PASS** |
-| `functions.sd` | Basic Functions | Function definitions and simple function invocation | **PASS** |
-| `ifelse.sd` | Conditionals | `if (cond) { ... } else { ... }` branching logic | **PASS** |
-| `loop.sd` | Counted Loops | `loop(count)` counted loop execution | **PASS** |
-| `loops_nested.sd` | Loop Nesting | Combined `loop`, `while`, `for`, and `do-while` nesting | **PASS** |
-| `recursion.sd` | Direct Recursion | Direct recursive function calls calculating Fibonacci numbers | **PASS** |
-| `scope_shadowing.sd` | Variable Scoping | Block-level variable shadowing inside `if` statements vs outer parameter scopes | **PASS** |
-| `string_concat.sd` | **[NEW]** String Concat | `text + text` string concatenation lowering to runtime `sd_concat` | **PASS** |
-| `string_ops.sd` | String Semantics | String equality (`==`) and inequality (`!=`) lowering to `strcmp` in C | **PASS** |
-| `while.sd` | **[NEW]** While Loop | `while (cond) { ... }` conditional iteration loops | **PASS** |
-| `advanced_functions.sd` | Type Return / Return in Loop | Functions returning `text`, `decimal`, `bool`, and early `return` inside `loop` blocks | **PASS** |
+| `assignment.hmx` | Assignment Ops | Tests `=`, `+=`, `-=`, `*=`, `/=`, `++`, `--` statements inside loops and functions | **PASS** |
+| `block_comments.hmx` | Lexer Comments | Multi-line `/* ... */` comment stripping without affecting code execution | **PASS** |
+| `booleans.hmx` | Logical Operators | Both keyword (`and`, `or`, `not`) and symbol (`&&`, `\|\|`, `!`) boolean operations | **PASS** |
+| `calls.hmx` | Function Calls | Void function calls, parameter passing, and returning values | **PASS** |
+| `comparisons.hmx` | Relational Ops | `==`, `!=`, `<`, `>`, `<=`, `>=` comparisons on integer literals and expressions | **PASS** |
+| `complex_math.hmx` | Precedence | Operator precedence (`*`/`/` over `+`/`-`), grouping `()`, left-associativity, `decimal` ops | **PASS** |
+| `control_flow_nested.hmx` | Control Flow | Nested `loop(N)` blocks inside nested `if`/`else` branches | **PASS** |
+| `do_while.hmx` | Do-While Loop | Body executes once, then checks boolean condition | **PASS** |
+| `expressions.hmx` | Expressions | Complex arithmetic expression trees with variables and constants | **PASS** |
+| `fn_params.hmx` | Function Params | Functions with multiple typed parameters (`a: int, b: text`) and explicit return types (`-> int`) | **PASS** |
+| `for.hmx` | For Loop | C-style `for (let i = 0; i < n; i++)` loop | **PASS** |
+| `for_assignment_init.hmx` | For Assignment Init | `for` header using an existing variable assignment as initializer | **PASS** |
+| `forward_calls.hmx` | Prototypes | Out-of-order function declarations (calling functions declared later in source) | **PASS** |
+| `functions.hmx` | Basic Functions | Function definitions and simple function invocation | **PASS** |
+| `ifelse.hmx` | Conditionals | `if (cond) { ... } else { ... }` branching logic | **PASS** |
+| `loop.hmx` | Counted Loops | `loop(count)` counted loop execution | **PASS** |
+| `loops_nested.hmx` | Loop Nesting | Combined `loop`, `while`, `for`, and `do-while` nesting | **PASS** |
+| `recursion.hmx` | Direct Recursion | Direct recursive function calls calculating Fibonacci numbers | **PASS** |
+| `scope_shadowing.hmx` | Variable Scoping | Block-level variable shadowing inside `if` statements vs outer parameter scopes | **PASS** |
+| `string_concat.hmx` | **[NEW]** String Concat | `text + text` string concatenation lowering to runtime `sd_concat` | **PASS** |
+| `string_ops.hmx` | String Semantics | String equality (`==`) and inequality (`!=`) lowering to `strcmp` in C | **PASS** |
+| `while.hmx` | **[NEW]** While Loop | `while (cond) { ... }` conditional iteration loops | **PASS** |
+| `advanced_functions.hmx` | Type Return / Return in Loop | Functions returning `text`, `decimal`, `bool`, and early `return` inside `loop` blocks | **PASS** |
 
 ---
 
@@ -137,8 +137,8 @@ These tests verify exact runtime output matching and process exit code propagati
 
 | Command / Option Tested | Action Taken | Expected Result | Status |
 | :--- | :--- | :--- | :---: |
-| `./stardance run <file.sd>` | Transpile, compile, execute | Binary executes, temporary C file removed | **PASS** |
-| `./stardance build <file.sd>` | Transpile and compile only | Binary created, output `Built: <file>` | **PASS** |
+| `./stardance run <file.hmx>` | Transpile, compile, execute | Binary executes, temporary C file removed | **PASS** |
+| `./stardance build <file.hmx>` | Transpile and compile only | Binary created, output `Built: <file>` | **PASS** |
 | `-keep-c` Flag | Transpile & keep source | Intermediate `build_temp.c` retained | **PASS** |
 | Invalid Arguments / Missing File | Run without valid file | Exit `1` with usage / error diagnostic | **PASS** |
 
