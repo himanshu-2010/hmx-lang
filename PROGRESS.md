@@ -105,6 +105,7 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` on next line misparses (return expr wins via shift); acceptable edge case.
 - bison shift/reduce conflict is only the harmless `return` ambiguity (resolved by shift).
+- Duplicate declarations and missing definite returns are rejected by the type resolver.
 
 ## Relevant files
 - `src/lexer.l`, `src/parser.y`, `src/ast.hpp/cpp`, `src/type_resolver.hpp/cpp`, `src/codegen.hpp/cpp`, `src/main.cpp`

@@ -19,6 +19,7 @@ The current compiler supports:
 - Functions with typed parameters and return values
 - Function calls, forward calls, and recursion
 - Compile-time type checking with line-numbered diagnostics
+- Duplicate declaration detection and definite-return checking
 - Native executables and propagated `main` exit codes
 
 The compiler is functional, but this is still a small language project rather than a
@@ -313,7 +314,8 @@ Error: expected .hmx file
 
 The resolver checks undefined variables and functions, type mismatches, invalid
 operators, invalid loop conditions, invalid returns, argument count/type errors, and
-calls to `main`.
+calls to `main`. It also rejects duplicate names in the same scope and typed functions
+that can reach the end without returning a value.
 
 ## Tests
 

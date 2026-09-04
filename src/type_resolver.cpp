@@ -9,6 +9,9 @@ void TypeResolver::pop_scope() {
 }
 
 void TypeResolver::define(const std::string& name, TypeKind type) {
+    if (scopes_.back().count(name)) {
+        throw CompileError(line(), "duplicate declaration of variable '" + name + "'");
+    }
     scopes_.back()[name] = type;
 }
 
@@ -143,8 +146,9 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
     return result;
 }
 
-void TypeResolver::resolve_stmt(Statement* stmt) {
+bool TypeResolver::resolve_stmt(Statement* stmt) {
     current_line_ = stmt->line;
+    bool always_returns = false;
     if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
         TypeKind init_type = resolve_expr(var->initializer.get());
         if (var->has_annotation) {
@@ -251,13 +255,15 @@ void TypeResolver::resolve_stmt(Statement* stmt) {
                 "if condition must be bool, got " + type_to_string(cond_type));
         }
         push_scope();
-        for (auto& s : ifs->then_body) resolve_stmt(s.get());
+        bool then_returns = resolve_block(ifs->then_body);
         pop_scope();
+        bool else_returns = false;
         if (ifs->has_else) {
             push_scope();
-            for (auto& s : ifs->else_body) resolve_stmt(s.get());
+            else_returns = resolve_block(ifs->else_body);
             pop_scope();
         }
+        always_returns = ifs->has_else && then_returns && else_returns;
     } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
         if (!in_function_) {
             throw CompileError(stmt->line, "return outside of function");
@@ -288,16 +294,37 @@ void TypeResolver::resolve_stmt(Statement* stmt) {
         bool saved_in_fn = in_function_;
         current_return_ = fn->has_return_type ? fn->return_type : TypeKind::Unknown;
         in_function_ = true;
-        for (auto& s : fn->body) resolve_stmt(s.get());
+        bool function_returns = resolve_block(fn->body);
+        if (fn->has_return_type && !function_returns) {
+            throw CompileError(fn->line,
+                "function '" + fn->name + "' may exit without returning " +
+                type_to_string(fn->return_type));
+        }
         in_function_ = saved_in_fn;
         current_return_ = saved_ret;
         pop_scope();
+        always_returns = function_returns;
     }
+    if (dynamic_cast<ReturnStmt*>(stmt)) always_returns = true;
+    return always_returns;
+}
+
+bool TypeResolver::resolve_block(const std::vector<StmtPtr>& statements) {
+    bool always_returns = false;
+    for (auto& stmt : statements) {
+        bool statement_returns = resolve_stmt(stmt.get());
+        if (statement_returns) always_returns = true;
+    }
+    return always_returns;
 }
 
 void TypeResolver::collect_functions(Program& program) {
     for (auto& stmt : program.statements) {
         if (auto* fn = dynamic_cast<FunctionDecl*>(stmt.get())) {
+            if (functions_.count(fn->name)) {
+                throw CompileError(fn->line,
+                    "duplicate declaration of function '" + fn->name + "'");
+            }
             FunctionSig sig;
             for (auto& p : fn->params) sig.param_types.push_back(p.type);
             sig.return_type = fn->has_return_type ? fn->return_type : TypeKind::Unknown;

@@ -736,9 +736,11 @@ Error [line 6]: undefined variable 'nope'
 - **Type mismatch** on annotated declarations (§5.2).
 - **Type mismatch** in binary/comparison/boolean operators (§8).
 - **Undefined variable** references.
+- **Duplicate declarations** of variables in the same scope or functions at program scope.
 - **Loop count** must be `int`; `if`, `while`, `for`, and `do-while` conditions
   must be `bool`.
 - **Function call** argument count and type matching (§12.4).
+- **Definite returns** for typed functions: every reachable path must return a value.
 
 ### 14.5 Compiler Emergencies (CLI)
 

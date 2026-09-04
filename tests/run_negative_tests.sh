@@ -43,6 +43,36 @@ test_error "decl_type_mismatch" \
     }' \
     "type mismatch"
 
+test_error "duplicate_variable" \
+    'fn main() {
+        let x = 1
+        let x = 2
+    }' \
+    "duplicate declaration of variable"
+
+test_error "duplicate_function" \
+    'fn helper() {
+        print(1)
+    }
+    fn helper() {
+        print(2)
+    }
+    fn main() {
+        print(0)
+    }' \
+    "duplicate declaration of function"
+
+test_error "missing_return" \
+    'fn value(flag: bool) -> int {
+        if (flag) {
+            return 1
+        }
+    }
+    fn main() {
+        print(value(true))
+    }' \
+    "may exit without returning int"
+
 test_error "assign_type_mismatch" \
     'fn main() {
         let x = 5

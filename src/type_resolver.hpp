@@ -40,7 +40,8 @@ private:
     int line() const { return current_line_; }
 
     TypeKind resolve_expr(Expression* expr);
-    void resolve_stmt(Statement* stmt);
+    bool resolve_stmt(Statement* stmt);
+    bool resolve_block(const std::vector<StmtPtr>& statements);
     void collect_functions(Program& program);
     TypeKind infer_from_literal(Expression* expr);
 };
