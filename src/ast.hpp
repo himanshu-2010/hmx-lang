@@ -9,6 +9,8 @@ enum class TypeKind {
     Decimal,
     Text,
     Bool,
+    Char,
+    Byte,
     Unknown
 };
 
@@ -42,6 +44,11 @@ struct DecimalLiteral : Expression {
 struct StringLiteral : Expression {
     std::string value;
     explicit StringLiteral(std::string v) : value(std::move(v)) {}
+};
+
+struct CharLiteral : Expression {
+    char value;
+    explicit CharLiteral(char v) : value(v) {}
 };
 
 struct BoolLiteral : Expression {

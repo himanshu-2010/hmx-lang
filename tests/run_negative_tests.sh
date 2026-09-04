@@ -198,6 +198,19 @@ test_error "invalid_cast" \
     }' \
     "casts are only supported between int and decimal"
 
+test_error "byte_out_of_range" \
+    'fn main() {
+        let value: byte = 256
+    }' \
+    "byte value must be between 0 and 255"
+
+test_error "char_arithmetic" \
+    'fn main() {
+        let value: char = '"'"'a'"'"'
+        value += 1
+    }' \
+    "requires int or decimal"
+
 test_error "const_assignment" \
     'fn main() {
         const value = 1

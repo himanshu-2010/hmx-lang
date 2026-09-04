@@ -36,8 +36,8 @@ Program* g_program = nullptr;
 
 %token LET CONST FN LOOP FOR WHILE DO PRINT RETURN TRUE FALSE
 %token IF ELSE
-%token TYPE_INT TYPE_DECIMAL TYPE_TEXT TYPE_BOOL
-%token NUMBER DECIMAL STRING IDENTIFIER
+%token TYPE_INT TYPE_DECIMAL TYPE_TEXT TYPE_BOOL TYPE_CHAR TYPE_BYTE
+%token NUMBER DECIMAL STRING CHAR IDENTIFIER
 %token EQ NEQ LT GT LEQ GEQ
 %token AND OR NOT
 %token PLUS_EQ MINUS_EQ STAR_EQ SLASH_EQ INCR DECR
@@ -46,7 +46,7 @@ Program* g_program = nullptr;
 
 %type <ival> NUMBER
 %type <fval> DECIMAL
-%type <sval> STRING IDENTIFIER
+%type <sval> STRING CHAR IDENTIFIER
 %type <expr> expression conditional logical_or logical_and equality relational additive term factor
 %type <stmt> statement var_decl assign_stmt print_stmt loop_stmt while_stmt for_stmt do_while_stmt if_stmt return_stmt call_stmt fn_decl
 %type <stmt> for_init for_update
@@ -214,6 +214,34 @@ var_decl
             v->line = yylineno;
             free($2);
             $$ = v;
+        }
+    | LET IDENTIFIER ':' TYPE_CHAR '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2; v->has_annotation = true; v->annotation = TypeKind::Char;
+            v->is_mutable = true; v->initializer = ExprPtr($6); v->line = yylineno;
+            free($2); $$ = v;
+        }
+    | LET IDENTIFIER ':' TYPE_BYTE '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2; v->has_annotation = true; v->annotation = TypeKind::Byte;
+            v->is_mutable = true; v->initializer = ExprPtr($6); v->line = yylineno;
+            free($2); $$ = v;
+        }
+    | CONST IDENTIFIER ':' TYPE_CHAR '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2; v->has_annotation = true; v->annotation = TypeKind::Char;
+            v->is_mutable = false; v->initializer = ExprPtr($6); v->line = yylineno;
+            free($2); $$ = v;
+        }
+    | CONST IDENTIFIER ':' TYPE_BYTE '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2; v->has_annotation = true; v->annotation = TypeKind::Byte;
+            v->is_mutable = false; v->initializer = ExprPtr($6); v->line = yylineno;
+            free($2); $$ = v;
         }
     ;
 
@@ -455,6 +483,8 @@ param_type
     | TYPE_DECIMAL { $$ = TypeKind::Decimal; }
     | TYPE_TEXT    { $$ = TypeKind::Text; }
     | TYPE_BOOL    { $$ = TypeKind::Bool; }
+    | TYPE_CHAR    { $$ = TypeKind::Char; }
+    | TYPE_BYTE    { $$ = TypeKind::Byte; }
     ;
 
 param_list
@@ -656,6 +686,12 @@ factor
             auto* s = new StringLiteral(std::string($1));
             free($1);
             $$ = s;
+        }
+    | CHAR
+        {
+            auto* c = new CharLiteral($1[0]);
+            free($1);
+            $$ = c;
         }
     | TRUE
         {

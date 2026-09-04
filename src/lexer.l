@@ -46,6 +46,8 @@
 "decimal"         { return TYPE_DECIMAL; }
 "text"            { return TYPE_TEXT; }
 "bool"            { return TYPE_BOOL; }
+"char"            { return TYPE_CHAR; }
+"byte"            { return TYPE_BYTE; }
 
 [0-9]+\.[0-9]+    { yylval.fval = atof(yytext); return DECIMAL; }
 [0-9]+            { yylval.ival = atoi(yytext); return NUMBER; }
@@ -57,6 +59,8 @@
     yylval.sval = str;
     return STRING;
 }
+
+\'[^\'\\]\'        { yylval.sval = strdup(yytext + 1); yylval.sval[1] = '\0'; return CHAR; }
 
 [a-zA-Z_][a-zA-Z0-9_]* { yylval.sval = strdup(yytext); return IDENTIFIER; }
 

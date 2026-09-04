@@ -13,6 +13,7 @@ The current compiler supports:
 
 - Variables with inferred or explicit types
 - Integer, decimal, text, and boolean values
+- Character and byte values
 - Arithmetic, comparisons, boolean logic, and text concatenation
 - `if` / `else` conditionals
 - `else if` conditional chains
@@ -140,7 +141,7 @@ ordinary identifier.
 
 ## Types and Literals
 
-HMX has four primitive types:
+HMX has six primitive types:
 
 | Type | Meaning | Examples |
 | --- | --- | --- |
@@ -148,6 +149,8 @@ HMX has four primitive types:
 | `decimal` | Double-precision floating-point value | `0.0`, `3.14` |
 | `text` | Double-quoted string | `"hello"` |
 | `bool` | Boolean value | `true`, `false` |
+| `char` | Single character | `'H'` |
+| `byte` | Unsigned 8-bit value | `0` through `255` with a `byte` annotation |
 
 Types are inferred from initializers:
 
@@ -169,7 +172,11 @@ let ready: bool = true
 ```
 
 `int` and `decimal` are not implicitly mixed in arithmetic. Text supports `+` with
-another text value for concatenation. Other invalid combinations are compile errors.
+another text value for concatenation. `char` and `byte` are scalar values but are not
+valid arithmetic operands. Other invalid combinations are compile errors.
+
+Numeric casts use `as` and are explicit. They support conversions among `int`,
+`decimal`, `char`, and `byte`; byte values must remain in the range `0..255`.
 
 ## Operators
 
@@ -356,10 +363,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | 25 `.hmx` fixtures | 25/25 passed |
-| Negative | Type, syntax, and resolver errors | 45/45 passed |
-| Stress/output | Recursion, loops, strings, output, exit codes | 15/15 passed |
-| Total | 85 test cases | 85/85 passed |
+| Integration | 26 `.hmx` fixtures | 26/26 passed |
+| Negative | Type, syntax, and resolver errors | 47/47 passed |
+| Stress/output | Recursion, loops, strings, output, exit codes | 16/16 passed |
+| Total | 89 test cases | 89/89 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is
@@ -417,7 +424,6 @@ as planned and are not implemented yet:
 - Arrays and lists
 - String methods such as `length` and `substring`
 - `switch` statements
-- A character or byte type
 - Multiple return values or tuples
 - Namespaces and modules across multiple `.hmx` files
 - Variadic parameters and default parameter values

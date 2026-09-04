@@ -229,6 +229,15 @@ test_output "ternary_cast_const" \
     }' \
     "7"
 
+test_output "char_byte_values" \
+    'fn main() {
+        let letter: char = '"'"'A'"'"'
+        let value: byte = 255
+        print(letter)
+        print(value)
+    }' \
+    "$(printf 'A\n255')"
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

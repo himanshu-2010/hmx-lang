@@ -43,6 +43,7 @@ TypeKind TypeResolver::infer_from_literal(Expression* expr) {
     if (dynamic_cast<DecimalLiteral*>(expr))  return TypeKind::Decimal;
     if (dynamic_cast<StringLiteral*>(expr))   return TypeKind::Text;
     if (dynamic_cast<BoolLiteral*>(expr))     return TypeKind::Bool;
+    if (dynamic_cast<CharLiteral*>(expr))     return TypeKind::Char;
     return TypeKind::Unknown;
 }
 
@@ -56,6 +57,8 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         result = TypeKind::Text;
     else if (dynamic_cast<BoolLiteral*>(expr))
         result = TypeKind::Bool;
+    else if (dynamic_cast<CharLiteral*>(expr))
+        result = TypeKind::Char;
     else if (auto* id = dynamic_cast<Identifier*>(expr)) {
         if (!has_type(id->name)) {
             throw CompileError(line(), "undefined variable '" + id->name + "'");
@@ -109,8 +112,13 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         result = then_type;
     } else if (auto* cast = dynamic_cast<CastExpr*>(expr)) {
         TypeKind operand_type = resolve_expr(cast->operand.get());
-        bool numeric = (operand_type == TypeKind::Int || operand_type == TypeKind::Decimal) &&
-                       (cast->target_type == TypeKind::Int || cast->target_type == TypeKind::Decimal);
+        bool operand_numeric = operand_type == TypeKind::Int || operand_type == TypeKind::Decimal ||
+                       operand_type == TypeKind::Char || operand_type == TypeKind::Byte;
+        bool target_numeric = cast->target_type == TypeKind::Int ||
+                      cast->target_type == TypeKind::Decimal ||
+                      cast->target_type == TypeKind::Char ||
+                      cast->target_type == TypeKind::Byte;
+        bool numeric = operand_numeric && target_numeric;
         if (!numeric) {
             throw CompileError(line(), "casts are only supported between int and decimal");
         }
@@ -132,7 +140,8 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                     result = TypeKind::Text;
                     break;
                 }
-                if (lt == TypeKind::Text || lt == TypeKind::Bool) {
+                if (lt == TypeKind::Text || lt == TypeKind::Bool ||
+                    lt == TypeKind::Char || lt == TypeKind::Byte) {
                     throw CompileError(line(),
                         "operator '" + bin->op + "' not defined for type " +
                         type_to_string(lt));
@@ -175,11 +184,21 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
     if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
         TypeKind init_type = resolve_expr(var->initializer.get());
         if (var->has_annotation) {
+            if (var->annotation == TypeKind::Byte) {
+                auto* number = dynamic_cast<NumberLiteral*>(var->initializer.get());
+                if (number && (number->value < 0 || number->value > 255)) {
+                    throw CompileError(var->line, "byte value must be between 0 and 255");
+                }
+            }
             if (init_type != TypeKind::Unknown && init_type != var->annotation) {
+                bool byte_literal = var->annotation == TypeKind::Byte &&
+                    dynamic_cast<NumberLiteral*>(var->initializer.get()) != nullptr;
+                if (!byte_literal) {
                 throw CompileError(var->line,
                     "type mismatch: variable '" + var->name + "' declared as " +
                     type_to_string(var->annotation) + " but initialized with " +
                     type_to_string(init_type));
+                }
             }
             define(var->name, var->annotation, var->is_mutable);
         } else {

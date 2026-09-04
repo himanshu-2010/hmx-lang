@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03  
 **Target Project:** Stardance Transpiler (`/home/himanshu/Documents/hack-club/stardance`)  
-**Status:** ALL TESTS PASSED (85 / 85)
+**Status:** ALL TESTS PASSED (89 / 89)
 
 ---
 
@@ -14,8 +14,8 @@ A comprehensive, rigorous re-test was conducted against the Stardance transpiler
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 85
-> - **Passed:** 85
+> - **Total Test Cases Executed:** 89
+> - **Passed:** 89
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -34,7 +34,7 @@ A comprehensive, rigorous re-test was conducted against the Stardance transpiler
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (25/25 Passed)
+### 1. Integration Fixtures (26/26 Passed)
 
 These tests compile Stardance (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -67,7 +67,7 @@ These tests compile Stardance (`.hmx`) source files into native C binaries via G
 
 ---
 
-### 2. Negative & Error Handling Suite (45/45 Passed)
+### 2. Negative & Error Handling Suite (47/47 Passed)
 
 These tests verify that invalid Stardance constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 

@@ -1,0 +1,11 @@
+fn echo(letter: char) {
+    print(letter)
+}
+
+fn main() {
+    let letter: char = 'H'
+    let value: byte = 255
+    echo(letter)
+    print(value)
+    print(value as int)
+}

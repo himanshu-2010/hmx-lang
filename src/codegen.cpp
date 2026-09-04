@@ -99,6 +99,10 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         out_ << dec->value;
     } else if (auto* str = dynamic_cast<StringLiteral*>(expr)) {
         out_ << "\"" << str->value << "\"";
+    } else if (auto* ch = dynamic_cast<CharLiteral*>(expr)) {
+        out_ << "'";
+        if (ch->value == '\\' || ch->value == '\'') out_ << '\\';
+        out_ << ch->value << "'";
     } else if (auto* bl = dynamic_cast<BoolLiteral*>(expr)) {
         out_ << (bl->value ? "1" : "0");
     } else if (auto* id = dynamic_cast<Identifier*>(expr)) {

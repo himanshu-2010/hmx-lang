@@ -239,6 +239,21 @@ true
 false
 ```
 
+### 6.5 Character Literals
+
+Single-quoted literals represent one character and infer the `char` type. `byte` is
+an unsigned 8-bit value and is commonly declared with an annotation.
+
+```stardance
+let initial: char = 'H'
+let code: byte = 72
+print(initial)
+print(code)
+```
+
+Byte values must be between `0` and `255`. `char` and `byte` can be explicitly cast
+to numeric types with `as`, but they are not arithmetic operands.
+
 ---
 
 ## 7. Variables and Declarations
@@ -806,7 +821,6 @@ are **not** part of the current core spec or compiler. None of them are usable y
 | Ternary / conditional operator | `cond ? a : b`. |
 | `switch` statement | Multi-way branch on a value. |
 | Type casting / conversion | Explicit converts between types (e.g., `int` ↔ `decimal`). |
-| Character / byte type | A single character type distinct from `text`. |
 | Multiple return values | Functions returning tuples. |
 | Named constants | `const` / immutable bindings. |
 | Namespaces / modules | Splitting a program across `.hmx` files. |
