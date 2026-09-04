@@ -211,6 +211,37 @@ test_error "char_arithmetic" \
     }' \
     "requires int or decimal"
 
+test_error "switch_non_scalar" \
+    'fn main() {
+        switch ("value") {
+            case "value":
+                print(1)
+        }
+    }' \
+    "switch value must be int, byte, or char"
+
+test_error "switch_duplicate_case" \
+    'fn main() {
+        switch (1) {
+            case 1:
+                print(1)
+            case 1:
+                print(2)
+        }
+    }' \
+    "duplicate switch case value"
+
+test_error "switch_multiple_default" \
+    'fn main() {
+        switch (1) {
+            default:
+                print(1)
+            default:
+                print(2)
+        }
+    }' \
+    "multiple default"
+
 test_error "const_assignment" \
     'fn main() {
         const value = 1

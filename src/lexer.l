@@ -31,6 +31,9 @@
 "for"             { return FOR; }
 "while"           { return WHILE; }
 "do"              { return DO; }
+"switch"          { return SWITCH; }
+"case"            { return CASE; }
+"default"         { return DEFAULT; }
 "print"           { return PRINT; }
 "return"          { return RETURN; }
 "if"              { return IF; }

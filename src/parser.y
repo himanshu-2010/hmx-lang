@@ -31,10 +31,11 @@ Program* g_program = nullptr;
     std::vector<StmtPtr>* stmts;
     std::vector<FunctionDecl::Param>* params;
     std::vector<ExprPtr>* args;
+    std::vector<SwitchCase>* cases;
     TypeKind tkind;
 }
 
-%token LET CONST FN LOOP FOR WHILE DO PRINT RETURN TRUE FALSE
+%token LET CONST FN LOOP FOR WHILE DO SWITCH CASE DEFAULT PRINT RETURN TRUE FALSE
 %token IF ELSE
 %token TYPE_INT TYPE_DECIMAL TYPE_TEXT TYPE_BOOL TYPE_CHAR TYPE_BYTE
 %token NUMBER DECIMAL STRING CHAR IDENTIFIER
@@ -48,10 +49,11 @@ Program* g_program = nullptr;
 %type <fval> DECIMAL
 %type <sval> STRING CHAR IDENTIFIER
 %type <expr> expression conditional logical_or logical_and equality relational additive term factor
-%type <stmt> statement var_decl assign_stmt print_stmt loop_stmt while_stmt for_stmt do_while_stmt if_stmt return_stmt call_stmt fn_decl
+%type <stmt> statement var_decl assign_stmt print_stmt loop_stmt while_stmt for_stmt do_while_stmt if_stmt switch_stmt return_stmt call_stmt fn_decl
 %type <stmt> for_init for_update
 %type <params> param_list
 %type <args> args
+%type <cases> case_list
 %type <tkind> param_type
 %type <program> program
 %type <stmts> stmt_list
@@ -93,6 +95,7 @@ statement
     | for_stmt     { $$ = $1; }
     | do_while_stmt { $$ = $1; }
     | if_stmt      { $$ = $1; }
+    | switch_stmt  { $$ = $1; }
     | return_stmt  { $$ = $1; }
     | fn_decl      { $$ = $1; }
     ;
@@ -458,6 +461,59 @@ if_stmt
             n->has_else = true;
             n->line = yylineno;
             $$ = n;
+        }
+    ;
+
+switch_stmt
+    : SWITCH '(' expression ')' '{' case_list '}'
+        {
+            auto* s = new SwitchStmt();
+            s->value = ExprPtr($3);
+            s->cases = std::move(*$6);
+            delete $6;
+            s->line = yylineno;
+            $$ = s;
+        }
+    ;
+
+case_list
+    : case_list CASE expression ':' stmt_list
+        {
+            SwitchCase c;
+            c.value = ExprPtr($3);
+            for (auto& stmt : *$5) c.body.push_back(std::move(stmt));
+            delete $5;
+            $1->push_back(std::move(c));
+            $$ = $1;
+        }
+    | case_list DEFAULT ':' stmt_list
+        {
+            SwitchCase c;
+            c.is_default = true;
+            for (auto& stmt : *$4) c.body.push_back(std::move(stmt));
+            delete $4;
+            $1->push_back(std::move(c));
+            $$ = $1;
+        }
+    | CASE expression ':' stmt_list
+        {
+            auto* cases = new std::vector<SwitchCase>();
+            SwitchCase c;
+            c.value = ExprPtr($2);
+            for (auto& stmt : *$4) c.body.push_back(std::move(stmt));
+            delete $4;
+            cases->push_back(std::move(c));
+            $$ = cases;
+        }
+    | DEFAULT ':' stmt_list
+        {
+            auto* cases = new std::vector<SwitchCase>();
+            SwitchCase c;
+            c.is_default = true;
+            for (auto& stmt : *$3) c.body.push_back(std::move(stmt));
+            delete $3;
+            cases->push_back(std::move(c));
+            $$ = cases;
         }
     ;
 

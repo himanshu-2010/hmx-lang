@@ -17,6 +17,7 @@ The current compiler supports:
 - Arithmetic, comparisons, boolean logic, and text concatenation
 - `if` / `else` conditionals
 - `else if` conditional chains
+- `switch` statements with automatic case breaks
 - Ternary expressions and explicit numeric casts
 - Immutable `const` bindings
 - `loop`, `while`, `for`, and `do ... while` loops
@@ -363,10 +364,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | 26 `.hmx` fixtures | 26/26 passed |
-| Negative | Type, syntax, and resolver errors | 47/47 passed |
-| Stress/output | Recursion, loops, strings, output, exit codes | 16/16 passed |
-| Total | 89 test cases | 89/89 passed |
+| Integration | 27 `.hmx` fixtures | 27/27 passed |
+| Negative | Type, syntax, and resolver errors | 50/50 passed |
+| Stress/output | Recursion, loops, strings, output, exit codes | 17/17 passed |
+| Total | 94 test cases | 94/94 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is
@@ -423,7 +424,6 @@ as planned and are not implemented yet:
 
 - Arrays and lists
 - String methods such as `length` and `substring`
-- `switch` statements
 - Multiple return values or tuples
 - Namespaces and modules across multiple `.hmx` files
 - Variadic parameters and default parameter values

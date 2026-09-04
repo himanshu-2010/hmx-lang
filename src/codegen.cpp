@@ -252,6 +252,26 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << "    }";
         }
         out_ << "\n";
+    } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
+        emit_line_directive(sw->line, source_file_);
+        out_ << "    switch (";
+        emit_expr(sw->value.get());
+        out_ << ") {\n";
+        for (auto& c : sw->cases) {
+            out_ << "    ";
+            if (c.is_default) {
+                out_ << "default:\n";
+            } else {
+                out_ << "case ";
+                emit_expr(c.value.get());
+                out_ << ":\n";
+            }
+            for (auto& body_stmt : c.body) {
+                emit_stmt(body_stmt.get());
+            }
+            out_ << "        break;\n";
+        }
+        out_ << "    }\n";
     } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
         emit_line_directive(fn->line, source_file_);
         out_ << emit_function_signature(fn) << " {\n";

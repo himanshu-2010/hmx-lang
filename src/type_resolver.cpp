@@ -1,4 +1,5 @@
 #include "type_resolver.hpp"
+#include <algorithm>
 
 void TypeResolver::push_scope() {
     scopes_.emplace_back();
@@ -311,6 +312,45 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             pop_scope();
         }
         always_returns = ifs->has_else && then_returns && else_returns;
+    } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
+        TypeKind switch_type = resolve_expr(sw->value.get());
+        if (switch_type != TypeKind::Int && switch_type != TypeKind::Byte &&
+            switch_type != TypeKind::Char) {
+            throw CompileError(stmt->line,
+                "switch value must be int, byte, or char, got " +
+                type_to_string(switch_type));
+        }
+        bool has_default = false;
+        std::vector<int> seen_values;
+        for (auto& c : sw->cases) {
+            if (c.is_default) {
+                if (has_default) {
+                    throw CompileError(stmt->line, "switch cannot have multiple default cases");
+                }
+                has_default = true;
+            } else {
+                TypeKind case_type = resolve_expr(c.value.get());
+                if (case_type != switch_type) {
+                    throw CompileError(stmt->line,
+                        "switch case type must match switch value type");
+                }
+                int case_value = 0;
+                if (auto* number = dynamic_cast<NumberLiteral*>(c.value.get())) {
+                    case_value = number->value;
+                } else if (auto* character = dynamic_cast<CharLiteral*>(c.value.get())) {
+                    case_value = static_cast<unsigned char>(character->value);
+                } else {
+                    throw CompileError(stmt->line, "switch cases must be literal values");
+                }
+                if (std::find(seen_values.begin(), seen_values.end(), case_value) != seen_values.end()) {
+                    throw CompileError(stmt->line, "duplicate switch case value");
+                }
+                seen_values.push_back(case_value);
+            }
+            push_scope();
+            resolve_block(c.body);
+            pop_scope();
+        }
     } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
         if (!in_function_) {
             throw CompileError(stmt->line, "return outside of function");

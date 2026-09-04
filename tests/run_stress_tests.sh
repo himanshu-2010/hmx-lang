@@ -238,6 +238,19 @@ test_output "char_byte_values" \
     }' \
     "$(printf 'A\n255')"
 
+test_output "switch_automatic_break" \
+    'fn main() {
+        switch (2) {
+            case 1:
+                print(1)
+            case 2:
+                print(2)
+            default:
+                print(3)
+        }
+    }' \
+    "2"
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

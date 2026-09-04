@@ -619,6 +619,23 @@ if (score < 50) {
 
 Each condition must evaluate to `bool`.
 
+### 11.6 The `switch` Statement **[Implemented]**
+
+`switch` selects one matching literal case. Cases automatically break, so execution
+does not fall through. The optional `default` branch runs when no case matches.
+
+```stardance
+switch (value) {
+    case 0:
+        print("zero")
+    default:
+        print("other")
+}
+```
+
+The switch value and cases must use the same `int`, `byte`, or `char` type. Duplicate
+case values and multiple `default` branches are compile errors.
+
 ---
 
 ## 12. Functions
@@ -817,12 +834,7 @@ are **not** part of the current core spec or compiler. None of them are usable y
 | Feature | Notes |
 |---|---|
 | Arrays / lists | Ordered collections of values. |
-| String methods | `length`, `substring`, case conversion, etc. |
-| Ternary / conditional operator | `cond ? a : b`. |
-| `switch` statement | Multi-way branch on a value. |
-| Type casting / conversion | Explicit converts between types (e.g., `int` ↔ `decimal`). |
 | Multiple return values | Functions returning tuples. |
-| Named constants | `const` / immutable bindings. |
 | Namespaces / modules | Splitting a program across `.hmx` files. |
 
 > **Note:** as features are confirmed and added, they will be moved from this roadmap

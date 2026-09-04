@@ -158,6 +158,17 @@ struct IfStmt : Statement {
     bool has_else = false;
 };
 
+struct SwitchCase {
+    ExprPtr value;
+    std::vector<StmtPtr> body;
+    bool is_default = false;
+};
+
+struct SwitchStmt : Statement {
+    ExprPtr value;
+    std::vector<SwitchCase> cases;
+};
+
 struct FunctionDecl : Statement {
     std::string name;
     struct Param {
