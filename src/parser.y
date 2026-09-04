@@ -354,6 +354,19 @@ if_stmt
             n->line = yylineno;
             $$ = n;
         }
+    | IF '(' expression ')' '{' stmt_list '}' ELSE if_stmt
+        {
+            auto* n = new IfStmt();
+            n->condition = ExprPtr($3);
+            for (auto& s : *$6) {
+                n->then_body.push_back(std::move(s));
+            }
+            delete $6;
+            n->else_body.push_back(StmtPtr($9));
+            n->has_else = true;
+            n->line = yylineno;
+            $$ = n;
+        }
     ;
 
 return_stmt

@@ -1,0 +1,17 @@
+fn classify(value: int) {
+    if (value < 0) {
+        print("negative")
+    } else if (value == 0) {
+        print("zero")
+    } else if (value < 10) {
+        print("small")
+    } else {
+        print("large")
+    }
+}
+
+fn main() {
+    classify(0)
+    classify(4)
+    classify(20)
+}

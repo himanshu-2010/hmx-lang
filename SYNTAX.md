@@ -560,7 +560,19 @@ The condition must evaluate to `bool`; otherwise a compile error is raised.
 if (5) { }   // Error: if condition must be bool, got int
 ```
 
-**Out of scope (roadmap):** `else if` chaining, ternary conditional.
+`else if` chains are supported and may contain a final `else` branch:
+
+```stardance
+if (score < 50) {
+    print("fail")
+} else if (score < 60) {
+    print("pass")
+} else {
+    print("excellent")
+}
+```
+
+Each condition must evaluate to `bool`.
 
 ---
 
@@ -759,7 +771,6 @@ are **not** part of the current core spec or compiler. None of them are usable y
 
 | Feature | Notes |
 |---|---|
-| `else if` chaining | Multiple branches in an `if` chain. |
 | Arrays / lists | Ordered collections of values. |
 | String methods | `length`, `substring`, case conversion, etc. |
 | Ternary / conditional operator | `cond ? a : b`. |

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03  
 **Target Project:** Stardance Transpiler (`/home/himanshu/Documents/hack-club/stardance`)  
-**Status:** ALL TESTS PASSED (72 / 72)
+**Status:** ALL TESTS PASSED (77 / 77)
 
 ---
 
@@ -14,8 +14,8 @@ A comprehensive, rigorous re-test was conducted against the Stardance transpiler
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 72
-> - **Passed:** 72
+> - **Total Test Cases Executed:** 77
+> - **Passed:** 77
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -34,7 +34,7 @@ A comprehensive, rigorous re-test was conducted against the Stardance transpiler
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (23/23 Passed)
+### 1. Integration Fixtures (24/24 Passed)
 
 These tests compile Stardance (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -48,6 +48,7 @@ These tests compile Stardance (`.hmx`) source files into native C binaries via G
 | `complex_math.hmx` | Precedence | Operator precedence (`*`/`/` over `+`/`-`), grouping `()`, left-associativity, `decimal` ops | **PASS** |
 | `control_flow_nested.hmx` | Control Flow | Nested `loop(N)` blocks inside nested `if`/`else` branches | **PASS** |
 | `do_while.hmx` | Do-While Loop | Body executes once, then checks boolean condition | **PASS** |
+| `else_if.hmx` | Else-If Chains | Multiple conditional branches with an optional final `else` | **PASS** |
 | `expressions.hmx` | Expressions | Complex arithmetic expression trees with variables and constants | **PASS** |
 | `fn_params.hmx` | Function Params | Functions with multiple typed parameters (`a: int, b: text`) and explicit return types (`-> int`) | **PASS** |
 | `for.hmx` | For Loop | C-style `for (let i = 0; i < n; i++)` loop | **PASS** |
@@ -66,7 +67,7 @@ These tests compile Stardance (`.hmx`) source files into native C binaries via G
 
 ---
 
-### 2. Negative & Error Handling Suite (35/35 Passed)
+### 2. Negative & Error Handling Suite (39/39 Passed)
 
 These tests verify that invalid Stardance constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 

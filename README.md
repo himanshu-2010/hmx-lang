@@ -15,6 +15,7 @@ The current compiler supports:
 - Integer, decimal, text, and boolean values
 - Arithmetic, comparisons, boolean logic, and text concatenation
 - `if` / `else` conditionals
+- `else if` conditional chains
 - `loop`, `while`, `for`, and `do ... while` loops
 - Functions with typed parameters and return values
 - Function calls, forward calls, and recursion
@@ -391,7 +392,6 @@ TESTRESULT.md           Detailed regression report
 The compiler's core milestone is complete. The following language features are listed
 as planned and are not implemented yet:
 
-- `else if` chaining
 - Arrays and lists
 - String methods such as `length` and `substring`
 - Ternary expressions (`condition ? a : b`)

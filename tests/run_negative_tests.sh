@@ -170,6 +170,16 @@ test_error "if_cond_non_bool" \
     }' \
     "if condition must be bool"
 
+test_error "else_if_cond_non_bool" \
+    'fn main() {
+        if (true) {
+            print(1)
+        } else if (5) {
+            print(2)
+        }
+    }' \
+    "if condition must be bool"
+
 test_error "undef_var_read" \
     'fn main() {
         print(nope)
