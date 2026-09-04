@@ -251,6 +251,14 @@ test_output "switch_automatic_break" \
     }' \
     "2"
 
+test_output "string_methods" \
+    'fn main() {
+        let message = "hello world"
+        print(length(message))
+        print(substring(message, 0, 5))
+    }' \
+    "$(printf '11\nhello')"
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

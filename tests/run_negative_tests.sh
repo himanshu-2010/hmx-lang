@@ -242,6 +242,12 @@ test_error "switch_multiple_default" \
     }' \
     "multiple default"
 
+test_error "substring_index_type" \
+    'fn main() {
+        print(substring("hello", 1.0, 2))
+    }' \
+    "expects int indexes"
+
 test_error "const_assignment" \
     'fn main() {
         const value = 1

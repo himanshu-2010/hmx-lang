@@ -18,6 +18,16 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "    return r;\n";
     out_ << "}\n\n";
 
+    out_ << "static char* sd_substring(const char* s, int start, int end) {\n";
+    out_ << "    size_t length = strlen(s);\n";
+    out_ << "    if (start < 0 || end < start || (size_t)end > length) exit(1);\n";
+    out_ << "    char* result = malloc((size_t)(end - start) + 1);\n";
+    out_ << "    if (!result) exit(1);\n";
+    out_ << "    memcpy(result, s + start, (size_t)(end - start));\n";
+    out_ << "    result[end - start] = '\\0';\n";
+    out_ << "    return result;\n";
+    out_ << "}\n\n";
+
     std::vector<FunctionDecl*> functions;
     std::vector<Statement*> top_level;
 
@@ -108,7 +118,9 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
     } else if (auto* id = dynamic_cast<Identifier*>(expr)) {
         out_ << id->name;
     } else if (auto* call = dynamic_cast<CallExpr*>(expr)) {
-        out_ << call->name << "(";
+        std::string name = call->name == "substring" ? "sd_substring" : call->name;
+        if (call->name == "length") out_ << "(int)strlen(";
+        else out_ << name << "(";
         for (size_t i = 0; i < call->args.size(); i++) {
             if (i > 0) out_ << ", ";
             emit_expr(call->args[i].get());

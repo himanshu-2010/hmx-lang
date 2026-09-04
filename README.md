@@ -15,6 +15,7 @@ The current compiler supports:
 - Integer, decimal, text, and boolean values
 - Character and byte values
 - Arithmetic, comparisons, boolean logic, and text concatenation
+- String built-ins `length` and `substring`
 - `if` / `else` conditionals
 - `else if` conditional chains
 - `switch` statements with automatic case breaks
@@ -364,10 +365,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | 27 `.hmx` fixtures | 27/27 passed |
-| Negative | Type, syntax, and resolver errors | 50/50 passed |
-| Stress/output | Recursion, loops, strings, output, exit codes | 17/17 passed |
-| Total | 94 test cases | 94/94 passed |
+| Integration | 28 `.hmx` fixtures | 28/28 passed |
+| Negative | Type, syntax, and resolver errors | 51/51 passed |
+| Stress/output | Recursion, loops, strings, output, exit codes | 18/18 passed |
+| Total | 97 test cases | 97/97 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

@@ -767,6 +767,18 @@ let total = 10
 print(total + 5)     // prints 15
 ```
 
+### 13.2 String Built-ins
+
+`length(text)` returns the number of bytes in a string. `substring(text, start, end)`
+returns the half-open range `[start, end)`. Both indexes must be `int`; invalid
+negative, reversed, or out-of-range indexes terminate the generated program.
+
+```stardance
+let message = "hello world"
+print(length(message))
+print(substring(message, 0, 5))
+```
+
 ---
 
 ## 14. Error Handling

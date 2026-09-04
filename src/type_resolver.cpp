@@ -69,6 +69,30 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         if (call->name == "main") {
             throw CompileError(line(), "cannot call function 'main'");
         }
+        if (call->name == "length" || call->name == "substring") {
+            size_t expected = call->name == "length" ? 1 : 3;
+            if (call->args.size() != expected) {
+                throw CompileError(line(), "builtin '" + call->name + "' expects " +
+                    std::to_string(expected) + " arguments, got " +
+                    std::to_string(call->args.size()));
+            }
+            TypeKind text_type = resolve_expr(call->args[0].get());
+            if (text_type != TypeKind::Text) {
+                throw CompileError(line(), "builtin '" + call->name + "' expects text as argument 1");
+            }
+            if (call->name == "substring") {
+                for (size_t i = 1; i < 3; i++) {
+                    if (resolve_expr(call->args[i].get()) != TypeKind::Int) {
+                        throw CompileError(line(), "builtin 'substring' expects int indexes");
+                    }
+                }
+                result = TypeKind::Text;
+            } else {
+                result = TypeKind::Int;
+            }
+            expr->resolved_type = result;
+            return result;
+        }
         const FunctionSig* sig = get_function(call->name);
         if (!sig) {
             throw CompileError(line(), "undefined function '" + call->name + "'");

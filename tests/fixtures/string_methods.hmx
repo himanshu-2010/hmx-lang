@@ -1,0 +1,6 @@
+fn main() {
+    let message = "hello world"
+    print(length(message))
+    print(substring(message, 0, 5))
+    print(substring(message, 6, 11))
+}
