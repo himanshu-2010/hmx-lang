@@ -1,0 +1,38 @@
+fn test_precedence() {
+    let a = 2 + 3 * 4
+    print(a) // 14
+
+    let b = (2 + 3) * 4
+    print(b) // 20
+
+    let c = 100 - 20 - 5
+    print(c) // 75 (left-associative)
+
+    let d = 100 / 5 / 2
+    print(d) // 10 (left-associative)
+
+    let e = 10 + 20 * 30 / 5 - 2
+    print(e) // 10 + 600/5 - 2 = 10 + 120 - 2 = 128
+    print(e)
+}
+
+fn test_decimals() {
+    let x: decimal = 10.5
+    let y: decimal = 2.5
+    let z = x + y
+    print(z) // 13.000000
+
+    let diff = x - y
+    print(diff) // 8.000000
+
+    let prod = x * y
+    print(prod) // 26.250000
+
+    let div = x / y
+    print(div) // 4.200000
+}
+
+fn main() {
+    test_precedence()
+    test_decimals()
+}

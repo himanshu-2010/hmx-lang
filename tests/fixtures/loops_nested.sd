@@ -1,0 +1,17 @@
+fn main() {
+    let total = 0
+    loop(2) {
+        let i = 0
+        while (i < 2) {
+            for (let j = 0; j < 2; j++) {
+                let once = true
+                do {
+                    total += 1
+                    once = false
+                } while (once)
+            }
+            i++
+        }
+    }
+    print(total)
+}

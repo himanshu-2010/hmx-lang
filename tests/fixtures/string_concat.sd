@@ -1,0 +1,13 @@
+fn greet(name: text) {
+    print("Hello, " + name + "!")
+}
+
+fn main() {
+    let first = "Ada"
+    let last = " Lovelace"
+    print(first + last)
+    print("a" + "b" + "c")
+    let full: text = first + last
+    print(full)
+    greet("Boss")
+}

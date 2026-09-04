@@ -1,0 +1,11 @@
+fn main() {
+    let count = 5
+    loop(count) {
+        print("Stardance active!")
+    }
+    let ratio = 2.5
+    print(ratio)
+    let total: int = 42
+    print(total)
+    print("hello world")
+}

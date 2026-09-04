@@ -1,0 +1,14 @@
+fn main() {
+    /* this is a block comment */
+    let x = 5
+
+    /*
+       multi-line block comment
+       spanning several lines
+    */
+    print(x + 1)
+
+    /* comment before */ print("done")
+    let y = /* inline */ 10
+    print(y)
+}

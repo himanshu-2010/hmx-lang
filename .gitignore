@@ -1,0 +1,12 @@
+# Build directory
+build/
+
+# Generated files
+build_temp.c
+*.o
+
+# Build artifacts
+stardance
+cat
+cli1
+minicall

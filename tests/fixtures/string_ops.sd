@@ -1,0 +1,24 @@
+fn test_strings() {
+    let s1: text = "hello"
+    let s2: text = "hello"
+    let s3: text = "world"
+
+    if (s1 == s2) {
+        print("s1 equals s2")
+    } else {
+        print("error")
+    }
+
+    if (s1 != s3) {
+        print("s1 not equal s3")
+    } else {
+        print("error")
+    }
+
+    let b1 = (s1 == s2) and (s1 != s3)
+    print(b1) // 1 (true)
+}
+
+fn main() {
+    test_strings()
+}

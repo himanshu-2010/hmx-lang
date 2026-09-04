@@ -1,0 +1,6 @@
+fn main() {
+    let i = 0
+    loop(3) {
+        print(i + 1)
+    }
+}

@@ -1,0 +1,40 @@
+fn get_greeting(name: text) -> text {
+    return name
+}
+
+fn get_pi() -> decimal {
+    return 3.14159
+}
+
+fn is_even(n: int) -> bool {
+    let half = n / 2
+    return half * 2 == n
+}
+
+fn search_loop() -> int {
+    let count = 0
+    loop(10) {
+        if (count == 4) {
+            return count
+        }
+        count++
+    }
+    return 0 - 1
+}
+
+fn main() {
+    let msg = get_greeting("Hello Stardance")
+    print(msg)
+
+    let pi = get_pi()
+    print(pi)
+
+    let e1 = is_even(4)
+    print(e1) // 1 (true)
+
+    let e2 = is_even(7)
+    print(e2) // 0 (false)
+
+    let s = search_loop()
+    print(s) // 4
+}

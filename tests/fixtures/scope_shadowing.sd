@@ -1,0 +1,14 @@
+fn shadow_test(val: int) -> int {
+    let result = val
+    if (val > 5) {
+        let result = 100
+        print(result) // 100
+    }
+    return result
+}
+
+fn main() {
+    let x = 10
+    let res = shadow_test(x)
+    print(res) // 10
+}

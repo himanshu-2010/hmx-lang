@@ -1,0 +1,19 @@
+fn main() {
+    let score = 75
+    if (score >= 60) {
+        print("passed")
+    } else {
+        print("failed")
+    }
+
+    let flag = false
+    if (flag) {
+        print("yes")
+    } else {
+        print("no")
+    }
+
+    if (flag) {
+        print("never")
+    }
+}

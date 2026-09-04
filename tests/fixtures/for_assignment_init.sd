@@ -1,0 +1,9 @@
+fn main() {
+    let i = 0
+    let total = 0
+    for (i = 1; i <= 4; i++) {
+        total += i
+    }
+    print(total)
+    print(i)
+}

@@ -1,0 +1,15 @@
+fn add(a: int, b: int) -> int {
+    return a + b
+}
+
+fn greet(name: text) {
+    print(name)
+}
+
+fn scale(x: decimal, y: decimal) -> decimal {
+    return x * y
+}
+
+fn main() {
+    print("hello")
+}

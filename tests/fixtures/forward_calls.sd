@@ -1,0 +1,12 @@
+fn main() {
+    let res = helper_b(5)
+    print(res)
+}
+
+fn helper_a(n: int) -> int {
+    return n * 2
+}
+
+fn helper_b(n: int) -> int {
+    return helper_a(n) + 10
+}
