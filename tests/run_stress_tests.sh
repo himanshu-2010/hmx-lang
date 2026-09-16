@@ -400,6 +400,96 @@ test_output "tuple_annotated_decl" \
     }' \
     "$(printf '2\n1')"
 
+test_output "modulo_basic" \
+    'fn main() {
+        print(17 % 5)
+        print(10 % 3)
+        print(-100 % 7)
+        print(7 % 100)
+    }' \
+    "$(printf '2\n1\n-2\n7')"
+
+test_output "modulo_compound" \
+    'fn main() {
+        let x = 17
+        x %= 5
+        print(x)
+        let y = 10
+        y %= 3
+        y %= 2
+        print(y)
+    }' \
+    "$(printf '2\n1')"
+
+test_output "unary_minus" \
+    'fn main() {
+        let a = -5
+        print(a)
+        print(-(a))
+        print(-2 + 5)
+        print(-(3 * 4))
+        let b = -3.5
+        print(b)
+    }' \
+    "$(printf -- '-5\n5\n3\n-12\n-3.500000')"
+
+test_output "break_continue" \
+    'fn main() {
+        let i = 0
+        loop (5) {
+            i = i + 1
+            if (i == 2) {
+                continue
+            }
+            print(i)
+            if (i == 4) {
+                break
+            }
+        }
+        print(i)
+        let count = 0
+        while (true) {
+            count = count + 1
+            if (count == 3) {
+                continue
+            }
+            print(count)
+            if (count == 6) {
+                break
+            }
+        }
+    }' \
+    "$(printf -- '1\n3\n4\n4\n1\n2\n4\n5\n6')"
+
+test_output "break_in_switch_with_inner_loop" \
+    'fn main() {
+        switch (2) {
+            case 1: print(1)
+            case 2: loop (3) {
+                let k = 0
+                while (k < 2) {
+                    k = k + 1
+                    if (k == 2) {
+                        break
+                    }
+                    print(k)
+                }
+                break
+            }
+        }
+    }' \
+    "$(printf '1')"
+
+test_exit_code "modulo_exit_code" \
+    'fn main() -> int {
+        let x = 100 % 7
+        if (x == 2) {
+            return 42
+        }
+        return 1
+    }' \
+    42
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

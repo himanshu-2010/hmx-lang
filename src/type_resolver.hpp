@@ -46,6 +46,8 @@ private:
     bool in_function_ = false;
     bool allow_void_call_ = false;
     int current_line_ = 0;
+    int loop_depth_ = 0;
+    std::vector<int> switch_entry_loop_depths_;
 
     void push_scope();
     void pop_scope();

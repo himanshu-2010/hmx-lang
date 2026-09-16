@@ -94,11 +94,16 @@ The following words are reserved and cannot be used as identifiers:
 | `while` | Conditional loop |
 | `for` | Header-controlled loop |
 | `do` | Post-condition loop |
+| `break` | Exit the enclosing loop early |
+| `continue` | Skip to the next iteration of the enclosing loop |
 | `print` | Output statement |
 | `return` | Function return value |
 | `true` / `false` | Boolean literals |
 | `and` / `or` / `not` | Boolean operators (word forms) |
 | `int` / `decimal` / `text` / `bool` | Type names |
+| `char` / `byte` | Integer-like types |
+| `switch` / `case` / `default` | Multi-way branch |
+| `as` | Explicit numeric cast |
 
 ---
 
@@ -375,11 +380,14 @@ Shorthand that combines assignment with arithmetic:
 | `-=` | `a = a - b` |
 | `*=` | `a = a * b` |
 | `/=` | `a = a / b` |
+| `%=` | `a = a % b` (int only) |
 
 ```hmx
 let count = 5
 count += 3       // count is now 8
 count *= 2       // count is now 16
+let leftover = 17
+leftover %= 5    // leftover is now 2
 ```
 
 ### 7.4 Increment / Decrement
@@ -410,14 +418,23 @@ let whole = precise as int
 ### 8.1 Arithmetic Operators
 
 Work on `int` and `decimal` operands. Both operands must be the same type; mixing
-`int` and `decimal` in one operation is a compile error.
+`int` and `decimal` in one operation is a compile error. The `%` operator is `int` only.
 
 | Operator | Meaning | Example |
 |---|---|---|
-| `+` | addition (int/decimal) or concatenation (text) | `a + b` |
-| `-` | subtraction | `a - b` |
+| `+` | addition (int/decimal), concatenation (text), unary plus (int/decimal) | `a + b`, `+x` |
+| `-` | subtraction; unary negation (int/decimal) | `a - b`, `-x` |
 | `*` | multiplication | `a * b` |
 | `/` | division | `a / b` |
+| `%` | modulo (remainder) — int only | `a % b` |
+
+```hmx
+7 % 3         // 1
+10 % 2        // 0
+-5            // unary minus, value -5
+-100 % 7      // -2
+5.5 % 2.5     // ERROR: '%' only works on int
+```
 
 When an operator combines two `text` operands, only `+` is allowed and it performs
 string concatenation (lowered to a runtime `sd_concat`, left-associative for chained
@@ -428,8 +445,9 @@ concatenation). All other arithmetic operators require `int`/`decimal` operands.
 | Precedence | Operators | Associativity |
 |---|---|---|
 | 1 (highest) | `( )` grouping | — |
-| 2 | `*` `/` | left |
-| 3 | `+` `-` | left |
+| 2 | unary `+` `-` `not`/`!` | right |
+| 3 | `*` `/` `%` | left |
+| 4 | `+` `-` | left |
 
 ```hmx
 let result = 2 + 3 * 4   // 14, multiplication first
@@ -513,11 +531,13 @@ relational   : relational ("<" | ">" | "<=" | ">=") additive
              | additive
 additive     : additive ("+" | "-") term
              | term
-term         : term ("*" | "/") factor
+term         : term ("*" | "/" | "%") factor
              | factor
 factor       : NUMBER | DECIMAL | STRING
              | "true" | "false"
              | "not" factor | "!" factor
+             | "+" factor        // unary plus (identity)
+             | "-" factor        // unary minus
              | IDENTIFIER
              | IDENTIFIER "(" args? ")"      // function call
              | IDENTIFIER "[" expression "]" // array index (read)
@@ -562,6 +582,7 @@ A statement is one of the following. Statements execute in sequence.
 | Conditional loop | `while (...) { }` |
 | Header-controlled loop | `for (init; condition; update) { }` |
 | Post-condition loop | `do { } while (...)` |
+| Loop control | `break` / `continue` |
 | Function declaration | `fn name() { }` |
 | Return | `return expr...` or `return` |
 
@@ -674,7 +695,50 @@ do {
 The condition expression must evaluate to `bool`; otherwise a compile error is raised.
 There is no trailing semicolon after the condition.
 
-### 11.5 The `if` Statement
+### 11.5 `break` and `continue` **[Implemented]**
+
+`break` exits the innermost enclosing loop immediately; `continue` skips the rest of
+the current iteration and jumps to the loop update / condition.
+
+- Legal only inside `loop`, `while`, `for`, or `do-while` bodies.
+- A `switch` case is **not** a loop: a `break`/`continue` directly inside a case
+  requires an enclosing loop *within that case*. Since switch cases automatically
+  break, a bare `break` in a case with no inner loop is a compile error.
+- The `for` loop update runs after `continue`; in `do-while`, `continue` still runs
+  the post-body condition check.
+
+```hmx
+let i = 0
+loop (10) {
+    i = i + 1
+    if (i == 3) {
+        continue      // skip printing 3
+    }
+    print(i)
+    if (i == 5) {
+        break         // stop after 5
+    }
+}                       // prints 1 2 4 5
+
+switch (mode) {
+    case 1: loop (10) {
+        break           // OK: breaks the inner loop
+    }
+}
+```
+
+```hmx
+while (true) {
+    if (done) {
+        break
+    }
+}
+switch (x) {
+    case 1: break       // Error: break inside a switch case requires an enclosing loop
+}
+```
+
+### 11.6 The `if` Statement
 
 Conditionally executes a block based on a `bool` condition.
 
@@ -713,7 +777,7 @@ if (score < 50) {
 
 Each condition must evaluate to `bool`.
 
-### 11.6 The `switch` Statement **[Implemented]**
+### 11.7 The `switch` Statement **[Implemented]**
 
 `switch` selects one matching literal case. Cases automatically break, so execution
 does not fall through. The optional `default` branch runs when no case matches.
@@ -953,6 +1017,10 @@ Error [line 6]: undefined variable 'nope'
   must be `bool`.
 - **Function call** argument count and type matching (§12.4).
 - **Definite returns** for typed functions: every reachable path must return a value.
+- **Loop control**: `break`/`continue` outside a loop, or directly inside a switch
+  case without an enclosing loop, is a compile error.
+- **Operator domains**: `%` / `%=` require `int`; unary `-`/`+` require `int` or
+  `decimal`.
 
 ### 14.5 Compiler Emergencies (CLI)
 

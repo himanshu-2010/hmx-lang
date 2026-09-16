@@ -242,6 +242,10 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         out_ << "!(";
         emit_expr(not_expr->operand.get());
         out_ << ")";
+    } else if (auto* neg = dynamic_cast<NegExpr*>(expr)) {
+        out_ << "-(";
+        emit_expr(neg->operand.get());
+        out_ << ")";
     } else if (auto* arr = dynamic_cast<ArrayLiteral*>(expr)) {
         if (arr->elements.empty()) {
             out_ << "sd_make_array(0, 0, 0)";
@@ -459,6 +463,12 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << "        break;\n";
         }
         out_ << "    }\n";
+    } else if (auto* brk = dynamic_cast<BreakStmt*>(stmt)) {
+        emit_line_directive(brk->line, source_file_);
+        out_ << "    break;\n";
+    } else if (auto* cont = dynamic_cast<ContinueStmt*>(stmt)) {
+        emit_line_directive(cont->line, source_file_);
+        out_ << "    continue;\n";
     } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
         emit_line_directive(fn->line, source_file_);
         out_ << emit_function_signature(fn) << " {\n";

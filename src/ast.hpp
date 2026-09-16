@@ -93,6 +93,11 @@ struct NotExpr : Expression {
     explicit NotExpr(ExprPtr o) : operand(std::move(o)) {}
 };
 
+struct NegExpr : Expression {
+    ExprPtr operand;
+    explicit NegExpr(ExprPtr o) : operand(std::move(o)) {}
+};
+
 struct ConditionalExpr : Expression {
     ExprPtr condition;
     ExprPtr then_expr;
@@ -239,6 +244,10 @@ struct ReturnStmt : Statement {
     std::vector<ExprPtr> values;                  // empty for bare return
     std::vector<TypeDesc> return_tuple_members;   // filled by resolver for tuple returns
 };
+
+struct BreakStmt : Statement {};
+
+struct ContinueStmt : Statement {};
 
 struct ExprStmt : Statement {
     ExprPtr expr;

@@ -39,11 +39,12 @@ Program* g_program = nullptr;
 
 %token LET CONST FN LOOP FOR WHILE DO SWITCH CASE DEFAULT PRINT RETURN TRUE FALSE
 %token IF ELSE
+%token BREAK CONTINUE
 %token TYPE_INT TYPE_DECIMAL TYPE_TEXT TYPE_BOOL TYPE_CHAR TYPE_BYTE
 %token NUMBER DECIMAL STRING CHAR IDENTIFIER
 %token EQ NEQ LT GT LEQ GEQ
 %token AND OR NOT
-%token PLUS_EQ MINUS_EQ STAR_EQ SLASH_EQ INCR DECR
+%token PLUS_EQ MINUS_EQ STAR_EQ SLASH_EQ MOD_EQ INCR DECR
 %token ARROW
 %token AS
 
@@ -51,7 +52,7 @@ Program* g_program = nullptr;
 %type <fval> DECIMAL
 %type <sval> STRING CHAR IDENTIFIER
 %type <expr> expression conditional logical_or logical_and equality relational additive term factor
-%type <stmt> statement var_decl assign_stmt print_stmt loop_stmt while_stmt for_stmt do_while_stmt if_stmt switch_stmt return_stmt call_stmt fn_decl
+%type <stmt> statement var_decl assign_stmt print_stmt loop_stmt while_stmt for_stmt do_while_stmt if_stmt switch_stmt return_stmt call_stmt fn_decl break_stmt continue_stmt
 %type <stmt> for_init for_update
 %type <params> param_list
 %type <args> args
@@ -101,7 +102,27 @@ statement
     | if_stmt      { $$ = $1; }
     | switch_stmt  { $$ = $1; }
     | return_stmt  { $$ = $1; }
+    | break_stmt   { $$ = $1; }
+    | continue_stmt { $$ = $1; }
     | fn_decl      { $$ = $1; }
+    ;
+
+break_stmt
+    : BREAK
+        {
+            auto* b = new BreakStmt();
+            b->line = yylineno;
+            $$ = b;
+        }
+    ;
+
+continue_stmt
+    : CONTINUE
+        {
+            auto* c = new ContinueStmt();
+            c->line = yylineno;
+            $$ = c;
+        }
     ;
 
 var_decl
@@ -364,6 +385,16 @@ assign_stmt
             auto* a = new AssignStmt();
             a->name = $1;
             a->op = "/=";
+            a->rhs = ExprPtr($3);
+            a->line = yylineno;
+            free($1);
+            $$ = a;
+        }
+    | IDENTIFIER MOD_EQ expression
+        {
+            auto* a = new AssignStmt();
+            a->name = $1;
+            a->op = "%=";
             a->rhs = ExprPtr($3);
             a->line = yylineno;
             free($1);
@@ -888,6 +919,10 @@ term
         {
             $$ = new BinaryExpr("/", ExprKind::Arithmetic, ExprPtr($1), ExprPtr($3));
         }
+    | term '%' factor
+        {
+            $$ = new BinaryExpr("%", ExprKind::Arithmetic, ExprPtr($1), ExprPtr($3));
+        }
     | factor
         {
             $$ = $1;
@@ -926,6 +961,14 @@ factor
     | NOT factor
         {
             $$ = new NotExpr(ExprPtr($2));
+        }
+    | '-' factor
+        {
+            $$ = new NegExpr(ExprPtr($2));
+        }
+    | '+' factor
+        {
+            $$ = $2;
         }
     | IDENTIFIER
         {

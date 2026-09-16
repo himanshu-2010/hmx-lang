@@ -1,0 +1,40 @@
+fn is_even(n: int) -> int {
+    return n % 2 == 0 ? 1 : 0
+}
+
+fn main() {
+    let a = -5
+    print(a)
+    let neg : int = -(a)
+    print(neg)
+    let mod = 17 % 5
+    print(mod)
+    let m = 10
+    m %= 3
+    print(m)
+    let dec = -1.25
+    print(dec)
+    let sum = -2 + 5
+    print(sum)
+    let d = -100 % 7
+    print(d)
+    print(is_even(42))
+    print(is_even(7))
+    let i = 0
+    loop (6) {
+        i = i + 1
+        if (i == 3) {
+            continue
+        }
+        print(i)
+    }
+    print(i)
+    let count = 0
+    while (true) {
+        count = count + 1
+        if (count == 5) {
+            break
+        }
+    }
+    print(count)
+}

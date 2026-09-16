@@ -36,6 +36,8 @@
 "default"         { return DEFAULT; }
 "print"           { return PRINT; }
 "return"          { return RETURN; }
+"break"           { return BREAK; }
+"continue"        { return CONTINUE; }
 "if"              { return IF; }
 "else"            { return ELSE; }
 "true"            { return TRUE; }
@@ -87,6 +89,8 @@
 "-="              { return MINUS_EQ; }
 "*="              { return STAR_EQ; }
 "/="              { return SLASH_EQ; }
+"%="              { return MOD_EQ; }
+"%"               { return '%'; }
 "++"              { return INCR; }
 "--"              { return DECR; }
 "=="              { return EQ; }

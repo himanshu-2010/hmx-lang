@@ -1,23 +1,22 @@
 # HMX Transpiler — Test Execution Report
 
-**Date:** 2026-09-11  
+**Date:** 2026-09-16  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (140 / 140)
+**Status:** ALL TESTS PASSED (155 / 155)
 
 ---
 
 ## Executive Summary
 
-A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **Multiple Return Values / Tuples**:
-1. **Multi-value return types**: `fn divmod(...) -> (int, int)` with `return a / b, r`.
-2. **Destructuring and multi-assignment**: `let (q, r) = f()` and `(q, r) = f()`.
-3. **Whole-tuple variables and indexing**: `let t = f()`, `t[0]`, tuple params, tuple members
-   of scalar and array type, emitted as C structs.
+A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **Tier 1 operators and loop control**:
+1. **Unary minus / plus**: `-x`, `+x` on `int` / `decimal`, binding tighter than `*` `/` `%`.
+2. **Modulo**: `a % b` (int only) and compound `a %= b`.
+3. **`break` / `continue`**: loop control with a switch-case guard (requires an inner loop).
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 140
-> - **Passed:** 140
+> - **Total Test Cases Executed:** 155
+> - **Passed:** 155
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -36,7 +35,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (30/30 Passed)
+### 1. Integration Fixtures (31/31 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -68,10 +67,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `advanced_functions.hmx` | Type Return / Return in Loop | Functions returning `text`, `decimal`, `bool`, and early `return` inside `loop` blocks | **PASS** |
 | `arrays.hmx` | **[NEW]** Array Support | Array literals, indexing, element assignment, `length()`, typed params, returns | **PASS** |
 | `tuples.hmx` | **[NEW]** Tuple Support | Multi-value return, destructuring, multi-assignment, whole-tuple vars, tuple params, `[int]` member | **PASS** |
+| `neg_mod_break.hmx` | **[NEW]** Tier 1 Ops | Unary minus, modulo (incl. compound `%=`), `break`/`continue` inside loops | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (80/80 Passed)
+### 2. Negative & Error Handling Suite (88/88 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -111,7 +111,6 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `syntax_unclosed_brace` | Unclosed Block Brace | `Parse error` | **PASS** |
 | `syntax_unclosed_paren` | Unclosed Paren | `Parse error` | **PASS** |
 | `unterminated_block_comment` | Unclosed Comment | `unterminated block comment` | **PASS** |
-| `unary_minus_not_in_spec` | Unary Minus `-X` | `Parse error` | **PASS** |
 | `array_element_type_mismatch` | **[NEW]** Array Element Mismatch | Array init type vs annotation | **PASS** |
 | `array_mixed_element_types` | **[NEW]** Mixed Array Elements | Array with heterogeneous literal types | **PASS** |
 | `array_untyped_empty` | **[NEW]** Untyped Empty Array | `[]` without annotation | **PASS** |
@@ -141,10 +140,19 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `tuple_length` | **[NEW]** `length()` on Tuple | `length(t)` where `t` is a tuple | **PASS** |
 | `tuple_bare_return` | **[NEW]** Bare Return in Tuple Fn | `return` with no value in `-> (int, int)` | **PASS** |
 | `tuple_call_arg_shape_mismatch` | **[NEW]** Arg Tuple Shape Mismatch | Pass `(int, text)` where `(int, int)` expected | **PASS** |
+| `mod_on_decimal` | **[NEW]** `%` on Decimal | `5.5 % 2.5` | `operator '%' not defined for type decimal` | **PASS** |
+| `mod_on_text` | **[NEW]** `%` on Text | `"abc" % "def"` | `operator '%' not defined for type text` | **PASS** |
+| `mod_type_mismatch` | **[NEW]** Mixed-Type `%` | `5 % 2.5` | `type mismatch` | **PASS** |
+| `mod_eq_on_decimal` | **[NEW]** `%=` on Decimal | `x %= 2` with `let x = 5.5` | `operator '%=' requires int` | **PASS** |
+| `unary_minus_on_text` | **[NEW]** Unary Minus on Text | `-"abc"` | `operator '-' not defined for type text` | **PASS** |
+| `break_outside_loop` | **[NEW]** Break at Top Level | Top-level `break` | `break outside of a loop` | **PASS** |
+| `continue_outside_loop` | **[NEW]** Continue at Top Level | Top-level `continue` | `continue outside of a loop` | **PASS** |
+| `break_in_switch_no_loop` | **[NEW]** Break in Switch Case | `loop (1) { switch { case 1: break } }` | `break inside a switch case requires an enclosing loop` | **PASS** |
+| `continue_in_switch_no_loop` | **[NEW]** Continue in Switch Case | `loop (1) { switch { case 1: continue } }` | `continue inside a switch case requires an enclosing loop` | **PASS** |
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (30/30 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (36/36 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, and string concatenation chains.
 
@@ -176,6 +184,12 @@ These tests verify exact runtime output matching and process exit code propagati
 | `tuple_text_member` | **[NEW]** Text Tuple Member | Destructure `(int, text)` return | `7\nhi` | **PASS** |
 | `tuple_array_member` | **[NEW]** Array Tuple Member | Tuple holding `[1,2,3]` + best score | `9\n3` | **PASS** |
 | `tuple_annotated_decl` | **[NEW]** Annotated Tuple Decl | `let tagged: (int, int) = ...` | `2\n1` | **PASS** |
+| `modulo_basic` | **[NEW]** Modulo | `17 % 5`, `10 % 3`, `-100 % 7`, `7 % 100` | `2\n1\n-2\n7` | **PASS** |
+| `modulo_compound` | **[NEW]** `%=` Chain | `x %= 5` then `y %= 3` `y %= 2` | `2\n1` | **PASS** |
+| `unary_minus` | **[NEW]** Unary Minus | `-5`, `-(-5)`, `-2 + 5`, `-(3 * 4)`, `-3.5` | `-5\n5\n3\n-12\n-3.500000` | **PASS** |
+| `break_continue` | **[NEW]** Loop Control | `continue` skips, `break` stops `loop` & `while` | `1\n3\n4\n4\n1\n2\n4\n5\n6` | **PASS** |
+| `break_in_switch_with_inner_loop` | **[NEW]** Switch+Loop | `break` in case requires inner loop | `1` | **PASS** |
+| `modulo_exit_code` | **[NEW]** Exit Code | `1` iff `100 % 7 == 2` | Exit Code: `42` | **PASS** |
 
 ---
 
@@ -213,8 +227,10 @@ cd build && cmake .. && make && cd ..
 ---
 
 > [!TIP]
-> **Conclusion:** Tuples now work end-to-end without regressions: multi-value returns,
-> destructuring declarations, multi-assignment, whole-tuple variables with constant
-> indexing, tuple parameters, and tuple members of both scalar and array type all
-> compile through the HMX pipeline (generating `sd_tuple_*` C structs) and pass
-> integration, negative, and stress/output tests alongside the earlier array feature.
+> **Conclusion:** Tier 1 work now lands end-to-end without regressions: unary minus/plus,
+> int-only modulo (incl. compound `%=`), and `break`/`continue` loop control (with a
+> switch-case guard requiring an inner loop) all compile through the HMX pipeline and
+> pass integration, negative, and stress/output tests alongside the earlier array and
+> tuple features. The bison parser now carries six harmless shift/reduce conflicts
+> (all resolved by shift), up from four due to the `+`/`-` unary-vs-`AS` ambiguity
+> mirroring the pre-existing `not`-vs-`AS` case.

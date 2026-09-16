@@ -404,12 +404,6 @@ test_error "unterminated_block_comment" \
     fn main() {}' \
     "unterminated block comment"
 
-test_error "unary_minus_not_in_spec" \
-    'fn main() {
-        let x = -5
-    }' \
-    "Parse error"
-
 test_error "array_element_type_mismatch" \
     'fn main() {
         let a: [int] = ["x", "y"]
@@ -656,6 +650,74 @@ test_error "tuple_call_arg_shape_mismatch" \
         print(g(p))
     }' \
     "expects tuple \\(int, int\\), got tuple \\(int, text\\)"
+
+test_error "mod_on_decimal" \
+    'fn main() {
+        let x = 5.5 % 2.5
+        print(x)
+    }' \
+    "operator '%' not defined for type decimal"
+
+test_error "mod_on_text" \
+    'fn main() {
+        let x = "abc" % "def"
+        print(x)
+    }' \
+    "operator '%' not defined for type text"
+
+test_error "mod_type_mismatch" \
+    'fn main() {
+        let x = 5 % 2.5
+        print(x)
+    }' \
+    "type mismatch in binary expression"
+
+test_error "mod_eq_on_decimal" \
+    'fn main() {
+        let x = 5.5
+        x %= 2
+        print(x)
+    }' \
+    "operator '%=' requires int"
+
+test_error "unary_minus_on_text" \
+    'fn main() {
+        let x = -"abc"
+        print(x)
+    }' \
+    "operator '-' not defined for type text"
+
+test_error "break_outside_loop" \
+    'fn main() {
+        break
+    }' \
+    "break outside of a loop"
+
+test_error "continue_outside_loop" \
+    'fn main() {
+        continue
+    }' \
+    "continue outside of a loop"
+
+test_error "break_in_switch_no_loop" \
+    'fn main() {
+        loop (1) {
+            switch (1) {
+                case 1: break
+            }
+        }
+    }' \
+    "break inside a switch case requires an enclosing loop"
+
+test_error "continue_in_switch_no_loop" \
+    'fn main() {
+        loop (1) {
+            switch (1) {
+                case 1: continue
+            }
+        }
+    }' \
+    "continue inside a switch case requires an enclosing loop"
 
 echo ""
 echo "Negative Tests Passed: $PASS, Failed: $FAIL"

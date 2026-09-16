@@ -148,13 +148,33 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   also covers `return` followed by a `(a, b) = ...` statement.
 - Full regression: 30/30 integration, 80/80 negative, 30/30 stress/output.
 
+### Unary minus, modulo `%`, and `break`/`continue` — DONE
+- Lexer: `%` (MOD) and `%=` (MOD_EQ) tokens; `break` / `continue` keywords.
+- AST/parser: `NegExpr` node; `factor : '-' factor` and `factor : '+' factor` (unary
+  plus returns operand, kept for symmetry); `term '%' factor`; `IDENTIFIER MOD_EQ expression`
+  compound assignment; `BreakStmt` / `ContinueStmt` statements.
+- Resolver: `NegExpr` requires int/decimal ("operator '-' not defined for type X");
+  `%` requires int operands and resolves to int; `%=` requires an int variable; new
+  `loop_depth_` counter tracks loop nesting and `switch_entry_loop_depths_` records loop
+  depth at switch entry so `break`/`continue` inside a case are only allowed when an
+  innermost loop exists ("break inside a switch case requires an enclosing loop").
+- Codegen: `-(expr)`, `a % b` via the generic binary path (no text-concat special case),
+  `%=` via the generic compound-op path, `break;` / `continue;`.
+- Bison conflicts now **6** (up from 4): the two new ones are the `+ factor` / `- factor`
+  vs `factor AS type` ambiguity, same harmless shift-resolves-by-shift pattern as `not factor`.
+- Fixtures: `neg_mod_break.hmx`; 10 new negative tests; 6 new stress tests (modulo basics,
+  compound `%=`, unary minus, break/continue interplay, switch-with-inner-loop, exit code 42).
+- Docs: SYNTAX.md §2 keywords, §7.3 `%=`, §8.1 `%` + unary ops + precedence, §9 grammar,
+  §10 statements, new §11.5 break/continue, §14.4 checks; TESTRESULT.md; AGENTS.md conflict note.
+- Full regression: 31/31 integration, 88/88 negative, 36/36 stress/output.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.
-- bison emits four harmless shift/reduce conflicts, all resolved by shift: the `return expr`
+- bison emits six harmless shift/reduce conflicts, all resolved by shift: the `return expr`
   vs bare `return` ambiguity (now also covering a following tuple multi-assign statement),
   the `IDENTIFIER '[' ...` array indexing/assignment ambiguity, the `IDENTIFIER '(' ...`
-  call-vs-factor ambiguity, and the `not factor` vs `factor AS` ambiguity.
+  call-vs-factor ambiguity, and the unary `not` / `+` / `-` prefix vs `factor AS` ambiguity.
 - Duplicate declarations and missing definite returns are rejected by the type resolver.
 - `else if` chains are implemented and covered by `else_if.hmx`.
 - Ternary expressions, explicit numeric casts, and immutable `const` bindings are implemented.

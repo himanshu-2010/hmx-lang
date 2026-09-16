@@ -311,6 +311,14 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         }
         switch (bin->kind) {
             case ExprKind::Arithmetic:
+                if (bin->op == "%") {
+                    if (lt != TypeKind::Int) {
+                        throw CompileError(line(),
+                            "operator '%' not defined for type " + type_to_string(lt));
+                    }
+                    result = TypeKind::Int;
+                    break;
+                }
                 if (lt == TypeKind::Text && bin->op == "+") {
                     result = TypeKind::Text;
                     break;
@@ -348,6 +356,13 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                 "operator 'not' requires bool operand, got " + type_to_string(ot));
         }
         result = TypeKind::Bool;
+    } else if (auto* neg = dynamic_cast<NegExpr*>(expr)) {
+        TypeKind ot = resolve_expr(neg->operand.get());
+        if (ot != TypeKind::Int && ot != TypeKind::Decimal) {
+            throw CompileError(line(),
+                "operator '-' not defined for type " + type_to_string(ot));
+        }
+        result = ot;
     }
     expr->resolved_type = result;
     return result;
@@ -499,6 +514,10 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 }
             }
         } else {
+            if (assign->op == "%=" && var_type != TypeKind::Int) {
+                throw CompileError(stmt->line,
+                    "operator '%=' requires int, got " + type_to_string(var_type));
+            }
             if (var_type != TypeKind::Int && var_type != TypeKind::Decimal) {
                 throw CompileError(stmt->line,
                     "operator '" + assign->op + "' requires int or decimal, got " +
@@ -586,7 +605,9 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 "loop count must be int, got " + type_to_string(ct));
         }
         push_scope();
+        loop_depth_++;
         for (auto& s : loop->body) resolve_stmt(s.get());
+        loop_depth_--;
         pop_scope();
     } else if (auto* while_stmt = dynamic_cast<WhileStmt*>(stmt)) {
         TypeKind ct = resolve_expr(while_stmt->condition.get());
@@ -595,7 +616,9 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 "while condition must be bool, got " + type_to_string(ct));
         }
         push_scope();
+        loop_depth_++;
         for (auto& s : while_stmt->body) resolve_stmt(s.get());
+        loop_depth_--;
         pop_scope();
     } else if (auto* for_stmt = dynamic_cast<ForStmt*>(stmt)) {
         if (dynamic_cast<DestructDecl*>(for_stmt->init.get())) {
@@ -616,11 +639,15 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         }
         current_line_ = for_stmt->update->line;
         resolve_stmt(for_stmt->update.get());
+        loop_depth_++;
         for (auto& s : for_stmt->body) resolve_stmt(s.get());
+        loop_depth_--;
         pop_scope();
     } else if (auto* do_while = dynamic_cast<DoWhileStmt*>(stmt)) {
         push_scope();
+        loop_depth_++;
         for (auto& s : do_while->body) resolve_stmt(s.get());
+        loop_depth_--;
         pop_scope();
         current_line_ = stmt->line;
         TypeKind ct = resolve_expr(do_while->condition.get());
@@ -654,6 +681,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         }
         bool has_default = false;
         std::vector<int> seen_values;
+        switch_entry_loop_depths_.push_back(loop_depth_);
         for (auto& c : sw->cases) {
             if (c.is_default) {
                 if (has_default) {
@@ -683,6 +711,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             resolve_block(c.body);
             pop_scope();
         }
+        switch_entry_loop_depths_.pop_back();
     } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
         if (!in_function_) {
             throw CompileError(stmt->line, "return outside of function");
@@ -754,6 +783,24 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                         type_to_string(current_return_element_));
                 }
             }
+        }
+    } else if (dynamic_cast<BreakStmt*>(stmt)) {
+        if (loop_depth_ == 0) {
+            throw CompileError(stmt->line, "break outside of a loop");
+        }
+        if (!switch_entry_loop_depths_.empty() &&
+            loop_depth_ <= switch_entry_loop_depths_.back()) {
+            throw CompileError(stmt->line,
+                "break inside a switch case requires an enclosing loop within the case");
+        }
+    } else if (dynamic_cast<ContinueStmt*>(stmt)) {
+        if (loop_depth_ == 0) {
+            throw CompileError(stmt->line, "continue outside of a loop");
+        }
+        if (!switch_entry_loop_depths_.empty() &&
+            loop_depth_ <= switch_entry_loop_depths_.back()) {
+            throw CompileError(stmt->line,
+                "continue inside a switch case requires an enclosing loop within the case");
         }
     } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
         push_scope();

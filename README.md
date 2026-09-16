@@ -18,10 +18,11 @@ The current compiler supports:
 - Integer, decimal, text, and boolean values
 - Character and byte values
 - Arithmetic, comparisons, boolean logic, and text concatenation
+- Integer modulo `%`, compound assignment (`+=`, `%=`, ...), and unary `-` / `+`
 - String built-ins `length` and `substring`
 - `if` / `else` conditionals
 - `else if` conditional chains
-- `switch` statements with automatic case breaks
+- `switch` statements with automatic case breaks, plus `break` / `continue` loop control
 - Ternary expressions and explicit numeric casts
 - Immutable `const` bindings
 - `loop`, `while`, `for`, and `do ... while` loops
@@ -137,7 +138,7 @@ These words are reserved and cannot be used as variable or function names:
 | Category | Keywords |
 | --- | --- |
 | Declarations | `let`, `const`, `fn` |
-| Control flow | `if`, `else`, `loop`, `while`, `for`, `do` |
+| Control flow | `if`, `else`, `loop`, `while`, `for`, `do`, `break`, `continue` |
 | Functions and output | `return`, `print` |
 | Boolean values | `true`, `false` |
 | Boolean operators | `and`, `or`, `not` |
@@ -152,7 +153,7 @@ HMX has six primitive types:
 
 | Type | Meaning | Examples |
 | --- | --- | --- |
-| `int` | Integer value | `0`, `42`, `-1` is not currently supported |
+| `int` | Integer value | `0`, `42`, `-5` |
 | `decimal` | Double-precision floating-point value | `0.0`, `3.14` |
 | `text` | Double-quoted string | `"hello"` |
 | `bool` | Boolean value | `true`, `false` |
@@ -192,11 +193,13 @@ Numeric casts use `as` and are explicit. They support conversions among `int`,
 | Operator | Meaning |
 | --- | --- |
 | `+` | Addition, or `text` concatenation |
-| `-` | Subtraction |
+| `-` | Subtraction, or unary negation |
 | `*` | Multiplication |
 | `/` | Division |
+| `%` | Modulo (remainder, `int` only) |
 
-Arithmetic precedence is `*` and `/`, then `+` and `-`. Parentheses can override it.
+Unary `-` and `+` work on `int` and `decimal`. Arithmetic precedence is unary `-`/`+`,
+then `*`, `/`, and `%`, then `+` and `-`. Parentheses can override it.
 
 ### Comparison
 
@@ -224,6 +227,7 @@ value += 3
 value -= 1
 value *= 2
 value /= 2
+value %= 3
 value++
 value--
 ```
@@ -279,6 +283,9 @@ fn main() {
 - `while` and `do ... while` conditions require `bool`.
 - `for` uses `for (initializer; condition; update)`.
 - A variable declared in a `for` initializer is scoped to that loop.
+- `break` exits a loop early; `continue` skips to the next iteration. Both require an
+  enclosing loop and are rejected directly inside a `switch` case unless the case has
+  its own loop.
 
 ## Functions
 
@@ -369,10 +376,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | 30 `.hmx` fixtures | 30/30 passed |
-| Negative | Type, syntax, and resolver errors | 80/80 passed |
-| Stress/output | Recursion, loops, strings, arrays, tuples, output, exit codes | 30/30 passed |
-| Total | 140 test cases | 140/140 passed |
+| Integration | 31 `.hmx` fixtures | 31/31 passed |
+| Negative | Type, syntax, and resolver errors | 88/88 passed |
+| Stress/output | Recursion, loops, strings, arrays, tuples, unary/modulo/loop-control, exit codes | 36/36 passed |
+| Total | 155 test cases | 155/155 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is
@@ -427,7 +434,6 @@ TESTRESULT.md           Detailed regression report
 The compiler's core milestone is complete. The following language features are listed
 as planned and are not implemented yet:
 
-- Multiple return values or tuples
 - Namespaces and modules across multiple `.hmx` files
 - Variadic parameters and default parameter values
 - Function pointers, higher-order functions, and closures
