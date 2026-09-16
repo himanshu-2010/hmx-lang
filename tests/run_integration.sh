@@ -2,7 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-BIN="build/stardance"
+BIN="build/hmx"
 PASS=0
 FAIL=0
 

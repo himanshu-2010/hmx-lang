@@ -80,6 +80,8 @@
 "="               { return '='; }
 ","               { return ','; }
 "?"               { return '?'; }
+"["               { return '['; }
+"]"               { return ']'; }
 "->"              { return ARROW; }
 "+="              { return PLUS_EQ; }
 "-="              { return MINUS_EQ; }

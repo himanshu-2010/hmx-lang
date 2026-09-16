@@ -4,6 +4,7 @@
 #include "type_resolver.hpp"
 #include <string>
 #include <sstream>
+#include <map>
 
 class CodeGen {
 public:
@@ -12,6 +13,8 @@ public:
 private:
     std::ostringstream out_;
     std::string source_file_;
+    std::map<std::vector<TypeDesc>, std::string> tuple_types_;
+    int temp_counter_ = 0;
 
     void emit_line_directive(int line, const std::string& file);
     void emit_stmt(Statement* stmt);
@@ -19,4 +22,6 @@ private:
     void emit_expr(Expression* expr, bool parenthesize = false);
     std::string emit_function_signature(FunctionDecl* fn);
     TypeKind get_expr_type(Expression* expr);
+    std::string tuple_name(const std::vector<TypeDesc>& members);
+    void collect_tuple_types(Statement* stmt);
 };

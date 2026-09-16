@@ -17,7 +17,7 @@ extern int yyparse();
 extern Program* g_program;
 
 void print_usage() {
-    fprintf(stderr, "Usage: stardance <command> <file.hmx> [options]\n");
+    fprintf(stderr, "Usage: hmx <command> <file.hmx> [options]\n");
     fprintf(stderr, "Commands:\n");
     fprintf(stderr, "  run   <file.hmx>        Transpile, compile, execute\n");
     fprintf(stderr, "  build <file.hmx>        Transpile and compile only\n");

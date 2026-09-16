@@ -1,10 +1,10 @@
-# Stardance — Language Syntax Reference
+# HMX — Language Syntax Reference
 
 **Version 1.0 (core spec)**
 
 A custom programming language that transpiles to C. This document is the authoritative
-syntax reference for the Stardance language. It follows the same structural layout as the
-standard C reference documentation, but uses Stardance's own syntax, types, and conventions.
+syntax reference for the HMX language. It follows the same structural layout as the
+standard C reference documentation, but uses HMX's own syntax, types, and conventions.
 
 > **Scope note:** Sections marked **[Implemented]** are features the compiler currently
 > compiles and runs end-to-end. Sections marked **[Spec]** are fully designed syntax that is
@@ -37,21 +37,21 @@ standard C reference documentation, but uses Stardance's own syntax, types, and 
 
 ### 1.1 Program Structure
 
-A Stardance program is a sequence of statements and function declarations in a `.hmx` file.
+A HMX program is a sequence of statements and function declarations in a `.hmx` file.
 Execution begins in the `main` function.
 
-```stardance
+```hmx
 fn main() {
-    print("Hello, Stardance!")
+    print("Hello, HMX!")
 }
 ```
 
 ### 1.2 Translation Model
 
-Stardance source is transpiled to C, then compiled with `gcc -O2` to a native executable:
+HMX source is transpiled to C, then compiled with `gcc -O2` to a native executable:
 
 ```
-yourfile.hmx  --[Stardance Compiler]-->  build_temp.c  --[gcc -O2]-->  native executable
+yourfile.hmx  --[HMX Compiler]-->  build_temp.c  --[gcc -O2]-->  native executable
 ```
 
 ### 1.3 Blocks
@@ -59,7 +59,7 @@ yourfile.hmx  --[Stardance Compiler]-->  build_temp.c  --[gcc -O2]-->  native ex
 Braces `{ }` delimit every block: function bodies, `if`/`else` bodies, and loop bodies.
 There is no significant indentation; whitespace is ignored.
 
-```stardance
+```hmx
 fn main() {
     let count = 5
     if (count > 0) {
@@ -75,7 +75,7 @@ different tokens; only `loop` is a keyword.
 
 ### 1.5 Type Inference
 
-Stardance prefers type inference. Variables infer their type from their initializer.
+HMX prefers type inference. Variables infer their type from their initializer.
 Explicit annotations are optional and additive.
 
 ---
@@ -116,7 +116,7 @@ identifier  : [a-zA-Z_][a-zA-Z0-9_]*
 - May contain letters, digits, and underscores.
 - Cannot be a reserved keyword (§2).
 
-```stardance
+```hmx
 let count = 5
 let _private = 10
 fn addNumbers() {
@@ -137,7 +137,7 @@ lexing and never affect program behavior.
 
 `//` begins a line comment that runs to the end of the line.
 
-```stardance
+```hmx
 let count = 5   // this is a line comment
 ```
 
@@ -146,7 +146,7 @@ let count = 5   // this is a line comment
 `/* ... */` begins a block comment and runs to the matching `*/`. Block comments
 may span multiple lines. They do **not** nest.
 
-```stardance
+```hmx
 /*
    A multi-line
    block comment
@@ -158,10 +158,10 @@ let name = "Boss"
 
 ## 5. Types
 
-Stardance has four primitive types. Each maps to a C type and a `print` format
+HMX has four primitive types. Each maps to a C type and a `print` format
 specifier.
 
-| Stardance type | Meaning | C type | Format specifier |
+| HMX type | Meaning | C type | Format specifier |
 |---|---|---|---|
 | `int` | integer | `int` | `%d` |
 | `decimal` | floating-point | `double` | `%f` |
@@ -172,7 +172,7 @@ specifier.
 
 Types are inferred from initializers unless explicitly annotated:
 
-```stardance
+```hmx
 let count = 5          // int
 let ratio = 2.5        // decimal
 let name = "Boss"      // text
@@ -183,7 +183,7 @@ let flag = true        // bool
 
 Use `:` followed by a type name to annotate a declaration:
 
-```stardance
+```hmx
 let total: int = 0
 let pi: decimal = 3.14
 let greeting: text = "hi"
@@ -193,9 +193,73 @@ let ready: bool = false
 When annotated, the initializer's type must match the annotation. A mismatch is a
 compile error:
 
-```stardance
+```hmx
 let x: int = "hello"   // Error: type mismatch
 ```
+
+### 5.3 Array Types **[Implemented]**
+
+An array is an ordered, fixed-size collection of elements of a single primitive type.
+Arrays are declared with a `[type]` annotation:
+
+```hmx
+let scores: [int] = [10, 20, 30]
+let names: [text] = ["alice", "bob"]
+let empty: [int] = []
+```
+
+Element types may be `int`, `decimal`, `text`, `bool`, `char`, or `byte`. Nested
+arrays (`[[int]]`) are **not** supported. An empty array literal (`[]`) requires an
+explicit annotation so the compiler can infer the element type; a non-empty literal
+infers its element type from its elements.
+
+Arrays are reference values: assigning one array variable to another (`let b = a`)
+shares the backing storage, so element writes through either name are visible through
+both. The backing storage is heap-allocated by the generated code.
+
+### 5.4 Tuple Types **[Implemented]**
+
+A tuple is an ordered, fixed-size group of 2+ values of possibly different types.
+Tuples exist only as first-class values produced by functions — there is no tuple
+literal expression.
+
+```hmx
+fn divmod(a: int, b: int) -> (int, int) {
+    return a / b, a - (a / b) * b
+}
+
+fn make_pair() -> (int, text) {
+    return 7, "hi"
+}
+
+fn main() {
+    let (q, r) = divmod(17, 5)   // destructuring let
+    let pair = divmod(10, 3)     // whole-tuple variable
+    let annotated: (int, int) = divmod(5, 2)
+
+    print(pair[0])               // constant index access
+    print(pair[1])
+
+    (q, r) = divmod(20, 7)       // multi-assignment
+}
+```
+
+Rules:
+
+- A tuple must have at least two members.
+- Members may be `int`, `decimal`, `text`, `bool`, `char`, `byte`, or an array
+  (`[int]`, etc.). Nested tuples (`((int, int), int)`) and arrays of tuples are
+  **not** supported.
+- Tuples are value types. Passing a tuple to a function or returning one copies it.
+- A tuple index must be an integer constant in range; `t[i]` with a variable `i` is
+  rejected at compile time.
+- Tuple element assignment (`t[0] = x`) is not supported.
+- Tuples cannot be `print`ed, compared, combined arithmetically, used in `length`,
+  or used as a ternary branch — destructure them or index their elements instead.
+- A function with a tuple return type must return exactly the right number of values,
+  each matching the declared member type. A bare `return` requires a void function.
+- Destructuring requires `let` and cannot appear in `for` loop headers or update
+  clauses.
 
 ---
 
@@ -205,7 +269,7 @@ let x: int = "hello"   // Error: type mismatch
 
 Sequences of digits, non-negative.
 
-```stardance
+```hmx
 0
 5
 42
@@ -215,7 +279,7 @@ Sequences of digits, non-negative.
 
 A fraction of a decimal point. Must have digits on both sides of the point.
 
-```stardance
+```hmx
 2.5
 3.14
 0.0
@@ -225,16 +289,16 @@ A fraction of a decimal point. Must have digits on both sides of the point.
 
 Double-quoted sequences. `"..."`.
 
-```stardance
+```hmx
 "hello"
-"Stardance active!"
+"HMX active!"
 ```
 
 ### 6.4 Boolean Literals
 
 `true` and `false`.
 
-```stardance
+```hmx
 true
 false
 ```
@@ -244,7 +308,7 @@ false
 Single-quoted literals represent one character and infer the `char` type. `byte` is
 an unsigned 8-bit value and is commonly declared with an annotation.
 
-```stardance
+```hmx
 let initial: char = 'H'
 let code: byte = 72
 print(initial)
@@ -265,17 +329,21 @@ to numeric types with `as`, but they are not arithmetic operands.
 **Syntax:**
 ```
 var_decl  : "let" IDENTIFIER (":" TYPE)? "=" expression
+          | "let" "(" id_list ")" "=" expression
+type_spec : TYPE | "[" param_type "]" | "(" elem_list ")"
 ```
 
-```stardance
+```hmx
 let count = 5
 let total: int = 0
+let pair: (int, int) = divmod(9, 2)
+let (q, r) = divmod(9, 2)    // destructuring declaration
 ```
 
 `const` declares an immutable value. Constants can be read but cannot be assigned,
 incremented, or changed with compound assignment.
 
-```stardance
+```hmx
 const limit: int = 10
 print(limit)
 ```
@@ -284,9 +352,17 @@ print(limit)
 
 Variables can be reassigned after declaration with the plain assignment operator.
 
-```stardance
+```hmx
 let count = 5
 count = 10
+```
+
+A parenthesized list of existing variables can be assigned a tuple in one
+multi-assignment statement. The target count and member types must match the tuple.
+
+```hmx
+let (q, r) = divmod(9, 2)
+(q, r) = divmod(20, 7)    // both variables updated
 ```
 
 ### 7.3 Compound Assignment
@@ -300,7 +376,7 @@ Shorthand that combines assignment with arithmetic:
 | `*=` | `a = a * b` |
 | `/=` | `a = a / b` |
 
-```stardance
+```hmx
 let count = 5
 count += 3       // count is now 8
 count *= 2       // count is now 16
@@ -311,7 +387,7 @@ count *= 2       // count is now 16
 `++` increments by one; `--` decrements by one. Postfix form only (the value used in
 an expression is the pre-incremented value).
 
-```stardance
+```hmx
 let count = 5
 count++          // count is now 6
 count--          // count is now 5
@@ -322,7 +398,7 @@ count--          // count is now 5
 Use `as` for explicit conversion between `int` and `decimal`. There is no implicit
 numeric promotion, and casts involving `text` or `bool` are rejected.
 
-```stardance
+```hmx
 let precise = 7 as decimal
 let whole = precise as int
 ```
@@ -355,7 +431,7 @@ concatenation). All other arithmetic operators require `int`/`decimal` operands.
 | 2 | `*` `/` | left |
 | 3 | `+` `-` | left |
 
-```stardance
+```hmx
 let result = 2 + 3 * 4   // 14, multiplication first
 let x = (2 + 3) * 4      // 20, grouping first
 ```
@@ -373,7 +449,7 @@ Compare two values of the same type and produce a `bool`.
 | `<=` | less than or equal |
 | `>=` | greater than or equal |
 
-```stardance
+```hmx
 5 == 5       // true
 5 < 3        // false
 "a" != "b"   // true
@@ -389,7 +465,7 @@ Compose `bool` values. Both word forms and C-style symbol forms are valid.
 | `or` | `\|\|` | logical OR |
 | `not` | `!` | logical NOT (unary) |
 
-```stardance
+```hmx
 true and false      // false
 true or  false      // true
 not true            // false
@@ -400,7 +476,7 @@ true || false       // true
 
 **Precedence** (highest to lowest): `not`/`!` → comparisons → `and`/`&&` → `or`/`||`.
 
-```stardance
+```hmx
 if (a > 0 and b > 0) { }    // parens optional but recommended
 if (not ready) { }
 ```
@@ -410,7 +486,7 @@ if (not ready) { }
 The ternary operator evaluates one of two expressions. Its condition must be `bool`,
 and both branches must have the same type. Ternaries associate from right to left.
 
-```stardance
+```hmx
 let label = score >= 60 ? "pass" : "fail"
 let value = ready ? 1 : enabled ? 2 : 3
 ```
@@ -444,8 +520,24 @@ factor       : NUMBER | DECIMAL | STRING
              | "not" factor | "!" factor
              | IDENTIFIER
              | IDENTIFIER "(" args? ")"      // function call
+             | IDENTIFIER "[" expression "]" // array index (read)
+             | "[" "]"                        // empty array literal
+             | "[" args "]"                   // array literal
              | "(" expression ")"
 args         : expression ("," expression)*
+```
+
+Array indexes must be `int` and are bounds-checked at runtime. Elements of a
+one-dimensional array have the array's element type.
+
+Tuple indexing uses the same `t[i]` syntax with a compile-time `int` constant; the
+result is the tuple member at that position. A variable index, an out-of-range
+index, or indexing a non-array, non-tuple value is a compile error.
+
+```hmx
+let pair = divmod(9, 2)
+print(pair[0])    // first member
+print(pair[1])    // second member
 ```
 
 Comparison of `text` values is limited: `==` and `!=` are supported (via `strcmp`);
@@ -461,6 +553,8 @@ A statement is one of the following. Statements execute in sequence.
 |---|---|
 | Variable declaration | `let ...` |
 | Assignment | `name = expr` / `name op= expr` / `name++` / `name--` |
+| Tuple multi-assignment | `(name, name) = expr` |
+| Array element assignment | `name[index] = expr` |
 | Function call | `name(args...)` |
 | Output | `print(...)` |
 | Conditional | `if (...) { } else { }` |
@@ -469,16 +563,16 @@ A statement is one of the following. Statements execute in sequence.
 | Header-controlled loop | `for (init; condition; update) { }` |
 | Post-condition loop | `do { } while (...)` |
 | Function declaration | `fn name() { }` |
-| Return | `return expr` or `return` |
+| Return | `return expr...` or `return` |
 
 ### 10.1 Semicolons
 
-Stardance does **not** use semicolons for normal statements. Statements are
+HMX does **not** use semicolons for normal statements. Statements are
 terminated by the structure of the grammar, and whitespace/newlines are insignificant
 (identical to how the parser distinguishes statements). The only semicolons in the
 core language are the two separators inside a `for (...)` loop header.
 
-```stardance
+```hmx
 let a = 1
 let b = 2
 print(a + b)
@@ -497,7 +591,7 @@ Repeats a block a fixed number of times, bounded by an `int` expression.
 loop_stmt  : "loop" "(" expression ")" "{" statement+ "}"
 ```
 
-```stardance
+```hmx
 let count = 5
 loop(count) {
     print("hello")
@@ -506,7 +600,7 @@ loop(count) {
 
 The count expression must evaluate to `int`; otherwise a compile error is raised.
 
-```stardance
+```hmx
 let name = "Boss"
 loop(name) { }   // Error: loop count must be int, got text
 ```
@@ -520,7 +614,7 @@ Repeats a block while a boolean condition remains true.
 while_stmt : "while" "(" expression ")" "{" statement+ "}"
 ```
 
-```stardance
+```hmx
 let i = 0
 while (i < 5) {
     print(i)
@@ -530,7 +624,7 @@ while (i < 5) {
 
 The condition expression must evaluate to `bool`; otherwise a compile error is raised.
 
-```stardance
+```hmx
 while (5) { }   // Error: while condition must be bool, got int
 ```
 
@@ -546,7 +640,7 @@ for_stmt : "for" "(" for_init ";" expression ";" assign_stmt ")" "{" statement+ 
 for_init : var_decl | assign_stmt
 ```
 
-```stardance
+```hmx
 let total = 0
 for (let i = 0; i < 5; i++) {
     total += i
@@ -556,7 +650,7 @@ for (let i = 0; i < 5; i++) {
 The condition expression must evaluate to `bool`. A variable declared in the initializer
 is scoped to the loop header and body.
 
-```stardance
+```hmx
 for (let i = 0; 5; i++) { }   // Error: for condition must be bool, got int
 ```
 
@@ -569,7 +663,7 @@ Runs a block once, then repeats it while a boolean condition remains true.
 do_while_stmt : "do" "{" statement+ "}" "while" "(" expression ")"
 ```
 
-```stardance
+```hmx
 let i = 3
 do {
     print(i)
@@ -590,7 +684,7 @@ if_stmt   : "if" "(" expression ")" "{" statement+ "}"
           | "if" "(" expression ")" "{" statement+ "}" "else" "{" statement+ "}"
 ```
 
-```stardance
+```hmx
 let score = 75
 if (score >= 60) {
     print("passed")
@@ -601,13 +695,13 @@ if (score >= 60) {
 
 The condition must evaluate to `bool`; otherwise a compile error is raised.
 
-```stardance
+```hmx
 if (5) { }   // Error: if condition must be bool, got int
 ```
 
 `else if` chains are supported and may contain a final `else` branch:
 
-```stardance
+```hmx
 if (score < 50) {
     print("fail")
 } else if (score < 60) {
@@ -624,7 +718,7 @@ Each condition must evaluate to `bool`.
 `switch` selects one matching literal case. Cases automatically break, so execution
 does not fall through. The optional `default` branch runs when no case matches.
 
-```stardance
+```hmx
 switch (value) {
     case 0:
         print("zero")
@@ -647,7 +741,7 @@ point. Its exit code is the integer it returns: if `main` declares `-> int` and
 returns a value, that value becomes the process exit code; a `main` without `-> int`
 implicitly returns `0`.
 
-```stardance
+```hmx
 fn greet() {
     print("hi")
 }
@@ -664,12 +758,14 @@ the variable-annotation style.
 
 **Syntax:**
 ```
-fn_decl  : "fn" IDENTIFIER "(" param_list? ")" ("->" TYPE)? "{" statement+ "}"
+fn_decl  : "fn" IDENTIFIER "(" param_list? ")" ("->" type_spec)? "{" statement+ "}"
 param_list : param ("," param)*
-param    : IDENTIFIER ":" TYPE
+param    : IDENTIFIER ":" type_spec
+type_spec : TYPE | "[" param_type "]" | "(" elem_list ")"
+elem_list : type_spec ("," type_spec)+
 ```
 
-```stardance
+```hmx
 fn add(a: int, b: int) -> int {
     return a + b
 }
@@ -677,14 +773,20 @@ fn add(a: int, b: int) -> int {
 fn greet(name: text) {
     print(name)
 }
+
+fn divmod(a: int, b: int) -> (int, int) {
+    return a / b, a - (a / b) * b
+}
 ```
+
+A parameter annotated with a tuple type `(int, int)` receives the tuple by value.
 
 ### 12.3 Return Values
 
 A function declares its return type after `->`. The `return` statement provides the
 value.
 
-```stardance
+```hmx
 fn double(x: int) -> int {
     return x * 2
 }
@@ -692,16 +794,33 @@ fn double(x: int) -> int {
 
 A `return` with no value is valid in a function with no declared return type.
 
-```stardance
+```hmx
 fn stop() {
     return
     print("never reached")
 }
 ```
 
+A function returning a tuple provides multiple comma-separated values, and the
+count and types must match the declared members exactly.
+
+```hmx
+fn divmod(a: int, b: int) -> (int, int) {
+    return a / b, a - (a / b) * b
+}
+
+fn bad() -> (int, int) {
+    return 1, "x"      // Error: member 2 type mismatch
+}
+
+fn bad2() -> (int, int) {
+    return 1           // Error: wrong number of values
+}
+```
+
 The type of `return expr` must match the declared return type.
 
-```stardance
+```hmx
 fn bad() -> int {
     return "oops"   // Error: type mismatch
 }
@@ -714,7 +833,7 @@ fn bad() -> int {
 Call a function by name with a parenthesized argument list. Functions may be called
 in any order relative to their definition (calls resolve to prototypes emitted first).
 
-```stardance
+```hmx
 let result = add(3, 4)     // 7
 greet("Boss")
 ```
@@ -722,7 +841,7 @@ greet("Boss")
 The number of arguments must match the number of parameters, and each argument's
 type must match the corresponding parameter type.
 
-```stardance
+```hmx
 add(3)          // Error: expected 2 arguments, got 1
 add(3, "x")     // Error: type mismatch on argument 2
 ```
@@ -745,7 +864,7 @@ The `print` statement outputs a value followed by a newline.
 print_stmt  : "print" "(" expression ")"
 ```
 
-```stardance
+```hmx
 print("hello")
 print(42)
 print(2.5)
@@ -762,7 +881,7 @@ The format specifier is selected automatically from the expression's type:
 | `text` | string |
 | `bool` | `1` or `0` |
 
-```stardance
+```hmx
 let total = 10
 print(total + 5)     // prints 15
 ```
@@ -773,10 +892,17 @@ print(total + 5)     // prints 15
 returns the half-open range `[start, end)`. Both indexes must be `int`; invalid
 negative, reversed, or out-of-range indexes terminate the generated program.
 
-```stardance
+```hmx
 let message = "hello world"
 print(length(message))
 print(substring(message, 0, 5))
+```
+
+`length(array)` also returns the element count of an array:
+
+```hmx
+let values: [int] = [3, 5, 7]
+print(length(values))     // prints 3
 ```
 
 ---
@@ -845,8 +971,6 @@ are **not** part of the current core spec or compiler. None of them are usable y
 
 | Feature | Notes |
 |---|---|
-| Arrays / lists | Ordered collections of values. |
-| Multiple return values | Functions returning tuples. |
 | Namespaces / modules | Splitting a program across `.hmx` files. |
 
 > **Note:** as features are confirmed and added, they will be moved from this roadmap

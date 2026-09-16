@@ -11,12 +11,24 @@ enum class TypeKind {
     Bool,
     Char,
     Byte,
+    Array,
+    Tuple,
     Unknown
+};
+
+struct TypeDesc {
+    TypeKind type = TypeKind::Unknown;
+    TypeKind element_type = TypeKind::Unknown;          // valid when type == Array
+    std::vector<TypeDesc> tuple_members;                // valid when type == Tuple
+    bool operator==(const TypeDesc& other) const;
+    bool operator<(const TypeDesc& other) const;
 };
 
 std::string type_to_c(TypeKind kind);
 std::string type_to_format(TypeKind kind);
 std::string type_to_string(TypeKind kind);
+std::string type_desc_to_string(const TypeDesc& desc);
+std::string tuple_type_to_string(const std::vector<TypeDesc>& members);
 
 struct ASTNode {
     virtual ~ASTNode() = default;
@@ -103,6 +115,23 @@ struct CallExpr : Expression {
         : name(std::move(n)), args(std::move(a)) {}
 };
 
+struct ArrayLiteral : Expression {
+    std::vector<ExprPtr> elements;
+    TypeKind element_type = TypeKind::Unknown;
+    explicit ArrayLiteral(std::vector<ExprPtr> e) : elements(std::move(e)) {}
+};
+
+struct ArrayIndexExpr : Expression {
+    std::string name;
+    ExprPtr index;
+    TypeKind element_type = TypeKind::Unknown;
+    bool is_tuple = false;                     // valid after resolution
+    int member_index = -1;                     // valid after resolution when is_tuple
+    TypeKind array_of_element_type = TypeKind::Unknown;  // tuple member that is an array
+    ArrayIndexExpr(std::string n, ExprPtr i)
+        : name(std::move(n)), index(std::move(i)) {}
+};
+
 struct Statement : ASTNode {
     int line = 0;
     TypeKind resolved_type = TypeKind::Unknown;
@@ -114,6 +143,8 @@ using StmtPtr = std::unique_ptr<Statement>;
 struct VarDecl : Statement {
     std::string name;
     TypeKind annotation = TypeKind::Unknown;
+    TypeKind array_element_type = TypeKind::Unknown;   // valid when annotation == Array
+    std::vector<TypeDesc> tuple_members;               // valid when annotation == Tuple
     bool has_annotation = false;
     bool is_mutable = true;
     ExprPtr initializer;
@@ -123,6 +154,25 @@ struct AssignStmt : Statement {
     std::string name;
     std::string op;      // "=", "+=", "-=", "*=", "/=", "++", "--"
     ExprPtr rhs;         // null for "++" / "--"
+};
+
+struct MultiAssignStmt : Statement {
+    std::vector<std::string> names;
+    ExprPtr rhs;
+    std::vector<TypeDesc> tuple_members;   // filled by resolver
+};
+
+struct DestructDecl : Statement {
+    std::vector<std::string> names;
+    ExprPtr rhs;
+    bool is_mutable = true;
+    std::vector<TypeDesc> tuple_members;   // filled by resolver
+};
+
+struct ArrayAssignStmt : Statement {
+    std::string name;
+    ExprPtr index;
+    ExprPtr rhs;
 };
 
 struct PrintStmt : Statement {
@@ -174,15 +224,20 @@ struct FunctionDecl : Statement {
     struct Param {
         std::string name;
         TypeKind type;
+        TypeKind array_element_type = TypeKind::Unknown;   // valid when type == Array
+        std::vector<TypeDesc> tuple_members;               // valid when type == Tuple
     };
     std::vector<Param> params;
     TypeKind return_type = TypeKind::Unknown;
+    TypeKind return_array_element_type = TypeKind::Unknown;  // valid when return_type == Array
+    std::vector<TypeDesc> return_tuple_members;              // valid when return_type == Tuple
     bool has_return_type = false;
     std::vector<StmtPtr> body;
 };
 
 struct ReturnStmt : Statement {
-    ExprPtr value = nullptr;   // null for bare return
+    std::vector<ExprPtr> values;                  // empty for bare return
+    std::vector<TypeDesc> return_tuple_members;   // filled by resolver for tuple returns
 };
 
 struct ExprStmt : Statement {

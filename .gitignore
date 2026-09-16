@@ -6,7 +6,7 @@ build_temp.c
 *.o
 
 # Build artifacts
-stardance
+hmx
 cat
 cli1
 minicall

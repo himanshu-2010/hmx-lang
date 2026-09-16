@@ -1,6 +1,6 @@
-# Stardance / HMX
+# HMX
 
-Stardance is a small programming language and compiler built for Hack Club. Stardance
+HMX is a small programming language and compiler built for Hack Club. HMX
 source files use the `.hmx` extension. The compiler translates HMX source to C, then
 uses GCC to produce a native executable.
 
@@ -24,6 +24,8 @@ The current compiler supports:
 - `loop`, `while`, `for`, and `do ... while` loops
 - Functions with typed parameters and return values
 - Function calls, forward calls, and recursion
+- Arrays with typed elements, indexing, element assignment, and `length()`
+- Multiple return values via tuples with destructuring
 - Compile-time type checking with line-numbered diagnostics
 - Duplicate declaration detection and definite-return checking
 - Native executables and propagated `main` exit codes
@@ -63,7 +65,7 @@ cmake --build build
 ### Run a program
 
 ```bash
-./build/stardance run examples/hello.hmx
+./build/hmx run examples/hello.hmx
 ```
 
 The compiler accepts only `.hmx` source files. `.sd` and other extensions are rejected.
@@ -73,13 +75,13 @@ removes both generated files afterward.
 ### Build without running
 
 ```bash
-./build/stardance build examples/hello.hmx
+./build/hmx build examples/hello.hmx
 ```
 
 Keep the generated C file for inspection:
 
 ```bash
-./build/stardance build examples/hello.hmx -keep-c
+./build/hmx build examples/hello.hmx -keep-c
 ```
 
 The generated file is `build_temp.c` in the current working directory. Generated
@@ -106,7 +108,7 @@ language are the two separators in a `for` loop header.
 ## CLI
 
 ```text
-Usage: stardance <command> <file.hmx> [options]
+Usage: hmx <command> <file.hmx> [options]
 
 Commands:
   run   <file.hmx>        Transpile, compile, execute
@@ -274,7 +276,6 @@ fn main() {
 - `while` and `do ... while` conditions require `bool`.
 - `for` uses `for (initializer; condition; update)`.
 - A variable declared in a `for` initializer is scoped to that loop.
-- Arrays and lists are not currently implemented.
 
 ## Functions
 
@@ -365,10 +366,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | 28 `.hmx` fixtures | 28/28 passed |
-| Negative | Type, syntax, and resolver errors | 51/51 passed |
-| Stress/output | Recursion, loops, strings, output, exit codes | 18/18 passed |
-| Total | 97 test cases | 97/97 passed |
+| Integration | 30 `.hmx` fixtures | 30/30 passed |
+| Negative | Type, syntax, and resolver errors | 80/80 passed |
+| Stress/output | Recursion, loops, strings, arrays, tuples, output, exit codes | 30/30 passed |
+| Total | 140 test cases | 140/140 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is
@@ -376,7 +377,7 @@ The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 
 ## Performance and Language Comparisons
 
-Stardance is a source-to-C compiler, so generated numeric code is compiled by GCC with
+HMX is a source-to-C compiler, so generated numeric code is compiled by GCC with
 `-O2`. This gives it a strong runtime baseline and means simple arithmetic and loops
 can be close to the performance of equivalent optimized C code. That statement is an
 implementation property, not a published benchmark result.
@@ -385,7 +386,7 @@ No controlled cross-language benchmark is currently checked into this repository
 Performance depends on the program, compiler version, optimization flags, allocation,
 I/O, and how each language is measured. The honest current comparison is:
 
-| Language/runtime | Typical execution model | What to expect compared with Stardance |
+| Language/runtime | Typical execution model | What to expect compared with HMX |
 | --- | --- | --- |
 | C | Native compilation | Closest comparison; generated HMX numeric code is intended to be similar after GCC optimization |
 | C++ | Native compilation | Similar class of runtime performance; C++ has a much larger language and library ecosystem |
@@ -423,8 +424,6 @@ TESTRESULT.md           Detailed regression report
 The compiler's core milestone is complete. The following language features are listed
 as planned and are not implemented yet:
 
-- Arrays and lists
-- String methods such as `length` and `substring`
 - Multiple return values or tuples
 - Namespaces and modules across multiple `.hmx` files
 - Variadic parameters and default parameter values

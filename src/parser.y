@@ -32,7 +32,9 @@ Program* g_program = nullptr;
     std::vector<FunctionDecl::Param>* params;
     std::vector<ExprPtr>* args;
     std::vector<SwitchCase>* cases;
-    TypeKind tkind;
+    std::vector<TypeDesc>* tlist;
+    std::vector<std::string>* idlist;
+    TypeDesc* tdesc;
 }
 
 %token LET CONST FN LOOP FOR WHILE DO SWITCH CASE DEFAULT PRINT RETURN TRUE FALSE
@@ -54,7 +56,9 @@ Program* g_program = nullptr;
 %type <params> param_list
 %type <args> args
 %type <cases> case_list
-%type <tkind> param_type
+%type <tlist> tuple_elem_list
+%type <idlist> id_list
+%type <tdesc> param_type
 %type <program> program
 %type <stmts> stmt_list
 
@@ -246,6 +250,72 @@ var_decl
             v->is_mutable = false; v->initializer = ExprPtr($6); v->line = yylineno;
             free($2); $$ = v;
         }
+    | LET IDENTIFIER ':' '[' param_type ']' '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->annotation = TypeKind::Array;
+            v->array_element_type = $5->type;
+            delete $5;
+            v->is_mutable = true;
+            v->initializer = ExprPtr($8);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | LET IDENTIFIER ':' '(' tuple_elem_list ')' '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->annotation = TypeKind::Tuple;
+            v->tuple_members = std::move(*$5);
+            delete $5;
+            v->is_mutable = true;
+            v->initializer = ExprPtr($8);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | CONST IDENTIFIER ':' '[' param_type ']' '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->annotation = TypeKind::Array;
+            v->array_element_type = $5->type;
+            delete $5;
+            v->is_mutable = false;
+            v->initializer = ExprPtr($8);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | CONST IDENTIFIER ':' '(' tuple_elem_list ')' '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->annotation = TypeKind::Tuple;
+            v->tuple_members = std::move(*$5);
+            delete $5;
+            v->is_mutable = false;
+            v->initializer = ExprPtr($8);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | LET '(' id_list ')' '=' expression
+        {
+            auto* d = new DestructDecl();
+            d->names = std::move(*$3);
+            delete $3;
+            d->rhs = ExprPtr($6);
+            d->is_mutable = true;
+            d->line = yylineno;
+            $$ = d;
+        }
     ;
 
 assign_stmt
@@ -318,6 +388,25 @@ assign_stmt
             a->line = yylineno;
             free($1);
             $$ = a;
+        }
+    | IDENTIFIER '[' expression ']' '=' expression
+        {
+            auto* a = new ArrayAssignStmt();
+            a->name = $1;
+            a->index = ExprPtr($3);
+            a->rhs = ExprPtr($6);
+            a->line = yylineno;
+            free($1);
+            $$ = a;
+        }
+    | '(' id_list ')' '=' expression
+        {
+            auto* m = new MultiAssignStmt();
+            m->names = std::move(*$2);
+            delete $2;
+            m->rhs = ExprPtr($5);
+            m->line = yylineno;
+            $$ = m;
         }
     ;
 
@@ -518,42 +607,113 @@ case_list
     ;
 
 return_stmt
-    : RETURN expression
+    : RETURN args
         {
             auto* r = new ReturnStmt();
-            r->value = ExprPtr($2);
+            for (auto& e : *$2) {
+                r->values.push_back(std::move(e));
+            }
+            delete $2;
             r->line = yylineno;
             $$ = r;
         }
     | RETURN
         {
             auto* r = new ReturnStmt();
-            r->value = nullptr;
             r->line = yylineno;
             $$ = r;
         }
     ;
 
 param_type
-    : TYPE_INT     { $$ = TypeKind::Int; }
-    | TYPE_DECIMAL { $$ = TypeKind::Decimal; }
-    | TYPE_TEXT    { $$ = TypeKind::Text; }
-    | TYPE_BOOL    { $$ = TypeKind::Bool; }
-    | TYPE_CHAR    { $$ = TypeKind::Char; }
-    | TYPE_BYTE    { $$ = TypeKind::Byte; }
+    : TYPE_INT     { $$ = new TypeDesc{TypeKind::Int, TypeKind::Unknown, {}}; }
+    | TYPE_DECIMAL { $$ = new TypeDesc{TypeKind::Decimal, TypeKind::Unknown, {}}; }
+    | TYPE_TEXT    { $$ = new TypeDesc{TypeKind::Text, TypeKind::Unknown, {}}; }
+    | TYPE_BOOL    { $$ = new TypeDesc{TypeKind::Bool, TypeKind::Unknown, {}}; }
+    | TYPE_CHAR    { $$ = new TypeDesc{TypeKind::Char, TypeKind::Unknown, {}}; }
+    | TYPE_BYTE    { $$ = new TypeDesc{TypeKind::Byte, TypeKind::Unknown, {}}; }
+    | '[' param_type ']'
+        {
+            if ($2->type == TypeKind::Tuple) {
+                yyerror("arrays of tuples are not supported");
+            }
+            $$ = new TypeDesc{TypeKind::Array, $2->type, {}};
+            delete $2;
+        }
+    | '(' tuple_elem_list ')'
+        {
+            auto* td = new TypeDesc{TypeKind::Tuple, TypeKind::Unknown, {}};
+            td->tuple_members = std::move(*$2);
+            delete $2;
+            $$ = td;
+        }
+    ;
+
+tuple_elem_list
+    : tuple_elem_list ',' param_type
+        {
+            if ($3->type == TypeKind::Tuple) {
+                yyerror("nested tuple types are not supported");
+            }
+            $1->push_back(*$3);
+            delete $3;
+            $$ = $1;
+        }
+    | param_type ',' param_type
+        {
+            if ($1->type == TypeKind::Tuple || $3->type == TypeKind::Tuple) {
+                yyerror("nested tuple types are not supported");
+            }
+            auto* v = new std::vector<TypeDesc>();
+            v->push_back(*$1);
+            v->push_back(*$3);
+            delete $1;
+            delete $3;
+            $$ = v;
+        }
+    ;
+
+id_list
+    : id_list ',' IDENTIFIER
+        {
+            $1->push_back(std::string($3));
+            free($3);
+            $$ = $1;
+        }
+    | IDENTIFIER ',' IDENTIFIER
+        {
+            auto* v = new std::vector<std::string>();
+            v->push_back(std::string($1));
+            v->push_back(std::string($3));
+            free($1);
+            free($3);
+            $$ = v;
+        }
     ;
 
 param_list
     : param_list ',' IDENTIFIER ':' param_type
         {
-            $1->push_back({std::string($3), $5});
+            FunctionDecl::Param p;
+            p.name = std::string($3);
+            p.type = $5->type;
+            p.array_element_type = $5->element_type;
+            if (p.type == TypeKind::Tuple) p.tuple_members = std::move($5->tuple_members);
+            delete $5;
+            $1->push_back(std::move(p));
             free($3);
             $$ = $1;
         }
     | IDENTIFIER ':' param_type
         {
             auto* v = new std::vector<FunctionDecl::Param>();
-            v->push_back({std::string($1), $3});
+            FunctionDecl::Param p;
+            p.name = std::string($1);
+            p.type = $3->type;
+            p.array_element_type = $3->element_type;
+            if (p.type == TypeKind::Tuple) p.tuple_members = std::move($3->tuple_members);
+            delete $3;
+            v->push_back(std::move(p));
             free($1);
             $$ = v;
         }
@@ -578,7 +738,10 @@ fn_decl
             auto* f = new FunctionDecl();
             f->name = $2;
             f->has_return_type = true;
-            f->return_type = $6;
+            f->return_type = $6->type;
+            f->return_array_element_type = $6->element_type;
+            if (f->return_type == TypeKind::Tuple) f->return_tuple_members = std::move($6->tuple_members);
+            delete $6;
             for (auto& s : *$8) {
                 f->body.push_back(std::move(s));
             }
@@ -609,7 +772,10 @@ fn_decl
             f->params = *$4;
             delete $4;
             f->has_return_type = true;
-            f->return_type = $7;
+            f->return_type = $7->type;
+            f->return_array_element_type = $7->element_type;
+            if (f->return_type == TypeKind::Tuple) f->return_tuple_members = std::move($7->tuple_members);
+            delete $7;
             for (auto& s : *$9) {
                 f->body.push_back(std::move(s));
             }
@@ -779,6 +945,22 @@ factor
             auto* call = new CallExpr(std::string($1), {});
             free($1);
             $$ = call;
+        }
+    | IDENTIFIER '[' expression ']'
+        {
+            auto* idx = new ArrayIndexExpr(std::string($1), ExprPtr($3));
+            free($1);
+            $$ = idx;
+        }
+    | '[' ']'
+        {
+            $$ = new ArrayLiteral({});
+        }
+    | '[' args ']'
+        {
+            auto* arr = new ArrayLiteral(std::move(*$2));
+            delete $2;
+            $$ = arr;
         }
     | factor AS TYPE_INT
         {

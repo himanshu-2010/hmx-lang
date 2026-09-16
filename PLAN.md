@@ -1,8 +1,11 @@
-# Stardance — Implementation Plan
+# HMX — Implementation Plan
 
-**Status: approved — not yet executed**
+**Status: executed** — all 8 phases below are complete. Post-plan features
+(string concatenation, the full loop family, arrays, and multiple return
+values / tuples) are tracked in [PROGRESS.md](PROGRESS.md); the roadmap is in
+[SYNTAX.md](SYNTAX.md) §15.
 
-Incremental plan to take Stardance from its current runtime to full
+Incremental plan to take HMX from its current runtime to full
 hello-world-capable programs. Each phase is self-contained, builds + passes all
 prior fixtures, and lands one complete feature.
 
@@ -16,6 +19,7 @@ prior fixtures, and lands one complete feature.
 - `fn` (zero-arg, void, uncallable)
 - Arithmetic operators `+ - * /`
 - Line comments `//`
+- Arrays, indexing, element assignment, `length()`
 - Full pipeline: lexer → parser → type resolution → codegen → `gcc -O2`
 
 ## Spec'd but not yet implemented

@@ -2,8 +2,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-BIN="./build/stardance"
-TMPDIR="/tmp/stardance_stress_tests"
+BIN="./build/hmx"
+TMPDIR="/tmp/hmx_stress_tests"
 mkdir -p "$TMPDIR"
 
 PASS=0
@@ -258,6 +258,147 @@ test_output "string_methods" \
         print(substring(message, 0, 5))
     }' \
     "$(printf '11\nhello')"
+
+test_output "array_sum_loop" \
+    'fn main() {
+        let a: [int] = [5, 10, 15, 20]
+        let total = 0
+        let i = 0
+        while (i < length(a)) {
+            total += a[i]
+            i++
+        }
+        print(total)
+    }' \
+    "50"
+
+test_output "array_text_elements" \
+    'fn main() {
+        let names: [text] = ["alpha", "beta", "gamma"]
+        print(names[1])
+        print(length(names[2]))
+    }' \
+    "$(printf 'beta\n5')"
+
+test_output "array_return_and_param" \
+    'fn make() -> [int] {
+        return [1, 2, 3]
+    }
+    fn first(a: [int]) -> int {
+        return a[0]
+    }
+    fn main() {
+        let arr = make()
+        print(length(arr))
+        print(first(arr))
+        arr[2] = 9
+        print(arr[2])
+    }' \
+    "$(printf '3\n1\n9')"
+
+test_exit_code "array_oob_high" \
+    'fn main() {
+        let a: [int] = [1, 2]
+        print(a[2])
+    }' \
+    1
+
+test_exit_code "array_oob_low" \
+    'fn main() {
+        let a: [int] = [1, 2]
+        print(a[0 - 1])
+    }' \
+    1
+
+test_output "tuple_multi_return_destructure" \
+    'fn quotrem(a: int, b: int) -> (int, int) {
+        return a / b, a - (a / b) * b
+    }
+    fn main() {
+        let (q, r) = quotrem(17, 5)
+        print(q)
+        print(r)
+    }' \
+    "$(printf '3\n2')"
+
+test_output "tuple_inference_and_index" \
+    'fn quotrem(a: int, b: int) -> (int, int) {
+        return a / b, a - (a / b) * b
+    }
+    fn main() {
+        let pair = quotrem(10, 3)
+        print(pair[0])
+        print(pair[1])
+    }' \
+    "$(printf '3\n1')"
+
+test_output "tuple_multi_assign" \
+    'fn quotrem(a: int, b: int) -> (int, int) {
+        return a / b, a - (a / b) * b
+    }
+    fn main() {
+        let (q, r) = quotrem(17, 5)
+        (q, r) = quotrem(20, 7)
+        print(q)
+        print(r)
+    }' \
+    "$(printf '2\n6')"
+
+test_output "tuple_param_and_call" \
+    'fn pair_it(a: int, b: int) -> (int, int) {
+        return a, b
+    }
+    fn swap(t: (int, int)) -> (int, int) {
+        return t[1], t[0]
+    }
+    fn main() {
+        let pair = pair_it(4, 5)
+        let swapped = swap(pair)
+        print(swapped[0])
+        print(swapped[1])
+    }' \
+    "$(printf '5\n4')"
+
+test_output "tuple_text_member" \
+    'fn make_pair() -> (int, text) {
+        return 7, "hi"
+    }
+    fn main() {
+        let (n, s) = make_pair()
+        print(n)
+        print(s)
+    }' \
+    "$(printf '7\nhi')"
+
+test_output "tuple_array_member" \
+    'fn best_of(scores: [int]) -> ([int], int) {
+        let best = scores[0]
+        let i = 0
+        while (i < length(scores)) {
+            if (scores[i] > best) {
+                best = scores[i]
+            }
+            i++
+        }
+        return scores, best
+    }
+    fn main() {
+        let result = best_of([3, 9, 6])
+        print(result[1])
+        print(length(result[0]))
+    }' \
+    "$(printf '9\n3')"
+
+test_output "tuple_annotated_decl" \
+    'fn quotrem(a: int, b: int) -> (int, int) {
+        return a / b, a - (a / b) * b
+    }
+    fn main() {
+        let tagged: (int, int) = quotrem(5, 2)
+        print(tagged[0])
+        print(tagged[1])
+    }' \
+    "$(printf '2\n1')"
 
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"

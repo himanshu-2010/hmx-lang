@@ -1,13 +1,13 @@
-# Stardance Compiler — Progress Log
+# HMX Compiler — Progress Log
 
 Last updated: 2026-09-03
 ## Objective
-Implement the Stardance transpiler's 8-phase plan (from `PLAN.md`) so users can write full hello-world-capable programs. Multi-stage pipeline: lexer → parser → type resolution → codegen → gcc.
+Implement the HMX transpiler's 8-phase plan (from `PLAN.md`) so users can write full hello-world-capable programs. Multi-stage pipeline: lexer → parser → type resolution → codegen → gcc.
 
 ## Build / Test
-- Build: `cd build && cmake .. && make` (workspace: `/home/himanshu/Documents/hack-club/stardance`)
+- Build: `cd build && cmake .. && make` (workspace: `/home/himanshu/Documents/hack-club/hmx-lang`)
 - Tests: `./tests/run_integration.sh` runs `tests/fixtures/*.hmx`; fixtures must exit 0.
-- CLI: `./build/stardance run|build <file.hmx> [-keep-c]`
+- CLI: `./build/hmx run|build <file.hmx> [-keep-c]`
 - Deps: flex 2.6.4, bison 3.8.2, cmake 4.4.3, gcc/g++ 16.2.1.
 
 ## Language decisions (locked)
@@ -97,14 +97,64 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   bool, update is assignment/compound/`++`/`--`, and init declarations are scoped to the
   loop header/body.
 - Added `do { ... } while (cond)` with bool condition checks and no trailing semicolon in
-  Stardance source.
+  HMX source.
 - Fixtures: `for.hmx`, `for_assignment_init.hmx`, `do_while.hmx`, `loops_nested.hmx`.
 - Full regression: 23/23 integration, 35/35 negative, 14/14 stress/output.
 
+### Arrays — DONE
+- Lexer: restored `[` / `]` tokens.
+- AST: `ArrayLiteral`, `ArrayIndexExpr`, `ArrayAssignStmt` nodes; `TypeKind::Array` and
+  `TypeDesc` struct for `[type]` annotations; `array_element_type` fields on `VarDecl`,
+  `FunctionDecl::Param`, `Symbol`; `return_array_element_type` on `FunctionDecl`.
+- Parser: `'[' param_type ']'` for `[int]`/`[text]`/… type syntax; `factor` rules for
+  `'[' args ']'` (literal) and `IDENTIFIER '[' expression ']'` (index); `assign_stmt` rule
+  for `IDENTIFIER '[' expression ']' '=' expression`; `let`/`const` var_decl rules for
+  array annotations.
+- Resolver: resolves `ArrayLiteral` element types with same-type checking; validates
+  `ArrayIndexExpr` (must be array, index must be `int`); validates `ArrayAssignStmt`
+  (element type match, immutability); guards against binary/ternary/print on arrays;
+  extends `length()` builtin to arrays; checks array-element types in function calls.
+- Codegen: emits `sd_array` struct typedef and `sd_make_array` / `sd_check_index` runtime
+  helpers; `ArrayLiteral` → heap-cloned compound literal; `ArrayIndexExpr` → cast + bounds
+  check; `ArrayAssignStmt` → cast + bounds check + assignment; `length(arr)` → `.length`.
+- Fixtures: `arrays.hmx`; 11 new negative tests; 5 new stress tests (loop sum, text
+  elements, return/param round-trip, bounds-check exit codes).
+- Docs: SYNTAX.md §5.3, §9, §10, §13.2 updated; roadmap §15 arrays row removed.
+- Full regression: 29/29 integration, 62/62 negative, 23/23 stress/output.
+
+### Multiple return values / tuples — DONE
+- AST: `TypeKind::Tuple` and `TypeDesc::tuple_members`; `tuple_members` fields on `Param`,
+  `FunctionDecl` (`return_tuple_members`), `VarDecl`, `Symbol`; new `DestructDecl` and
+  `MultiAssignStmt` nodes; `ReturnStmt::values` vector; `ArrayIndexExpr` tuple fields
+  (`is_tuple` / `member_index` / `array_of_element_type`).
+- Parser: `'(' tuple_elem_list ')'` for `(int, int)` type syntax (params, annotations,
+  return types); `let (a, b) = f()` destructuring declaration; `(a, b) = f()` multi-assign
+  statement; `return a, b` multi-value return. Grammar guard rejects nested tuples and
+  arrays of tuples ("nested tuple types / arrays of tuples are not supported").
+- Resolver: `FunctionSig` tuple param/return shaping; `expr_tuple_members()`;
+  `types_match()`; tuple call-argument matching; `ArrayIndexExpr` tuple branch (constant
+  in-range int index only); guards for print/binary/ternary/length on tuples; VarDecl
+  tuple annotation + inference; destructuring/multi-assign member-wise checks; reworked
+  `ReturnStmt` compound member-wise validation; for-header rejection of destructuring.
+- Codegen: `tuple_types_` collection + `sd_tuple_<type>_...` struct typedefs (scalars as
+  C types, arrays as `sd_array`); multi-value return → compound literal; destructure /
+  multi-assign → temp struct + field extraction (`__sd_dN` / `__sd_mN`); tuple param/return
+  signatures; `.fN` field emission for tuple indexing.
+- Fixtures: `tuples.hmx`; 18 new negative tests; 7 new stress tests (destructure,
+  inference+index, multi-assign, tuple params, text member, array member, annotated decl).
+- Docs: SYNTAX.md §5.4 added; §7.1/§7.2/§9/§10/§12.2/§12.3 updated; roadmap tuple row removed.
+- Known quirk: the document bison conflict count is now 4 (return-vs-statement, tuple-assign
+  vs args, call-vs-factor, `not ... as`), all resolved by shift; the `return` ambiguity now
+  also covers `return` followed by a `(a, b) = ...` statement.
+- Full regression: 30/30 integration, 80/80 negative, 30/30 stress/output.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
-- `return` followed immediately by `IDENTIFIER = ...` on next line misparses (return expr wins via shift); acceptable edge case.
-- bison shift/reduce conflict is only the harmless `return` ambiguity (resolved by shift).
+- `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.
+- bison emits four harmless shift/reduce conflicts, all resolved by shift: the `return expr`
+  vs bare `return` ambiguity (now also covering a following tuple multi-assign statement),
+  the `IDENTIFIER '[' ...` array indexing/assignment ambiguity, the `IDENTIFIER '(' ...`
+  call-vs-factor ambiguity, and the `not factor` vs `factor AS` ambiguity.
 - Duplicate declarations and missing definite returns are rejected by the type resolver.
 - `else if` chains are implemented and covered by `else_if.hmx`.
 - Ternary expressions, explicit numeric casts, and immutable `const` bindings are implemented.

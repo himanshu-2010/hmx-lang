@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(stardance CXX)
+project(hmx CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,7 +17,7 @@ BISON_TARGET(Parser
 )
 ADD_FLEX_BISON_DEPENDENCY(Lexer Parser)
 
-add_executable(stardance
+add_executable(hmx
     src/main.cpp
     src/ast.cpp
     src/type_resolver.cpp
@@ -26,9 +26,9 @@ add_executable(stardance
     ${BISON_Parser_OUTPUTS}
 )
 
-target_include_directories(stardance PRIVATE
+target_include_directories(hmx PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_SOURCE_DIR}/src
 )
 
-target_compile_options(stardance PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(hmx PRIVATE -Wall -Wextra -Wpedantic)

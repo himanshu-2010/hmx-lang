@@ -1,21 +1,23 @@
-# Stardance Transpiler — Test Execution Report
+# HMX Transpiler — Test Execution Report
 
-**Date:** 2026-09-03  
-**Target Project:** Stardance Transpiler (`/home/himanshu/Documents/hack-club/stardance`)  
-**Status:** ALL TESTS PASSED (97 / 97)
+**Date:** 2026-09-11  
+**Target Project:** HMX Transpiler (`/home/himanshu/Documents/hack-club/hmx-lang`)  
+**Status:** ALL TESTS PASSED (140 / 140)
 
 ---
 
 ## Executive Summary
 
-A comprehensive, rigorous re-test was conducted against the Stardance transpiler pipeline (Lexer $\rightarrow$ Parser $\rightarrow$ Type Resolver $\rightarrow$ Codegen $\rightarrow$ GCC) after incorporation of **Post-Plan Language Additions**:
-1. **`text + text` String Concatenation**: Heap-allocated runtime helper `sd_concat(...)` lowering string concatenation chains.
-2. **Full Loop Family**: `loop(count)`, `while (condition)`, C-style `for`, and C-style `do-while`.
+A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **Multiple Return Values / Tuples**:
+1. **Multi-value return types**: `fn divmod(...) -> (int, int)` with `return a / b, r`.
+2. **Destructuring and multi-assignment**: `let (q, r) = f()` and `(q, r) = f()`.
+3. **Whole-tuple variables and indexing**: `let t = f()`, `t[0]`, tuple params, tuple members
+   of scalar and array type, emitted as C structs.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 97
-> - **Passed:** 97
+> - **Total Test Cases Executed:** 140
+> - **Passed:** 140
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -34,9 +36,9 @@ A comprehensive, rigorous re-test was conducted against the Stardance transpiler
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (28/28 Passed)
+### 1. Integration Fixtures (30/30 Passed)
 
-These tests compile Stardance (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
+These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
 | Test Case Name | Feature Tested | Description | Status |
 | :--- | :--- | :--- | :---: |
@@ -64,12 +66,14 @@ These tests compile Stardance (`.hmx`) source files into native C binaries via G
 | `string_ops.hmx` | String Semantics | String equality (`==`) and inequality (`!=`) lowering to `strcmp` in C | **PASS** |
 | `while.hmx` | **[NEW]** While Loop | `while (cond) { ... }` conditional iteration loops | **PASS** |
 | `advanced_functions.hmx` | Type Return / Return in Loop | Functions returning `text`, `decimal`, `bool`, and early `return` inside `loop` blocks | **PASS** |
+| `arrays.hmx` | **[NEW]** Array Support | Array literals, indexing, element assignment, `length()`, typed params, returns | **PASS** |
+| `tuples.hmx` | **[NEW]** Tuple Support | Multi-value return, destructuring, multi-assignment, whole-tuple vars, tuple params, `[int]` member | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (51/51 Passed)
+### 2. Negative & Error Handling Suite (80/80 Passed)
 
-These tests verify that invalid Stardance constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
+These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
 | Test Case Name | Target Error Condition | Expected Error Diagnostic Pattern | Status |
 | :--- | :--- | :--- | :---: |
@@ -108,10 +112,39 @@ These tests verify that invalid Stardance constructs are caught at compile-time 
 | `syntax_unclosed_paren` | Unclosed Paren | `Parse error` | **PASS** |
 | `unterminated_block_comment` | Unclosed Comment | `unterminated block comment` | **PASS** |
 | `unary_minus_not_in_spec` | Unary Minus `-X` | `Parse error` | **PASS** |
+| `array_element_type_mismatch` | **[NEW]** Array Element Mismatch | Array init type vs annotation | **PASS** |
+| `array_mixed_element_types` | **[NEW]** Mixed Array Elements | Array with heterogeneous literal types | **PASS** |
+| `array_untyped_empty` | **[NEW]** Untyped Empty Array | `[]` without annotation | **PASS** |
+| `array_nested` | **[NEW]** Nested Array | `[[1], [2]]` literal | **PASS** |
+| `array_index_on_non_array` | **[NEW]** Index on Non-Array | Indexing an `int` variable | **PASS** |
+| `array_index_non_int` | **[NEW]** Non-Int Index | `a["x"]` | **PASS** |
+| `array_assign_type_mismatch` | **[NEW]** Element Assign Mismatch | Assign `text` to `[int]` element | **PASS** |
+| `array_assign_immutable` | **[NEW]** Assign to Const Array | Write to `const` array element | **PASS** |
+| `array_binary_op` | **[NEW]** Binary Op on Arrays | `a + a` where `a` is `[int]` | **PASS** |
+| `print_array` | **[NEW]** Print Array | `print(a)` where `a` is `[int]` | **PASS** |
+| `array_param_element_mismatch` | **[NEW]** Param Element Mismatch | `f(["x"])` where `f(a: [int])` | **PASS** |
+| `tuple_print` | **[NEW]** Print Tuple | `print(f())` where `f` returns `(int, int)` | **PASS** |
+| `tuple_binary_op` | **[NEW]** Binary Op on Tuple | `t + t` where `t` is `(int, int)` | **PASS** |
+| `tuple_ternary` | **[NEW]** Tuple Ternary Branch | Ternary selecting `(int, int)` values | **PASS** |
+| `tuple_index_non_constant` | **[NEW]** Variable Tuple Index | `t[i]` with loop variable | **PASS** |
+| `tuple_index_out_of_range` | **[NEW]** Tuple Index OOR | `t[2]` on a 2-member tuple | **PASS** |
+| `tuple_index_on_int` | **[NEW]** Index on Non-Tuple | Indexing an `int` variable | **PASS** |
+| `tuple_destruct_count_mismatch` | **[NEW]** Destruct Arity Mismatch | 3 targets vs 2-member tuple | **PASS** |
+| `tuple_destruct_non_tuple` | **[NEW]** Destruct Non-Tuple | `let (a, b) = 5` | **PASS** |
+| `tuple_destruct_target_type_mismatch` | **[NEW]** Destruct Target Mismatch | Assign `(int, text)` to `(int, int)` targets | **PASS** |
+| `tuple_destruct_undefined_target` | **[NEW]** Undefined Destruct Target | `(a, b) = f()` with undeclared names | **PASS** |
+| `tuple_return_count_mismatch` | **[NEW]** Return Arity Mismatch | 3 values vs 2-member tuple return | **PASS** |
+| `tuple_return_member_type_mismatch` | **[NEW]** Return Member Mismatch | `return 1, "x"` for `-> (int, int)` | **PASS** |
+| `tuple_return_single_whole_scalar` | **[NEW]** Scalar Return vs Tuple | `return 5` for `-> (int, int)` | **PASS** |
+| `tuple_nested` | **[NEW]** Nested Tuple Type | `-> ((int, int), int)` | **PASS** |
+| `tuple_annotated_mismatch` | **[NEW]** Annotated Tuple Var | `(int, int)` var initialized with `(int, text)` | **PASS** |
+| `tuple_length` | **[NEW]** `length()` on Tuple | `length(t)` where `t` is a tuple | **PASS** |
+| `tuple_bare_return` | **[NEW]** Bare Return in Tuple Fn | `return` with no value in `-> (int, int)` | **PASS** |
+| `tuple_call_arg_shape_mismatch` | **[NEW]** Arg Tuple Shape Mismatch | Pass `(int, text)` where `(int, int)` expected | **PASS** |
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (18/18 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (30/30 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, and string concatenation chains.
 
@@ -131,6 +164,18 @@ These tests verify exact runtime output matching and process exit code propagati
 | `for_loop_factorial` | **[NEW]** For Loop | Factorial using C-style `for` | `720` | **PASS** |
 | `do_while_countdown` | **[NEW]** Do-While Loop | Countdown with post-condition loop | `3\n2\n1` | **PASS** |
 | `all_loop_forms_nested` | **[NEW]** Loop Nesting | Nested `loop`, `for`, `while`, and `do-while` | `12` | **PASS** |
+| `array_sum_loop` | **[NEW]** Array Loop Sum | `while` over `[int]` accumulating totals | `50` | **PASS** |
+| `array_text_elements` | **[NEW]** Text Array Elements | `[text]` indexing and nested `length()` | `beta\n5` | **PASS** |
+| `array_return_and_param` | **[NEW]** Array Return/Param | Function returns `[int]`, reads and mutates it | `3\n1\n9` | **PASS** |
+| `array_oob_high` | **[NEW]** Bounds Check High | Index past the end | Exit Code: `1` | **PASS** |
+| `array_oob_low` | **[NEW]** Bounds Check Low | Negative index | Exit Code: `1` | **PASS** |
+| `tuple_multi_return_destructure` | **[NEW]** Tuple Destructure | `quotrem(17, 5)` destructured | `3\n2` | **PASS** |
+| `tuple_inference_and_index` | **[NEW]** Tuple Inference + Index | Whole-tuple var with `[0]` / `[1]` access | `3\n1` | **PASS** |
+| `tuple_multi_assign` | **[NEW]** Tuple Multi-Assign | `(q, r) = quotrem(20, 7)` | `2\n6` | **PASS** |
+| `tuple_param_and_call` | **[NEW]** Tuple Params | `pair_it` + `swap(t: (int, int))` nesting | `5\n4` | **PASS** |
+| `tuple_text_member` | **[NEW]** Text Tuple Member | Destructure `(int, text)` return | `7\nhi` | **PASS** |
+| `tuple_array_member` | **[NEW]** Array Tuple Member | Tuple holding `[1,2,3]` + best score | `9\n3` | **PASS** |
+| `tuple_annotated_decl` | **[NEW]** Annotated Tuple Decl | `let tagged: (int, int) = ...` | `2\n1` | **PASS** |
 
 ---
 
@@ -138,8 +183,8 @@ These tests verify exact runtime output matching and process exit code propagati
 
 | Command / Option Tested | Action Taken | Expected Result | Status |
 | :--- | :--- | :--- | :---: |
-| `./stardance run <file.hmx>` | Transpile, compile, execute | Binary executes, temporary C file removed | **PASS** |
-| `./stardance build <file.hmx>` | Transpile and compile only | Binary created, output `Built: <file>` | **PASS** |
+| `./hmx run <file.hmx>` | Transpile, compile, execute | Binary executes, temporary C file removed | **PASS** |
+| `./hmx build <file.hmx>` | Transpile and compile only | Binary created, output `Built: <file>` | **PASS** |
 | `-keep-c` Flag | Transpile & keep source | Intermediate `build_temp.c` retained | **PASS** |
 | Invalid Arguments / Missing File | Run without valid file | Exit `1` with usage / error diagnostic | **PASS** |
 
@@ -150,7 +195,7 @@ These tests verify exact runtime output matching and process exit code propagati
 To execute all test suites again locally:
 
 ```bash
-cd /home/himanshu/Documents/hack-club/stardance
+cd /home/himanshu/Documents/hack-club/hmx-lang
 
 # 1. Build transpiler binary
 cd build && cmake .. && make && cd ..
@@ -168,6 +213,8 @@ cd build && cmake .. && make && cd ..
 ---
 
 > [!TIP]
-> **Conclusion:** The loop family now works end-to-end without regressions: counted
-> `loop`, boolean `while`, C-style `for`, and C-style `do-while` all compile through
-> the Stardance pipeline and pass integration, negative, and stress/output tests.
+> **Conclusion:** Tuples now work end-to-end without regressions: multi-value returns,
+> destructuring declarations, multi-assignment, whole-tuple variables with constant
+> indexing, tuple parameters, and tuple members of both scalar and array type all
+> compile through the HMX pipeline (generating `sd_tuple_*` C structs) and pass
+> integration, negative, and stress/output tests alongside the earlier array feature.

@@ -1,0 +1,60 @@
+fn quotrem(a: int, b: int) -> (int, int) {
+    return a / b, a - (a / b) * b
+}
+
+fn swap(t: (int, int)) -> (int, int) {
+    return t[1], t[0]
+}
+
+fn first_of(t: (int, int)) -> int {
+    return t[0]
+}
+
+fn make_pair() -> (int, text) {
+    return 7, "hi"
+}
+
+fn best_of(scores: [int]) -> ([int], int) {
+    let best = scores[0]
+    let i = 0
+    while (i < length(scores)) {
+        if (scores[i] > best) {
+            best = scores[i]
+        }
+        i++
+    }
+    return scores, best
+}
+
+fn main() {
+    let (q, r) = quotrem(17, 5)
+    print(q)
+    print(r)
+
+    let pair = quotrem(10, 3)
+    print(pair[0])
+    print(pair[1])
+
+    (q, r) = quotrem(20, 7)
+    print(q)
+    print(r)
+
+    print(first_of(pair))
+    print(first_of(swap(pair)))
+
+    let (n, s) = make_pair()
+    print(n)
+    print(s)
+
+    let whole = make_pair()
+    print(whole[1])
+
+    let tagged: (int, int) = quotrem(5, 2)
+    print(tagged[0])
+    print(tagged[1])
+
+    let result = best_of([3, 9, 6])
+    let top = result[1]
+    print(top)
+    print(length(result[0]))
+}

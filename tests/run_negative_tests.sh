@@ -2,8 +2,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-BIN="./build/stardance"
-TMPDIR="/tmp/stardance_neg_tests"
+BIN="./build/hmx"
+TMPDIR="/tmp/hmx_neg_tests"
 mkdir -p "$TMPDIR"
 
 PASS=0
@@ -409,6 +409,253 @@ test_error "unary_minus_not_in_spec" \
         let x = -5
     }' \
     "Parse error"
+
+test_error "array_element_type_mismatch" \
+    'fn main() {
+        let a: [int] = ["x", "y"]
+    }' \
+    "type mismatch: variable 'a' declared as array of int"
+
+test_error "array_mixed_element_types" \
+    'fn main() {
+        let a = [1, 2, "three"]
+    }' \
+    "array elements must all be the same type"
+
+test_error "array_untyped_empty" \
+    'fn main() {
+        let a = []
+        print(a[0])
+    }' \
+    "cannot infer array element type"
+
+test_error "array_nested" \
+    'fn main() {
+        let a: [int] = [[1], [2]]
+    }' \
+    "nested arrays are not supported"
+
+test_error "array_index_on_non_array" \
+    'fn main() {
+        let n = 5
+        print(n[0])
+    }' \
+    "is not an array"
+
+test_error "array_index_non_int" \
+    'fn main() {
+        let a: [int] = [1]
+        print(a["x"])
+    }' \
+    "array index must be int"
+
+test_error "array_assign_type_mismatch" \
+    'fn main() {
+        let a: [int] = [1]
+        a[0] = "x"
+    }' \
+    "cannot assign text to array element of int"
+
+test_error "array_assign_immutable" \
+    'fn main() {
+        const a: [int] = [1]
+        a[0] = 5
+    }' \
+    "cannot modify immutable variable"
+
+test_error "array_binary_op" \
+    'fn main() {
+        let a: [int] = [1]
+        print(a + a)
+    }' \
+    "not defined for type array"
+
+test_error "print_array" \
+    'fn main() {
+        let a: [int] = [1]
+        print(a)
+    }' \
+    "cannot print an array"
+
+test_error "array_param_element_mismatch" \
+    'fn f(a: [int]) {
+        print(1)
+    }
+    fn main() {
+        f(["x"])
+    }' \
+    "expects array of int, got array of text"
+
+test_error "tuple_print" \
+    'fn f() -> (int, int) {
+        return 1, 2
+    }
+    fn main() {
+        print(f())
+    }' \
+    "cannot print a tuple"
+
+test_error "tuple_binary_op" \
+    'fn f() -> (int, int) {
+        return 1, 2
+    }
+    fn main() {
+        let t = f()
+        print(t + t)
+    }' \
+    "not defined for type tuple"
+
+test_error "tuple_ternary" \
+    'fn f(flag: bool) -> (int, int) {
+        if (flag) {
+            return 1, 2
+        }
+        return 3, 4
+    }
+    fn main() {
+        let t = true ? f(true) : f(false)
+    }' \
+    "ternary branches cannot be tuples"
+
+test_error "tuple_index_non_constant" \
+    'fn f() -> (int, int) {
+        return 1, 2
+    }
+    fn main() {
+        let t = f()
+        let i = 0
+        print(t[i])
+    }' \
+    "tuple index must be an integer constant"
+
+test_error "tuple_index_out_of_range" \
+    'fn f() -> (int, int) {
+        return 1, 2
+    }
+    fn main() {
+        let t = f()
+        print(t[2])
+    }' \
+    "tuple index 2 out of range"
+
+test_error "tuple_index_on_int" \
+    'fn main() {
+        let n = 5
+        print(n[0])
+    }' \
+    "is not an array"
+
+test_error "tuple_destruct_count_mismatch" \
+    'fn f() -> (int, int) {
+        return 1, 2
+    }
+    fn main() {
+        let (a, b, c) = f()
+    }' \
+    "cannot destructure tuple of 2 members into 3 variables"
+
+test_error "tuple_destruct_non_tuple" \
+    'fn main() {
+        let (a, b) = 5
+    }' \
+    "right side of tuple destructuring must be a tuple"
+
+test_error "tuple_destruct_target_type_mismatch" \
+    'fn f() -> (int, text) {
+        return 1, "x"
+    }
+    fn main() {
+        let x = 5
+        let y = 6
+        (x, y) = f()
+    }' \
+    "type mismatch"
+
+test_error "tuple_destruct_undefined_target" \
+    'fn f() -> (int, int) {
+        return 1, 2
+    }
+    fn main() {
+        (a, b) = f()
+    }' \
+    "undefined variable"
+
+test_error "tuple_return_count_mismatch" \
+    'fn f() -> (int, int) {
+        return 1, 2, 3
+    }
+    fn main() {
+        print(0)
+    }' \
+    "returns 2 values but return statement provides 3"
+
+test_error "tuple_return_member_type_mismatch" \
+    'fn f() -> (int, int) {
+        return 1, "x"
+    }
+    fn main() {
+        print(0)
+    }' \
+    "return value 2 has type text"
+
+test_error "tuple_return_single_whole_scalar" \
+    'fn f() -> (int, int) {
+        return 5
+    }
+    fn main() {
+        print(0)
+    }' \
+    "type mismatch: return int but function returns"
+
+test_error "tuple_nested" \
+    'fn f() -> ((int, int), int) {
+        return 1, 2, 3
+    }
+    fn main() {
+        print(0)
+    }' \
+    "nested tuple types are not supported"
+
+test_error "tuple_annotated_mismatch" \
+    'fn f() -> (int, text) {
+        return 1, "x"
+    }
+    fn main() {
+        let t: (int, int) = f()
+    }' \
+    "but initialized with"
+
+test_error "tuple_length" \
+    'fn f() -> (int, int) {
+        return 1, 2
+    }
+    fn main() {
+        let t = f()
+        print(length(t))
+    }' \
+    "builtin .length. expects text or array, got tuple"
+
+test_error "tuple_bare_return" \
+    'fn f() -> (int, int) {
+        return
+    }
+    fn main() {
+        print(0)
+    }' \
+    "bare return used"
+
+test_error "tuple_call_arg_shape_mismatch" \
+    'fn pair_txt() -> (int, text) {
+        return 1, "x"
+    }
+    fn g(t: (int, int)) -> int {
+        return t[0]
+    }
+    fn main() {
+        let p = pair_txt()
+        print(g(p))
+    }' \
+    "expects tuple \\(int, int\\), got tuple \\(int, text\\)"
 
 echo ""
 echo "Negative Tests Passed: $PASS, Failed: $FAIL"
