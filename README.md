@@ -1,11 +1,14 @@
 # HMX
 
-HMX is a small programming language and compiler built for Hack Club. HMX
+HMX is a small programming language and compiler written by Himanshu Kumar. HMX
 source files use the `.hmx` extension. The compiler translates HMX source to C, then
 uses GCC to produce a native executable.
 
-The project is intentionally compact and readable: the implementation is a Flex lexer,
-a Bison parser, a C++ AST/type resolver/code generator, and a GCC-based backend.
+For small, self-contained programs that need to be fast and easy to write, HMX is a
+good fit: its syntax stays minimal, so you spend your time on the problem instead of
+the boilerplate. Writing a compiler like this is also deliberately simple to follow —
+the whole pipeline is a Flex lexer, a Bison parser, a C++ AST/type resolver/code
+generator, and a GCC-based backend, all compact and readable.
 
 ## Status
 

@@ -5,7 +5,7 @@ Last updated: 2026-09-03
 Implement the HMX transpiler's 8-phase plan (from `PLAN.md`) so users can write full hello-world-capable programs. Multi-stage pipeline: lexer → parser → type resolution → codegen → gcc.
 
 ## Build / Test
-- Build: `cd build && cmake .. && make` (workspace: `/home/himanshu/Documents/hack-club/hmx-lang`)
+- Build: `cd build && cmake .. && make` (workspace: this repo's `hmx-lang` dir)
 - Tests: `./tests/run_integration.sh` runs `tests/fixtures/*.hmx`; fixtures must exit 0.
 - CLI: `./build/hmx run|build <file.hmx> [-keep-c]`
 - Deps: flex 2.6.4, bison 3.8.2, cmake 4.4.3, gcc/g++ 16.2.1.

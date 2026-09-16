@@ -1,7 +1,7 @@
 # HMX Transpiler — Test Execution Report
 
 **Date:** 2026-09-11  
-**Target Project:** HMX Transpiler (`/home/himanshu/Documents/hack-club/hmx-lang`)  
+**Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
 **Status:** ALL TESTS PASSED (140 / 140)
 
 ---
@@ -195,7 +195,7 @@ These tests verify exact runtime output matching and process exit code propagati
 To execute all test suites again locally:
 
 ```bash
-cd /home/himanshu/Documents/hack-club/hmx-lang
+cd hmx-lang
 
 # 1. Build transpiler binary
 cd build && cmake .. && make && cd ..
