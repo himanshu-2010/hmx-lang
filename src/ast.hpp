@@ -239,6 +239,8 @@ struct FunctionDecl : Statement {
         TypeKind type;
         TypeKind array_element_type = TypeKind::Unknown;   // valid when type == Array
         std::vector<TypeDesc> tuple_members;               // valid when type == Tuple
+        ExprPtr default_value;                             // null when no default
+        bool variadic = false;                             // trailing ...elem collector
     };
     std::vector<Param> params;
     TypeKind return_type = TypeKind::Unknown;

@@ -30,6 +30,7 @@ Program* g_program = nullptr;
     Program* program;
     std::vector<StmtPtr>* stmts;
     std::vector<FunctionDecl::Param>* params;
+    FunctionDecl::Param* param;   // single parameter (may carry default/variadic)
     std::vector<ExprPtr>* args;
     std::vector<SwitchCase>* cases;
     std::vector<TypeDesc>* tlist;
@@ -46,6 +47,7 @@ Program* g_program = nullptr;
 %token AND OR NOT
 %token PLUS_EQ MINUS_EQ STAR_EQ SLASH_EQ MOD_EQ INCR DECR
 %token ARROW
+%token ELLIPSIS
 %token AS
 
 %type <ival> NUMBER
@@ -55,6 +57,7 @@ Program* g_program = nullptr;
 %type <stmt> statement var_decl assign_stmt print_stmt loop_stmt foreach_stmt while_stmt for_stmt do_while_stmt if_stmt switch_stmt return_stmt call_stmt fn_decl break_stmt continue_stmt
 %type <stmt> for_init for_update
 %type <params> param_list
+%type <param> param
 %type <args> args
 %type <cases> case_list
 %type <tlist> tuple_elem_list
@@ -756,30 +759,55 @@ id_list
     ;
 
 param_list
-    : param_list ',' IDENTIFIER ':' param_type
+    : param_list ',' param
         {
-            FunctionDecl::Param p;
-            p.name = std::string($3);
-            p.type = $5->type;
-            p.array_element_type = $5->element_type;
-            if (p.type == TypeKind::Tuple) p.tuple_members = std::move($5->tuple_members);
-            delete $5;
-            $1->push_back(std::move(p));
-            free($3);
+            $1->push_back(std::move(*$3));
+            delete $3;
             $$ = $1;
         }
-    | IDENTIFIER ':' param_type
+    | param
         {
             auto* v = new std::vector<FunctionDecl::Param>();
-            FunctionDecl::Param p;
-            p.name = std::string($1);
-            p.type = $3->type;
-            p.array_element_type = $3->element_type;
-            if (p.type == TypeKind::Tuple) p.tuple_members = std::move($3->tuple_members);
-            delete $3;
-            v->push_back(std::move(p));
-            free($1);
+            v->push_back(std::move(*$1));
+            delete $1;
             $$ = v;
+        }
+    ;
+
+param
+    : IDENTIFIER ':' param_type
+        {
+            auto* p = new FunctionDecl::Param();
+            p->name = std::string($1);
+            p->type = $3->type;
+            p->array_element_type = $3->element_type;
+            if (p->type == TypeKind::Tuple) p->tuple_members = std::move($3->tuple_members);
+            delete $3;
+            free($1);
+            $$ = p;
+        }
+    | IDENTIFIER ':' param_type '=' expression
+        {
+            auto* p = new FunctionDecl::Param();
+            p->name = std::string($1);
+            p->type = $3->type;
+            p->array_element_type = $3->element_type;
+            if (p->type == TypeKind::Tuple) p->tuple_members = std::move($3->tuple_members);
+            p->default_value = ExprPtr($5);
+            delete $3;
+            free($1);
+            $$ = p;
+        }
+    | IDENTIFIER ':' ELLIPSIS param_type
+        {
+            auto* p = new FunctionDecl::Param();
+            p->name = std::string($1);
+            p->type = TypeKind::Array;
+            p->array_element_type = $4->type;
+            p->variadic = true;
+            delete $4;
+            free($1);
+            $$ = p;
         }
     ;
 
@@ -818,7 +846,7 @@ fn_decl
         {
             auto* f = new FunctionDecl();
             f->name = $2;
-            f->params = *$4;
+            f->params = std::move(*$4);
             delete $4;
             for (auto& s : *$7) {
                 f->body.push_back(std::move(s));
@@ -833,7 +861,7 @@ fn_decl
         {
             auto* f = new FunctionDecl();
             f->name = $2;
-            f->params = *$4;
+            f->params = std::move(*$4);
             delete $4;
             f->has_return_type = true;
             f->return_type = $7->type;

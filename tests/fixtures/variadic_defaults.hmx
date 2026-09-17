@@ -1,0 +1,27 @@
+fn greet(name: text, greeting: text = "hello") {
+    print(greeting, name)
+}
+
+fn countdown(n: int = 5) -> int {
+    if (n <= 0) {
+        return 0
+    }
+    return countdown(n - 1)
+}
+
+fn sum(rest: ...int) -> int {
+    let total = 0
+    foreach (x in rest) {
+        total = total + x
+    }
+    return total
+}
+
+fn main() {
+    greet("world")
+    greet("bob", "hi")
+    print(countdown())
+    print(countdown(3))
+    print(sum())
+    print(sum(1, 2, 3, 4))
+}

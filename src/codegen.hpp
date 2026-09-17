@@ -15,6 +15,7 @@ private:
     std::string source_file_;
     std::map<std::vector<TypeDesc>, std::string> tuple_types_;
     std::vector<FunctionDecl*> all_functions_;
+    std::map<std::string, FunctionDecl*> functions_by_name_;
     int temp_counter_ = 0;
 
     void emit_line_directive(int line, const std::string& file);

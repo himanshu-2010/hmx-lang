@@ -86,7 +86,8 @@
 "?"               { return '?'; }
 "["               { return '['; }
 "]"               { return ']'; }
-"->"              { return ARROW; }
+"..."           { return ELLIPSIS; }
+"->"            { return ARROW; }
 "+="              { return PLUS_EQ; }
 "-="              { return MINUS_EQ; }
 "*="              { return STAR_EQ; }

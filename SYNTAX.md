@@ -869,6 +869,8 @@ the variable-annotation style.
 fn_decl  : "fn" IDENTIFIER "(" param_list? ")" ("->" type_spec)? "{" statement+ "}"
 param_list : param ("," param)*
 param    : IDENTIFIER ":" type_spec
+         | IDENTIFIER ":" type_spec "=" expression
+         | IDENTIFIER ":" "... " type_spec
 type_spec : TYPE | "[" param_type "]" | "(" elem_list ")"
 elem_list : type_spec ("," type_spec)+
 ```
@@ -888,6 +890,64 @@ fn divmod(a: int, b: int) -> (int, int) {
 ```
 
 A parameter annotated with a tuple type `(int, int)` receives the tuple by value.
+
+#### Default parameter values
+
+A parameter may declare a default value after `=`; the default must be a literal
+that matches the parameter's type.
+
+```hmx
+fn greet(name: text, greeting: text = "hello") {
+    print(greeting, name)
+}
+
+fn retry(count: int = 3) {
+    loop (count) {
+        print("trying")
+    }
+}
+```
+
+Rules:
+- Parameters with defaults must be **trailing**: once a parameter has a default, every
+  following parameter must also have one (or be the variadic tail).
+- Callers may omit trailing arguments; omitted parameters receive their default.
+- The default must be a **constant literal** matching the declared type (`byte`
+  defaults are limited to `0..255`).
+- Inside the function, a defaulted parameter behaves like a normal parameter.
+
+```hmx
+greet("world")        // "hello world"
+greet("bob", "hi")    // "hi bob"
+retry()               // 3 retries
+retry(1)              // 1 retry
+```
+
+#### Variadic parameters
+
+A single **trailing** parameter may be marked variadic with `...` before its element
+type. Inside the body it is an array whose elements receive the extra call arguments.
+
+```hmx
+fn sum(rest: ...int) -> int {
+    let total = 0
+    foreach (x in rest) {
+        total = total + x
+    }
+    return total
+}
+
+sum()            // rest = []     -> 0
+sum(1, 2, 3, 4)  // rest = [1,2,3,4] -> 10
+```
+
+Rules:
+- There may be at most one variadic parameter, and it must be the **last** parameter.
+- The element type must be a **scalar** type (`int`, `decimal`, `text`, `bool`,
+  `char`, `byte`); it cannot be an array or tuple.
+- Inside the body the parameter is a normal array value: indexing, `length(...)`, and
+  `foreach` all work, and it is read-only.
+- A variadic parameter cannot have a default value.
 
 ### 12.3 Return Values
 
@@ -934,7 +994,7 @@ fn bad() -> int {
 }
 ```
 
-**Out of scope (roadmap):** variadic parameters, default parameter values.
+**Out of scope (roadmap):** closures.
 
 ### 12.4 Function Calls
 
@@ -946,8 +1006,10 @@ let result = add(3, 4)     // 7
 greet("Boss")
 ```
 
-The number of arguments must match the number of parameters, and each argument's
-type must match the corresponding parameter type.
+Every argument must match its parameter's type. A call may supply fewer arguments
+when the trailing parameters have defaults, and extra arguments are collected by a
+trailing variadic parameter. Passing **more** arguments than a non-variadic function
+declares, or fewer than its required (default-less) parameters, is a compile error.
 
 ```hmx
 add(3)          // Error: expected 2 arguments, got 1
@@ -1149,7 +1211,14 @@ Error [line 6]: undefined variable 'nope'
 - **Duplicate declarations** of variables in the same scope or functions at program scope.
 - **Loop count** must be `int`; `if`, `while`, `for`, and `do-while` conditions
   must be `bool`.
-- **Function call** argument count and type matching (§12.4).
+- **Function call** argument count and type matching (§12.4): too few (below the
+  required default-less prefix), too many (for non-variadic), and every supplied
+  argument — including the variadic tail — is type-checked.
+- **Parameter defaults**: must be constant literals matching the declared type
+  (byte `0..255`), must form a trailing run, and the variadic parameter cannot have
+  a default.
+- **Variadic parameters**: at most one, must be last, and collects a scalar element
+  type.
 - **Definite returns** for typed functions: every reachable path must return a value.
 - **Loop control**: `break`/`continue` outside a loop, or directly inside a switch
   case without an enclosing loop, is a compile error.

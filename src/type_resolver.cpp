@@ -170,13 +170,34 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         if (!sig) {
             throw CompileError(line(), "undefined function '" + call->name + "'");
         }
-        if (call->args.size() != sig->param_types.size()) {
-            throw CompileError(line(),
-                "function '" + call->name + "' expects " +
-                std::to_string(sig->param_types.size()) + " arguments, got " +
-                std::to_string(call->args.size()));
+        size_t fixed = sig->variadic ? sig->param_types.size() - 1 : sig->param_types.size();
+        bool has_default = false;
+        for (bool d : sig->param_has_default) if (d) { has_default = true; break; }
+        if (!has_default && !sig->variadic) {
+            if (call->args.size() != sig->param_types.size()) {
+                throw CompileError(line(),
+                    "function '" + call->name + "' expects " +
+                    std::to_string(sig->param_types.size()) + " arguments, got " +
+                    std::to_string(call->args.size()));
+            }
+        } else {
+            size_t min_args = 0;
+            while (min_args < fixed && !sig->param_has_default[min_args]) min_args++;
+            if (call->args.size() < min_args) {
+                throw CompileError(line(),
+                    "function '" + call->name + "' expects at least " +
+                    std::to_string(min_args) + " argument" + (min_args == 1 ? "" : "s") +
+                    ", got " + std::to_string(call->args.size()));
+            }
+            if (!sig->variadic && call->args.size() > sig->param_types.size()) {
+                throw CompileError(line(),
+                    "function '" + call->name + "' expects " +
+                    std::to_string(sig->param_types.size()) + " argument" +
+                    (sig->param_types.size() == 1 ? "" : "s") +
+                    ", got " + std::to_string(call->args.size()));
+            }
         }
-        for (size_t i = 0; i < call->args.size(); i++) {
+        for (size_t i = 0; i < fixed && i < call->args.size(); i++) {
             TypeKind at = resolve_expr(call->args[i].get());
             if (at != sig->param_types[i]) {
                 throw CompileError(line(),
@@ -203,6 +224,18 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                         " of '" + call->name + "' expects tuple " +
                         tuple_type_to_string(sig->param_tuple_members[i]) + ", got tuple " +
                         tuple_type_to_string(arg_members));
+                }
+            }
+        }
+        if (sig->variadic) {
+            for (size_t i = fixed; i < call->args.size(); i++) {
+                TypeKind at = resolve_expr(call->args[i].get());
+                if (at != sig->variadic_element_type) {
+                    throw CompileError(line(),
+                        "type mismatch: variadic argument " + std::to_string(i + 1) +
+                        " of '" + call->name + "' expects " +
+                        type_to_string(sig->variadic_element_type) + ", got " +
+                        type_to_string(at));
                 }
             }
         }
@@ -861,6 +894,24 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         push_scope();
         for (auto& p : fn->params) {
             define(p.name, p.type, true, p.array_element_type, p.tuple_members);
+            if (p.default_value) {
+                TypeKind dt = infer_from_literal(p.default_value.get());
+                TypeKind expect = (p.type == TypeKind::Byte) ? TypeKind::Int : p.type;
+                if (dt == TypeKind::Unknown || dt != expect) {
+                    throw CompileError(fn->line,
+                        "default value for parameter '" + p.name + "' of function '" +
+                        fn->name + "' must be a literal of type " +
+                        ((p.type == TypeKind::Byte) ? "byte" : type_to_string(p.type)));
+                }
+                if (p.type == TypeKind::Byte) {
+                    auto* n = dynamic_cast<NumberLiteral*>(p.default_value.get());
+                    if (n && (n->value < 0 || n->value > 255)) {
+                        throw CompileError(fn->line,
+                            "default value for byte parameter '" + p.name +
+                            "' must be between 0 and 255");
+                    }
+                }
+            }
         }
         TypeKind saved_ret = current_return_;
         TypeKind saved_ret_elem = current_return_element_;
@@ -923,6 +974,47 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
             sig.param_types.push_back(p.type);
             sig.param_element_types.push_back(p.array_element_type);
             sig.param_tuple_members.push_back(p.tuple_members);
+            sig.param_has_default.push_back(p.default_value != nullptr);
+        }
+        if (fn->params.empty()) {
+            sig.variadic = false;
+        } else {
+            sig.variadic = fn->params.back().variadic;
+            if (sig.variadic) {
+                sig.variadic_element_type = fn->params.back().array_element_type;
+                if (sig.variadic_element_type == TypeKind::Array ||
+                    sig.variadic_element_type == TypeKind::Tuple) {
+                    throw CompileError(fn->line,
+                        "variadic parameter of function '" + fn->name +
+                        "' must collect a scalar type");
+                }
+                for (size_t i = 0; i + 1 < fn->params.size(); i++) {
+                    if (fn->params[i].variadic) {
+                        throw CompileError(fn->line,
+                            "function '" + fn->name + "' has more than one variadic parameter");
+                    }
+                }
+            }
+            bool seen_default = false;
+            bool seen_variadic = false;
+            for (size_t i = 0; i < fn->params.size(); i++) {
+                auto& p = fn->params[i];
+                if (p.variadic) seen_variadic = true;
+                if (seen_variadic && !p.variadic) {
+                    throw CompileError(fn->line,
+                        "variadic parameter '" + p.name + "' of function '" + fn->name +
+                        "' must be the last parameter");
+                }
+                if (p.variadic && p.default_value) {
+                    throw CompileError(fn->line,
+                        "variadic parameter '" + p.name + "' cannot have a default value");
+                }
+                if (p.default_value) seen_default = true;
+                if (seen_default && !p.default_value && !p.variadic) {
+                    throw CompileError(fn->line,
+                        "parameter '" + p.name + "' cannot follow a parameter with a default value");
+                }
+            }
         }
         sig.return_type = fn->has_return_type ? fn->return_type : TypeKind::Unknown;
         sig.return_element_type = fn->has_return_type ? fn->return_array_element_type : TypeKind::Unknown;

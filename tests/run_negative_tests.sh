@@ -851,6 +851,66 @@ test_error "nested_fn_break_outside_loop" \
     }' \
     "break outside of a loop"
 
+test_error "default_param_type_mismatch" \
+    'fn f(a: int = "x") {
+        print(a)
+    }' \
+    "default value for parameter 'a' of function 'f' must be a literal of type int"
+
+test_error "default_param_non_literal" \
+    'fn f(a: int = 1 + 2) {
+        print(a)
+    }' \
+    "default value for parameter 'a' of function 'f' must be a literal of type int"
+
+test_error "default_param_not_trailing" \
+    'fn f(a: int = 1, b: int) {
+        print(a)
+    }' \
+    "cannot follow a parameter with a default value"
+
+test_error "default_param_byte_range" \
+    'fn f(a: byte = 300) {
+        print(a)
+    }' \
+    "default value for byte parameter 'a' must be between 0 and 255"
+
+test_error "default_params_too_few_args" \
+    'fn f(a: int, b: int = 2) {
+        print(a)
+    }
+    fn main() {
+        f()
+    }' \
+    "expects at least 1 argument, got 0"
+
+test_error "variadic_not_last" \
+    'fn f(rest: ...int, a: int) {
+        print(a)
+    }' \
+    "must be the last parameter"
+
+test_error "variadic_duplicate" \
+    'fn f(x: ...int, y: ...int) {
+        print(x)
+    }' \
+    "more than one variadic parameter"
+
+test_error "variadic_collects_array" \
+    'fn f(rest: ...[int]) {
+        print(length(rest))
+    }' \
+    "must collect a scalar type"
+
+test_error "variadic_wrong_type" \
+    'fn f(a: int, rest: ...int) {
+        print(a)
+    }
+    fn main() {
+        f(1, "s")
+    }' \
+    "type mismatch: variadic argument 2 of 'f' expects int, got text"
+
 echo ""
 echo "Negative Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

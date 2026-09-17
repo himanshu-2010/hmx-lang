@@ -715,6 +715,62 @@ test_output "nested_multi_level" \
     }' \
     "$(printf '5\n14')"
 
+test_output "variadic_sum" \
+    'fn sum(rest: ...int) -> int {
+        let total = 0
+        foreach (x in rest) {
+            total = total + x
+        }
+        return total
+    }
+    fn main() {
+        print(sum())
+        print(sum(1, 2, 3, 4))
+        print(sum(7))
+    }' \
+    "$(printf '0\n10\n7')"
+
+test_output "default_padding" \
+    'fn config(name: text, loud: bool = false, retries: int = 3) {
+        print(name, loud, retries)
+    }
+    fn main() {
+        config("a")
+        config("b", true)
+        config("c", false, 9)
+    }' \
+    "$(printf 'a 0 3\nb 1 3\nc 0 9')"
+
+test_output "variadic_mixed_defaults" \
+    'fn merge(prefix: text = "-", rest: ...int) {
+        print(prefix, length(rest))
+        if (length(rest) > 0) {
+            print(rest[0], rest[length(rest) - 1])
+        }
+    }
+    fn main() {
+        merge()
+        merge("+", 5)
+        merge("+", 1, 2, 3)
+    }' \
+    "$(printf -- '- 0\n+ 1\n5 5\n+ 3\n1 3')"
+
+test_exit_code "variadic_exit_recursion" \
+    'fn countdown(n: int = 5) -> int {
+        if (n <= 0) {
+            return 0
+        }
+        return countdown(n - 1)
+    }
+    fn main() -> int {
+        let c = countdown()
+        if (c == 0) {
+            return 42
+        }
+        return 1
+    }' \
+    42
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

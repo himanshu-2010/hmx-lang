@@ -212,6 +212,33 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - Full regression: 35/35 integration, 104/104 negative, 50/50 stress/output.
 - Docs: SYNTAX.md §12.5 nested functions; README.md status/functions/tests; TESTRESULT.md.
 
+### Tier 2 (post-plan) — Variadic parameters & default values — DONE
+- Lexer: new `ELLIPSIS` token (`...`). Parser: `param` now has three forms —
+  `IDENTIFIER ':' type`, `IDENTIFIER ':' type '=' expression` (default), and
+  `IDENTIFIER ':' ELLIPSIS type` (variadic). Still **6 shift/reduce conflicts**.
+- AST: `FunctionDecl::Param` gains `ExprPtr default_value` and `bool variadic`;
+  `Param` is move-only (holds a `unique_ptr`), so parser copies became moves
+  (`f->params = std::move(*$4)`).
+- Resolver: `FunctionSig` gains `param_has_default`, `variadic`, and
+  `variadic_element_type`. Declaration checks: at most one variadic parameter, it must
+  be last, it must collect a **scalar** element type, and defaults must form a trailing
+  run of constant literals matching the param type (`byte` defaults must be `0..255`).
+  Call checks: functions built with defaults/variadic use "expects at least N /
+  at most M" errors; defaults-only exact-count semantics for plain functions are
+  unchanged (kept old error message) except that supplied args are type-checked only
+  up to the fixed prefix, with the variadic tail checked against the element type.
+- Codegen: `functions_by_name_` map; call sites pad omitted args with their default
+  literal and pack extras into `sd_make_array((T[]){...}, sizeof(T)*n, n)` (empty tail
+  → `sd_make_array(0, 0, 0)`); variadic params emit as `sd_array` in signatures
+  (existing Array handling). First `nbytes` bug (used element count) caught by
+  `sum(1,2,3,4)` test and fixed with `sizeof(T)*count`.
+- Tests: fixture `variadic_defaults.hmx`; 10 new negatives (default type/non-literal/
+  trailing/byte-range, too-few, variadic-last/duplicate/scalar-y/wrong-type); 4 new
+  stress cases (variadic sum, default padding, defaults+variadic, exit-code recursion).
+- Full regression: 36/36 integration, 113/113 negative, 54/54 stress/output = **203**.
+- Docs: SYNTAX.md §12.2 defaults + variadic ¶, §12.4 call arity, §14.4 errors,
+  README.md functions/tests/roadmap; TESTRESULT.md.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

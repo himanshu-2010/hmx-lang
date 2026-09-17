@@ -322,6 +322,32 @@ matching argument count, and matching argument types. Void functions can be call
 statements but cannot be used as values. Calling `main` is rejected. Direct recursion
 is supported.
 
+Trailing parameters can take **default values** (constant literals):
+
+```hmx
+fn greet(name: text, greeting: text = "hello") {
+    print(greeting, name)
+}
+greet("world")   // "hello world"
+```
+
+A function may also declare a **variadic** trailing parameter that collects extra
+arguments into an array:
+
+```hmx
+fn sum(rest: ...int) -> int {
+    let total = 0
+    foreach (x in rest) {
+        total = total + x
+    }
+    return total
+}
+print(sum(1, 2, 3, 4))   // 10
+```
+
+Nested functions can be declared inside any function body, with their own scoping;
+they are emitted as top-level functions (no closures).
+
 Functions may also be declared inside other functions. Nested functions are hoisted to
 program scope: they behave like top-level functions, must have program-unique names,
 and cannot close over the enclosing function's locals.
@@ -409,10 +435,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | 35 `.hmx` fixtures | 35/35 passed |
-| Negative | Type, syntax, and resolver errors | 104/104 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns | 50/50 passed |
-| Total | 189 test cases | 189/189 passed |
+| Integration | 36 `.hmx` fixtures | 36/36 passed |
+| Negative | Type, syntax, and resolver errors | 113/113 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, defaults & variadic params | 54/54 passed |
+| Total | 203 test cases | 203/203 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is
@@ -468,7 +494,6 @@ The compiler's core milestone is complete. The following language features are l
 as planned and are not implemented yet:
 
 - Namespaces and modules across multiple `.hmx` files
-- Variadic parameters and default parameter values
 - Function pointers, higher-order functions, and closures
 - Unicode identifiers
 

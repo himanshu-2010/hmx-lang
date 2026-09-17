@@ -17,6 +17,9 @@ struct FunctionSig {
     std::vector<TypeKind> param_types;
     std::vector<TypeKind> param_element_types;
     std::vector<std::vector<TypeDesc>> param_tuple_members;  // valid when param is Tuple
+    std::vector<bool> param_has_default;                     // aligned with param_types
+    bool variadic = false;                                   // trailing ...elem collector
+    TypeKind variadic_element_type = TypeKind::Unknown;
     TypeKind return_type = TypeKind::Unknown;
     TypeKind return_element_type = TypeKind::Unknown;
     std::vector<TypeDesc> return_tuple_members;              // valid when return_type is Tuple

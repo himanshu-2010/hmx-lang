@@ -149,6 +149,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
 
     FunctionDecl* main_fn = nullptr;
     for (auto* fn : all_functions_) {
+        functions_by_name_[fn->name] = fn;
         if (fn->name == "main") {
             main_fn = fn;
             for (auto& body_stmt : fn->body) {
@@ -349,12 +350,49 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
             emit_expr(call->args[0].get());
             out_ << ")";
         } else {
-            out_ << call->name << "(";
-            for (size_t i = 0; i < call->args.size(); i++) {
-                if (i > 0) out_ << ", ";
-                emit_expr(call->args[i].get());
+            auto it = functions_by_name_.find(call->name);
+            if (it != functions_by_name_.end() && !it->second->name.empty()) {
+                const FunctionDecl* callee = it->second;
+                size_t variadic_index = (size_t)-1;
+                for (size_t i = 0; i < callee->params.size(); i++) {
+                    if (callee->params[i].variadic) { variadic_index = i; break; }
+                }
+                size_t fixed = (variadic_index == (size_t)-1) ? callee->params.size() : variadic_index;
+                out_ << call->name << "(";
+                for (size_t i = 0; i < fixed; i++) {
+                    if (i > 0) out_ << ", ";
+                    if (i < call->args.size()) {
+                        emit_expr(call->args[i].get());
+                    } else {
+                        emit_expr(callee->params[i].default_value.get());
+                    }
+                }
+                if (variadic_index != (size_t)-1) {
+                    if (fixed > 0) out_ << ", ";
+                    if (call->args.size() > fixed) {
+                        out_ << "sd_make_array(("
+                             << type_to_c(callee->params[variadic_index].array_element_type)
+                             << "[]){";
+                        for (size_t i = fixed; i < call->args.size(); i++) {
+                            if (i > fixed) out_ << ", ";
+                            emit_expr(call->args[i].get());
+                        }
+                        out_ << "}, sizeof(" << type_to_c(callee->params[variadic_index].array_element_type)
+                             << ") * " << (call->args.size() - fixed) << ", "
+                             << (call->args.size() - fixed) << ")";
+                    } else {
+                        out_ << "sd_make_array(0, 0, 0)";
+                    }
+                }
+                out_ << ")";
+            } else {
+                out_ << call->name << "(";
+                for (size_t i = 0; i < call->args.size(); i++) {
+                    if (i > 0) out_ << ", ";
+                    emit_expr(call->args[i].get());
+                }
+                out_ << ")";
             }
-            out_ << ")";
         }
     } else if (auto* not_expr = dynamic_cast<NotExpr*>(expr)) {
         out_ << "!(";

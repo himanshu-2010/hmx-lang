@@ -2,23 +2,25 @@
 
 **Date:** 2026-09-17  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (189 / 189)
+**Status:** ALL TESTS PASSED (203 / 203)
 
 ---
 
 ## Executive Summary
 
-A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **Tier 2 loop, I/O, conversion, output, and nested-function features**:
+A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **Tier 2 loop, I/O, conversion, output, nested-function, and parameter features**:
 1. **`foreach`**: `foreach (x in coll)` and `foreach (i, x in coll)` over arrays and text, value-copy loop variables, with `break`/`continue` support.
 2. **`input()`**: reads a stdin line as `text` (empty string at end of input).
 3. **Conversions**: `tostr`, `parse_int`, `parse_decimal` (runtime error + exit code 1 on malformed input).
 4. **Variadic `print(a, b, c)`**: space-separated single-line output via one `printf`.
 5. **Nested functions**: `fn` declarations inside function bodies, hoisted to program scope (no closures, program-unique names).
+6. **Default parameter values**: trailing `name: type = literal` defaults padded at call sites.
+7. **Variadic parameters**: a single trailing `...type` parameter collects extra args into an array.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 189
-> - **Passed:** 189
+> - **Total Test Cases Executed:** 203
+> - **Passed:** 203
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -37,7 +39,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (35/35 Passed)
+### 1. Integration Fixtures (36/36 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -74,10 +76,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `conversions.hmx` | **[NEW]** Tier 2 Conversions | `tostr` on int/decimal/bool/char/byte/text, `parse_int`/`parse_decimal`, concatenation of conversions | **PASS** |
 | `print_multi.hmx` | **[NEW]** Tier 2 Variadic Print | `print(a, b, c)` space-separated output across ints, text, bool, char, decimal, negatives | **PASS** |
 | `nested_functions.hmx` | **[NEW]** Tier 2 Nested Functions | Nested helpers with params/returns, nested-in-nested, recursion, loop-declared helper, top-level calls | **PASS** |
+| `variadic_defaults.hmx` | **[NEW]** Tier 2 Defaults + Variadic | Default padding, default recursion, variadic `foreach` sum, empty + multi-arg tails | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (104/104 Passed)
+### 2. Negative & Error Handling Suite (113/113 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -171,10 +174,19 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `nested_fn_duplicate_sibling` | **[NEW]** Sibling Collision | two nested fns with the same name | `duplicate declaration of function` | **PASS** |
 | `nested_fn_named_main` | **[NEW]** Reserved `main` | nested fn named `main` | `duplicate declaration of function` | **PASS** |
 | `nested_fn_break_outside_loop` | **[NEW]** Loop Isolation | `break` in nested fn not affected by enclosing loop | `break outside of a loop` | **PASS** |
+| `default_param_type_mismatch` | **[NEW]** Default Value Mismatch | `a: int = "x"` | `must be a literal of type int` | **PASS** |
+| `default_param_non_literal` | **[NEW]** Non-Literal Default | `a: int = 1 + 2` | `must be a literal of type int` | **PASS** |
+| `default_param_not_trailing` | **[NEW]** Default Run Broken | required param after a defaulted one | `cannot follow a parameter with a default value` | **PASS** |
+| `default_param_byte_range` | **[NEW]** Byte Default Range | `a: byte = 300` | `must be between 0 and 255` | **PASS** |
+| `default_params_too_few_args` | **[NEW]** Below Required Count | `f()` for `f(a: int, b: int = 2)` | `expects at least 1 argument, got 0` | **PASS** |
+| `variadic_not_last` | **[NEW]** Variadic Order | `rest: ...int` followed by `a: int` | `must be the last parameter` | **PASS** |
+| `variadic_duplicate` | **[NEW]** Two Variadics | `x: ...int, y: ...int` | `more than one variadic parameter` | **PASS** |
+| `variadic_collects_array` | **[NEW]** Non-Scalar Element | `rest: ...[int]` | `must collect a scalar type` | **PASS** |
+| `variadic_wrong_type` | **[NEW]** Variadic Arg Type | `f(1, "s")` for `f(a: int, rest: ...int)` | `type mismatch: variadic argument 2 of 'f' expects int, got text` | **PASS** |
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (50/50 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (54/54 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -226,6 +238,10 @@ These tests verify exact runtime output matching and process exit code propagati
 | `print_text_concat_and_multi` | **[NEW]** Tier 2 Variadic Print | Concatenated text + multi-arg + `tostr` args | `go gh gh done\n12 0.750000 p` | **PASS** |
 | `nested_helper_functions` | **[NEW]** Tier 2 Nested Functions | Nested `twice`/`thrice` helpers + recursive `fib` | `24\n34` | **PASS** |
 | `nested_multi_level` | **[NEW]** Tier 2 Nested Functions | Three-level nesting + loop-declared helper | `5\n14` | **PASS** |
+| `variadic_sum` | **[NEW]** Tier 2 Variadic | `sum()`/`sum(1,2,3,4)`/`sum(7)` via `foreach` over the tail | `0\n10\n7` | **PASS** |
+| `default_padding` | **[NEW]** Tier 2 Defaults | Omitted trailing args receive defaults | `a 0 3\nb 1 3\nc 0 9` | **PASS** |
+| `variadic_mixed_defaults` | **[NEW]** Tier 2 Defaults + Variadic | defaulted prefix + variadic tail, first/last tail access | `- 0\n+ 1\n5 5\n+ 3\n1 3` | **PASS** |
+| `variadic_exit_recursion` | **[NEW]** Tier 2 Defaults | defaulted recursion returning 42 | Exit Code: `42` | **PASS** |
 
 ---
 
@@ -263,10 +279,10 @@ cd build && cmake .. && make && cd ..
 ---
 
 > [!TIP]
-> **Conclusion:** Tier 1 work now lands end-to-end without regressions: unary minus/plus,
+> **Conclusion:** Tier 1 and Tier 2 work now lands end-to-end without regressions: unary minus/plus,
 > int-only modulo (incl. compound `%=`), and `break`/`continue` loop control (with a
-> switch-case guard requiring an inner loop) all compile through the HMX pipeline and
-> pass integration, negative, and stress/output tests alongside the earlier array and
-> tuple features. The bison parser now carries six harmless shift/reduce conflicts
-> (all resolved by shift), up from four due to the `+`/`-` unary-vs-`AS` ambiguity
-> mirroring the pre-existing `not`-vs-`AS` case.
+> switch-case guard requiring an inner loop), `foreach`, `input()`, `tostr`/`parse_int`/
+> `parse_decimal`, variadic `print`, nested functions, and finally default parameter
+> values plus variadic `...type` parameters all compile through the HMX pipeline and
+> pass integration, negative, and stress/output tests. The bison parser still carries
+> six harmless shift/reduce conflicts (all resolved by shift).
