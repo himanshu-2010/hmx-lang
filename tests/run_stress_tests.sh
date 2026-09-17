@@ -670,6 +670,51 @@ test_output "print_text_concat_and_multi" \
     }' \
     "$(printf 'go gh gh done\n12 0.750000 p')"
 
+test_output "nested_helper_functions" \
+    'fn main() {
+        fn twice(v: int) -> int {
+            return v * 2
+        }
+        fn thrice(v: int) -> int {
+            return v * 3
+        }
+        print(twice(thrice(4)))
+        fn fib(n: int) -> int {
+            if (n <= 1) {
+                return n
+            }
+            return fib(n - 1) + fib(n - 2)
+        }
+        print(fib(9))
+    }' \
+    "$(printf '24\n34')"
+
+test_output "nested_multi_level" \
+    'fn top() -> int {
+        return 1
+    }
+    fn main() {
+        fn a() -> int {
+            fn b() -> int {
+                fn c() -> int {
+                    return top() + 2
+                }
+                return c() + 1
+            }
+            return b() + 1
+        }
+        print(a())
+        let sum = 0
+        loop (3) {
+            fn addtwo(v: int) -> int {
+                return v + 2
+            }
+            sum = sum + addtwo(sum)
+        }
+        print(sum)
+    }' \
+    "$(printf '5\n14')"
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

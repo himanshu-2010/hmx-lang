@@ -2,22 +2,23 @@
 
 **Date:** 2026-09-17  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (181 / 181)
+**Status:** ALL TESTS PASSED (189 / 189)
 
 ---
 
 ## Executive Summary
 
-A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **Tier 2 loop, I/O, and conversion features**:
+A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **Tier 2 loop, I/O, conversion, output, and nested-function features**:
 1. **`foreach`**: `foreach (x in coll)` and `foreach (i, x in coll)` over arrays and text, value-copy loop variables, with `break`/`continue` support.
 2. **`input()`**: reads a stdin line as `text` (empty string at end of input).
 3. **Conversions**: `tostr`, `parse_int`, `parse_decimal` (runtime error + exit code 1 on malformed input).
 4. **Variadic `print(a, b, c)`**: space-separated single-line output via one `printf`.
+5. **Nested functions**: `fn` declarations inside function bodies, hoisted to program scope (no closures, program-unique names).
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 181
-> - **Passed:** 181
+> - **Total Test Cases Executed:** 189
+> - **Passed:** 189
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -36,7 +37,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (34/34 Passed)
+### 1. Integration Fixtures (35/35 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -72,10 +73,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `foreach.hmx` | **[NEW]** Tier 2 `foreach` | Array sum via `foreach`, index+value form, char iteration with `continue`, value-copy semantics | **PASS** |
 | `conversions.hmx` | **[NEW]** Tier 2 Conversions | `tostr` on int/decimal/bool/char/byte/text, `parse_int`/`parse_decimal`, concatenation of conversions | **PASS** |
 | `print_multi.hmx` | **[NEW]** Tier 2 Variadic Print | `print(a, b, c)` space-separated output across ints, text, bool, char, decimal, negatives | **PASS** |
+| `nested_functions.hmx` | **[NEW]** Tier 2 Nested Functions | Nested helpers with params/returns, nested-in-nested, recursion, loop-declared helper, top-level calls | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (99/99 Passed)
+### 2. Negative & Error Handling Suite (104/104 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -164,10 +166,15 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `print_zero_args` | **[NEW]** Empty `print()` | `print()` requires ≥ 1 argument | `syntax error near` | **PASS** |
 | `print_array_arg` | **[NEW]** Array in `print` | `print(a, 5)` | `cannot print an array` | **PASS** |
 | `print_tuple_arg` | **[NEW]** Tuple in `print` | `print(pair())` | `cannot print a tuple` | **PASS** |
+| `nested_fn_refs_outer_local` | **[NEW]** No Closures | nested fn uses enclosing local | `undefined variable` | **PASS** |
+| `nested_fn_duplicate_global` | **[NEW]** Global Collision | nested fn mirrors a top-level name | `duplicate declaration of function` | **PASS** |
+| `nested_fn_duplicate_sibling` | **[NEW]** Sibling Collision | two nested fns with the same name | `duplicate declaration of function` | **PASS** |
+| `nested_fn_named_main` | **[NEW]** Reserved `main` | nested fn named `main` | `duplicate declaration of function` | **PASS** |
+| `nested_fn_break_outside_loop` | **[NEW]** Loop Isolation | `break` in nested fn not affected by enclosing loop | `break outside of a loop` | **PASS** |
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (48/48 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (50/50 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -217,6 +224,8 @@ These tests verify exact runtime output matching and process exit code propagati
 | `parse_int_runtime_error` | **[NEW]** Runtime Error | `parse_int("12abc")` aborts with exit code 1 | Exit Code: `1` | **PASS** |
 | `print_mixed_args` | **[NEW]** Tier 2 Variadic Print | Mixed int/text/bool/char/decimal args | `n = 5\n1 2 3\nab c\n1 x 0.500000\n8 64 512` | **PASS** |
 | `print_text_concat_and_multi` | **[NEW]** Tier 2 Variadic Print | Concatenated text + multi-arg + `tostr` args | `go gh gh done\n12 0.750000 p` | **PASS** |
+| `nested_helper_functions` | **[NEW]** Tier 2 Nested Functions | Nested `twice`/`thrice` helpers + recursive `fib` | `24\n34` | **PASS** |
+| `nested_multi_level` | **[NEW]** Tier 2 Nested Functions | Three-level nesting + loop-declared helper | `5\n14` | **PASS** |
 
 ---
 

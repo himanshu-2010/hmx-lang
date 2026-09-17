@@ -29,7 +29,7 @@ The current compiler supports:
 - `loop`, `while`, `for`, `foreach`, and `do ... while` loops
 - Variadic `print(a, b, c)` for space-separated single-line output
 - Functions with typed parameters and return values
-- Function calls, forward calls, and recursion
+- Function calls, forward calls, recursion, and nested function declarations
 - Arrays with typed elements, indexing, element assignment, and `length()`
 - Multiple return values via tuples with destructuring
 - Compile-time type checking with line-numbered diagnostics
@@ -322,6 +322,19 @@ matching argument count, and matching argument types. Void functions can be call
 statements but cannot be used as values. Calling `main` is rejected. Direct recursion
 is supported.
 
+Functions may also be declared inside other functions. Nested functions are hoisted to
+program scope: they behave like top-level functions, must have program-unique names,
+and cannot close over the enclosing function's locals.
+
+```hmx
+fn main() {
+    fn square(n: int) -> int {
+        return n * n
+    }
+    print(square(6))
+}
+```
+
 ## Comments and Output
 
 Line comments and non-nesting block comments are supported:
@@ -396,10 +409,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | 34 `.hmx` fixtures | 34/34 passed |
-| Negative | Type, syntax, and resolver errors | 99/99 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print | 48/48 passed |
-| Total | 181 test cases | 181/181 passed |
+| Integration | 35 `.hmx` fixtures | 35/35 passed |
+| Negative | Type, syntax, and resolver errors | 104/104 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns | 50/50 passed |
+| Total | 189 test cases | 189/189 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

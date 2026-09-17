@@ -14,6 +14,7 @@ private:
     std::ostringstream out_;
     std::string source_file_;
     std::map<std::vector<TypeDesc>, std::string> tuple_types_;
+    std::vector<FunctionDecl*> all_functions_;
     int temp_counter_ = 0;
 
     void emit_line_directive(int line, const std::string& file);
@@ -24,4 +25,5 @@ private:
     TypeKind get_expr_type(Expression* expr);
     std::string tuple_name(const std::vector<TypeDesc>& members);
     void collect_tuple_types(Statement* stmt);
+    void collect_function_decls(Statement* stmt);
 };

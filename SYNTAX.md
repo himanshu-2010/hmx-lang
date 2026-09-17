@@ -957,6 +957,50 @@ add(3, "x")     // Error: type mismatch on argument 2
 Calling `main` is not allowed. A function that returns nothing (`void`) may be called
 as a statement but not used as a value.
 
+### 12.5 Nested Functions **[Implemented]**
+
+A `fn` declaration may appear anywhere inside another function's body, including
+inside loops and conditionals. Nested functions are **hoisted to program scope**: they
+compile to ordinary top-level C functions and behave like top-level functions.
+
+```hmx
+fn main() {
+    fn add(a: int, b: int) -> int {
+        return a + b
+    }
+    print(add(2, 3))        // 5
+
+    fn fact(n: int) -> int {
+        if (n <= 1) {
+            return 1
+        }
+        return n * fact(n - 1)
+    }
+    print(fact(5))          // 120, recursion works
+}
+```
+
+Limitations that follow from hoisting:
+
+- **No closures.** A nested function cannot reference the enclosing function's local
+  variables or parameters; doing so is an `undefined variable` compile error.
+- **Program-unique names.** A nested function name must not collide with any other
+  function in the program (top-level or nested); duplicates are rejected with
+  `duplicate declaration of function`.
+- `main` remains reserved for the program entry point and cannot be declared
+  (nested or otherwise).
+- `return`, `break`, and `continue` inside a nested function belong to the nested
+  function itself, never to the enclosing function's loops.
+
+```hmx
+fn main() {
+    let x = 5
+    fn show() {
+        print(x)            // Error: undefined variable 'x' (would require a closure)
+    }
+}
+```
+
 **Out of scope (roadmap):** function pointers / higher-order functions, closures.
 
 ---

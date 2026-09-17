@@ -65,5 +65,6 @@ private:
     bool resolve_stmt(Statement* stmt);
     bool resolve_block(const std::vector<StmtPtr>& statements);
     void collect_functions(Program& program);
+    void collect_functions_stmt(Statement* stmt);
     TypeKind infer_from_literal(Expression* expr);
 };

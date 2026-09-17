@@ -800,6 +800,57 @@ test_error "print_tuple_arg" \
     }' \
     "cannot print a tuple"
 
+test_error "nested_fn_refs_outer_local" \
+    'fn main() {
+        let outer = 5
+        fn helper() {
+            print(outer)
+        }
+        helper()
+    }' \
+    "undefined variable"
+
+test_error "nested_fn_duplicate_global" \
+    'fn add() {
+        print(0)
+    }
+    fn main() {
+        fn add() {
+            print(0)
+        }
+    }' \
+    "duplicate declaration of function"
+
+test_error "nested_fn_duplicate_sibling" \
+    'fn main() {
+        fn first() {
+            print(0)
+        }
+        fn first() {
+            print(0)
+        }
+    }' \
+    "duplicate declaration of function"
+
+test_error "nested_fn_named_main" \
+    'fn main() {
+        fn main() {
+            print(0)
+        }
+    }' \
+    "duplicate declaration of function"
+
+test_error "nested_fn_break_outside_loop" \
+    'fn main() {
+        loop (3) {
+            fn helper() {
+                break
+            }
+            helper()
+        }
+    }' \
+    "break outside of a loop"
+
 echo ""
 echo "Negative Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

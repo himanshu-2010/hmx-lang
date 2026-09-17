@@ -856,6 +856,8 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 "continue inside a switch case requires an enclosing loop within the case");
         }
     } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
+        std::vector<std::unordered_map<std::string, Symbol>> saved_scopes = std::move(scopes_);
+        scopes_.clear();
         push_scope();
         for (auto& p : fn->params) {
             define(p.name, p.type, true, p.array_element_type, p.tuple_members);
@@ -864,6 +866,10 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         TypeKind saved_ret_elem = current_return_element_;
         std::vector<TypeDesc> saved_ret_tuple = current_return_tuple_;
         bool saved_in_fn = in_function_;
+        int saved_loop_depth = loop_depth_;
+        std::vector<int> saved_switch_depths = std::move(switch_entry_loop_depths_);
+        loop_depth_ = 0;
+        switch_entry_loop_depths_.clear();
         current_return_ = fn->has_return_type ? fn->return_type : TypeKind::Unknown;
         current_return_element_ = fn->has_return_type ? fn->return_array_element_type : TypeKind::Unknown;
         current_return_tuple_ = fn->has_return_type ? fn->return_tuple_members : std::vector<TypeDesc>{};
@@ -878,8 +884,11 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         current_return_ = saved_ret;
         current_return_element_ = saved_ret_elem;
         current_return_tuple_ = saved_ret_tuple;
+        loop_depth_ = saved_loop_depth;
+        switch_entry_loop_depths_ = std::move(saved_switch_depths);
         pop_scope();
-        always_returns = function_returns;
+        scopes_ = std::move(saved_scopes);
+        always_returns = false;
     }
     if (dynamic_cast<ReturnStmt*>(stmt)) always_returns = true;
     return always_returns;
@@ -896,23 +905,46 @@ bool TypeResolver::resolve_block(const std::vector<StmtPtr>& statements) {
 
 void TypeResolver::collect_functions(Program& program) {
     for (auto& stmt : program.statements) {
-        if (auto* fn = dynamic_cast<FunctionDecl*>(stmt.get())) {
-            if (functions_.count(fn->name)) {
-                throw CompileError(fn->line,
-                    "duplicate declaration of function '" + fn->name + "'");
-            }
-            FunctionSig sig;
-            for (auto& p : fn->params) {
-                sig.param_types.push_back(p.type);
-                sig.param_element_types.push_back(p.array_element_type);
-                sig.param_tuple_members.push_back(p.tuple_members);
-            }
-            sig.return_type = fn->has_return_type ? fn->return_type : TypeKind::Unknown;
-            sig.return_element_type = fn->has_return_type ? fn->return_array_element_type : TypeKind::Unknown;
-            sig.return_tuple_members = fn->has_return_type ? fn->return_tuple_members : std::vector<TypeDesc>{};
-            sig.has_return = fn->has_return_type;
-            functions_[fn->name] = sig;
+        collect_functions_stmt(stmt.get());
+    }
+}
+
+void TypeResolver::collect_functions_stmt(Statement* stmt) {
+    auto recurse = [this](const std::vector<StmtPtr>& list) {
+        for (auto& s : list) collect_functions_stmt(s.get());
+    };
+    if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
+        if (functions_.count(fn->name)) {
+            throw CompileError(fn->line,
+                "duplicate declaration of function '" + fn->name + "'");
         }
+        FunctionSig sig;
+        for (auto& p : fn->params) {
+            sig.param_types.push_back(p.type);
+            sig.param_element_types.push_back(p.array_element_type);
+            sig.param_tuple_members.push_back(p.tuple_members);
+        }
+        sig.return_type = fn->has_return_type ? fn->return_type : TypeKind::Unknown;
+        sig.return_element_type = fn->has_return_type ? fn->return_array_element_type : TypeKind::Unknown;
+        sig.return_tuple_members = fn->has_return_type ? fn->return_tuple_members : std::vector<TypeDesc>{};
+        sig.has_return = fn->has_return_type;
+        functions_[fn->name] = sig;
+        recurse(fn->body);
+    } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
+        recurse(ifs->then_body);
+        recurse(ifs->else_body);
+    } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
+        for (auto& c : sw->cases) recurse(c.body);
+    } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
+        recurse(loop->body);
+    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
+        recurse(fe->body);
+    } else if (auto* w = dynamic_cast<WhileStmt*>(stmt)) {
+        recurse(w->body);
+    } else if (auto* f = dynamic_cast<ForStmt*>(stmt)) {
+        recurse(f->body);
+    } else if (auto* dw = dynamic_cast<DoWhileStmt*>(stmt)) {
+        recurse(dw->body);
     }
 }
 

@@ -124,18 +124,18 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
         out_ << "} " << name << ";\n\n";
     }
 
-    std::vector<FunctionDecl*> functions;
     std::vector<Statement*> top_level;
 
     for (auto& stmt : program.statements) {
         if (auto* fn = dynamic_cast<FunctionDecl*>(stmt.get())) {
-            functions.push_back(fn);
+            all_functions_.push_back(fn);
+            for (auto& body_stmt : fn->body) collect_function_decls(body_stmt.get());
         } else {
             top_level.push_back(stmt.get());
         }
     }
 
-    for (auto* fn : functions) {
+    for (auto* fn : all_functions_) {
         if (fn->name != "main") {
             out_ << emit_function_signature(fn) << ";\n";
         }
@@ -148,7 +148,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     }
 
     FunctionDecl* main_fn = nullptr;
-    for (auto* fn : functions) {
+    for (auto* fn : all_functions_) {
         if (fn->name == "main") {
             main_fn = fn;
             for (auto& body_stmt : fn->body) {
@@ -162,7 +162,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     }
     out_ << "}\n\n";
 
-    for (auto* fn : functions) {
+    for (auto* fn : all_functions_) {
         if (fn->name != "main") {
             out_ << emit_function_signature(fn) << " {\n";
             for (auto& body_stmt : fn->body) {
@@ -172,6 +172,31 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
         }
     }
     return out_.str();
+}
+
+void CodeGen::collect_function_decls(Statement* stmt) {
+    auto recurse = [this](const std::vector<StmtPtr>& list) {
+        for (auto& s : list) collect_function_decls(s.get());
+    };
+    if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
+        all_functions_.push_back(fn);
+        recurse(fn->body);
+    } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
+        recurse(ifs->then_body);
+        recurse(ifs->else_body);
+    } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
+        for (auto& c : sw->cases) recurse(c.body);
+    } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
+        recurse(loop->body);
+    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
+        recurse(fe->body);
+    } else if (auto* w = dynamic_cast<WhileStmt*>(stmt)) {
+        recurse(w->body);
+    } else if (auto* f = dynamic_cast<ForStmt*>(stmt)) {
+        recurse(f->body);
+    } else if (auto* dw = dynamic_cast<DoWhileStmt*>(stmt)) {
+        recurse(dw->body);
+    }
 }
 
 std::string CodeGen::emit_function_signature(FunctionDecl* fn) {
@@ -597,13 +622,9 @@ void CodeGen::emit_stmt(Statement* stmt) {
     } else if (auto* cont = dynamic_cast<ContinueStmt*>(stmt)) {
         emit_line_directive(cont->line, source_file_);
         out_ << "    continue;\n";
-    } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
-        emit_line_directive(fn->line, source_file_);
-        out_ << emit_function_signature(fn) << " {\n";
-        for (auto& body_stmt : fn->body) {
-            emit_stmt(body_stmt.get());
-        }
-        out_ << "}\n\n";
+    } else if (dynamic_cast<FunctionDecl*>(stmt)) {
+        // Nested function declarations are hoisted to program scope during
+        // generation; nothing is emitted at their definition site.
     }
 }
 

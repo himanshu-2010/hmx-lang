@@ -192,6 +192,26 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   §13.4 conversions, §14.4 checks; README.md status/keywords/control-flow/output/tests;
   TESTRESULT.md; AGENTS.md unchanged.
 
+### Tier 2 (post-plan) — Nested functions — DONE
+- `fn` declarations are now legal anywhere inside a function body (the grammar already
+  allowed them as statements); they are **hoisted to program scope**.
+- Resolver: `collect_functions` recursively registers nested signatures (self- and
+  mutual-recursion work); program-unique name checking finds nested/global duplicates.
+  Function bodies resolve in an **isolated scope + loop-depth context**: enclosing
+  locals are invisible (no closures → `undefined variable`), and `break`/`continue`
+  inside a nested function can't leak out of the enclosing loops.
+- Codegen: recursive `collect_function_decls` gathers nested functions; every non-main
+  function gets a top-level C prototype + definition (emission order unchanged), and
+  the `FunctionDecl` case in `emit_stmt` now emits nothing (nested definitions are not
+  inlined into the enclosing C function).
+- Tests: fixture `nested_functions.hmx`; 5 new negatives (outer-local ref, global/sibling
+  duplicate, nested `main`, break-outside-loop isolation); 2 new stress cases
+  (nested helpers + recursion, three-level nesting + loop-declared helper).
+- Known pre-existing limit noted: `fn double()` breaks because `double` is a C keyword;
+  empty `{ }` function bodies are a parse error (`stmt_list` requires ≥ 1 statement).
+- Full regression: 35/35 integration, 104/104 negative, 50/50 stress/output.
+- Docs: SYNTAX.md §12.5 nested functions; README.md status/functions/tests; TESTRESULT.md.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

@@ -1,0 +1,40 @@
+fn scale(x: int) -> int {
+    return x * 10
+}
+
+fn main() {
+    fn add(a: int, b: int) -> int {
+        return a + b
+    }
+    print(add(2, 3))
+
+    fn fact(n: int) -> int {
+        if (n <= 1) {
+            return 1
+        }
+        return n * fact(n - 1)
+    }
+    print(fact(6))
+
+    fn outer_helper() {
+        fn inner_helper() -> text {
+            return "innermost"
+        }
+        print(inner_helper())
+    }
+    outer_helper()
+
+    let total = 0
+    loop (3) {
+        fn bump(v: int) -> int {
+            return v + 2
+        }
+        total = total + bump(total)
+    }
+    print(total)
+
+    fn use_top_level(v: int) -> int {
+        return scale(v) + 5
+    }
+    print(use_top_level(3))
+}
