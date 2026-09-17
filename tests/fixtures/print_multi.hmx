@@ -1,0 +1,8 @@
+fn main() {
+    let x = 7
+    print("value:", x, "squared:", x * x)
+    print("a", "b", "c")
+    print(true, 'n', 2.25, -3)
+    let name = "zm"
+    print("hi", name, "!")
+}

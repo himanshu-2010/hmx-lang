@@ -37,7 +37,7 @@ Program* g_program = nullptr;
     TypeDesc* tdesc;
 }
 
-%token LET CONST FN LOOP FOR WHILE DO SWITCH CASE DEFAULT PRINT RETURN TRUE FALSE
+%token LET CONST FN LOOP FOREACH IN FOR WHILE DO SWITCH CASE DEFAULT PRINT RETURN TRUE FALSE
 %token IF ELSE
 %token BREAK CONTINUE
 %token TYPE_INT TYPE_DECIMAL TYPE_TEXT TYPE_BOOL TYPE_CHAR TYPE_BYTE
@@ -52,7 +52,7 @@ Program* g_program = nullptr;
 %type <fval> DECIMAL
 %type <sval> STRING CHAR IDENTIFIER
 %type <expr> expression conditional logical_or logical_and equality relational additive term factor
-%type <stmt> statement var_decl assign_stmt print_stmt loop_stmt while_stmt for_stmt do_while_stmt if_stmt switch_stmt return_stmt call_stmt fn_decl break_stmt continue_stmt
+%type <stmt> statement var_decl assign_stmt print_stmt loop_stmt foreach_stmt while_stmt for_stmt do_while_stmt if_stmt switch_stmt return_stmt call_stmt fn_decl break_stmt continue_stmt
 %type <stmt> for_init for_update
 %type <params> param_list
 %type <args> args
@@ -96,6 +96,7 @@ statement
     | call_stmt    { $$ = $1; }
     | print_stmt   { $$ = $1; }
     | loop_stmt    { $$ = $1; }
+    | foreach_stmt { $$ = $1; }
     | while_stmt   { $$ = $1; }
     | for_stmt     { $$ = $1; }
     | do_while_stmt { $$ = $1; }
@@ -464,10 +465,11 @@ call_stmt
     ;
 
 print_stmt
-    : PRINT '(' expression ')'
+    : PRINT '(' args ')'
         {
             auto* p = new PrintStmt();
-            p->expr = ExprPtr($3);
+            p->args = std::move(*$3);
+            delete $3;
             p->line = yylineno;
             $$ = p;
         }
@@ -484,6 +486,37 @@ loop_stmt
             delete $6;
             l->line = yylineno;
             $$ = l;
+        }
+    ;
+
+foreach_stmt
+    : FOREACH '(' IDENTIFIER IN expression ')' '{' stmt_list '}'
+        {
+            auto* f = new ForeachStmt();
+            f->value_name = $3;
+            free($3);
+            f->iterable = ExprPtr($5);
+            for (auto& s : *$8) {
+                f->body.push_back(std::move(s));
+            }
+            delete $8;
+            f->line = yylineno;
+            $$ = f;
+        }
+    | FOREACH '(' IDENTIFIER ',' IDENTIFIER IN expression ')' '{' stmt_list '}'
+        {
+            auto* f = new ForeachStmt();
+            f->index_name = $3;
+            free($3);
+            f->value_name = $5;
+            free($5);
+            f->iterable = ExprPtr($7);
+            for (auto& s : *$10) {
+                f->body.push_back(std::move(s));
+            }
+            delete $10;
+            f->line = yylineno;
+            $$ = f;
         }
     ;
 

@@ -28,6 +28,8 @@
 "const"           { return CONST; }
 "fn"              { return FN; }
 "loop"            { return LOOP; }
+"foreach"         { return FOREACH; }
+"in"              { return IN; }
 "for"             { return FOR; }
 "while"           { return WHILE; }
 "do"              { return DO; }

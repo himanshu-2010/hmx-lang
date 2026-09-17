@@ -1,0 +1,34 @@
+fn sum(a: [int]) -> int {
+    let total = 0
+    foreach (x in a) {
+        total = total + x
+    }
+    return total
+}
+
+fn main() {
+    let nums = [3, 7, 2, 8]
+    print(sum(nums))
+    let words = ["hi", "hey", "yo"]
+    foreach (i, w in words) {
+        print(i)
+        print(length(w))
+    }
+    let word = "a" + "bcd"
+    foreach (ch in word) {
+        if (ch == 'b') {
+            continue
+        }
+        print(ch)
+    }
+    let a = [10, 20, 30]
+    foreach (x in a) {
+        x = x * 2
+    }
+    print(a[1])
+    let idx_total = 0
+    foreach (i, v in a) {
+        idx_total = idx_total + i * v
+    }
+    print(idx_total)
+}

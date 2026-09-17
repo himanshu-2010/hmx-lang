@@ -1,6 +1,6 @@
 # HMX Compiler — Progress Log
 
-Last updated: 2026-09-03
+Last updated: 2026-09-17
 ## Objective
 Implement the HMX transpiler's 8-phase plan (from `PLAN.md`) so users can write full hello-world-capable programs. Multi-stage pipeline: lexer → parser → type resolution → codegen → gcc.
 
@@ -167,6 +167,30 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - Docs: SYNTAX.md §2 keywords, §7.3 `%=`, §8.1 `%` + unary ops + precedence, §9 grammar,
   §10 statements, new §11.5 break/continue, §14.4 checks; TESTRESULT.md; AGENTS.md conflict note.
 - Full regression: 31/31 integration, 88/88 negative, 36/36 stress/output.
+
+### Tier 2 — `foreach`, `input()`, conversions, variadic `print` — DONE
+- `foreach (x in coll)` / `foreach (i, x in coll)`: iterates arrays (element copy) and
+  text (char). Lexer tokens FOREACH/IN; AST `ForeachStmt`; parser rules (bare and
+  index+value forms); resolver requires array/text iterable, scopes the loop variable
+  (index as `int`), fills `element_type`; codegen emits a C `for` loop over
+  `.length`/`strlen` with a value copy. `break`/`continue` work inside the body.
+- `input()`: returns one stdin line as `text` (CR/LF stripped, `""` on EOF) via a
+  getline-based `sd_read_line` runtime helper; resolver accepts 0 args, result Text.
+- Conversions: `tostr` (int/decimal/bool/char/byte → text, text = identity, matches
+  `print` formatting), `parse_int` / `parse_decimal` (strict whole-string parse;
+  malformed input → stderr message + `exit(1)`). Runtime helpers
+  `sd_to_str_int` / `sd_to_str_decimal` / `sd_to_str_char` / `sd_parse_int` /
+  `sd_parse_decimal`; preamble now includes `<errno.h>` and `<limits.h>`.
+- Variadic `print(a, b, c)`: `PrintStmt` now carries `std::vector<ExprPtr>`; grammar
+  reuses the `args` rule (≥ 1 arg); resolver rejects array/tuple args; codegen emits a
+  single `printf` with space-separated per-type formats. Empty `print()` is a parse error.
+- Fixtures: `foreach.hmx`, `conversions.hmx`, `print_multi.hmx`; 14 new negative tests;
+  13 new stress tests incl. stdin-fed cases via new `test_output_with_input` helper.
+- Bison conflicts remain **6**. Full regression: 34/34 integration, 99/99 negative,
+  48/48 stress/output.
+- Docs: SYNTAX.md §2 keywords, §11.8 foreach, §13.1 variadic print, §13.3 `input`,
+  §13.4 conversions, §14.4 checks; README.md status/keywords/control-flow/output/tests;
+  TESTRESULT.md; AGENTS.md unchanged.
 
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).

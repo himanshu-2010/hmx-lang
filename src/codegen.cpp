@@ -7,7 +7,9 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
 
     out_ << "#include <stdio.h>\n";
     out_ << "#include <stdlib.h>\n";
-    out_ << "#include <string.h>\n\n";
+    out_ << "#include <string.h>\n";
+    out_ << "#include <errno.h>\n";
+    out_ << "#include <limits.h>\n\n";
 
     out_ << "static char* sd_concat(const char* a, const char* b) {\n";
     out_ << "    size_t la = strlen(a), lb = strlen(b);\n";
@@ -26,6 +28,68 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "    memcpy(result, s + start, (size_t)(end - start));\n";
     out_ << "    result[end - start] = '\\0';\n";
     out_ << "    return result;\n";
+    out_ << "}\n\n";
+
+    out_ << "static char* sd_read_line(void) {\n";
+    out_ << "    char* line = NULL;\n";
+    out_ << "    size_t cap = 0;\n";
+    out_ << "    ssize_t n = getline(&line, &cap, stdin);\n";
+    out_ << "    if (n < 0) {\n";
+    out_ << "        free(line);\n";
+    out_ << "        char* empty = malloc(1);\n";
+    out_ << "        if (!empty) exit(1);\n";
+    out_ << "        empty[0] = '\\0';\n";
+    out_ << "        return empty;\n";
+    out_ << "    }\n";
+    out_ << "    while (n > 0 && (line[n-1] == '\\n' || line[n-1] == '\\r')) {\n";
+    out_ << "        line[--n] = '\\0';\n";
+    out_ << "    }\n";
+    out_ << "    return line;\n";
+    out_ << "}\n\n";
+
+    out_ << "static char* sd_to_str_int(int v) {\n";
+    out_ << "    char* buf = malloc(32);\n";
+    out_ << "    if (!buf) exit(1);\n";
+    out_ << "    snprintf(buf, 32, \"%d\", v);\n";
+    out_ << "    return buf;\n";
+    out_ << "}\n\n";
+
+    out_ << "static char* sd_to_str_decimal(double v) {\n";
+    out_ << "    char* buf = malloc(64);\n";
+    out_ << "    if (!buf) exit(1);\n";
+    out_ << "    snprintf(buf, 64, \"%f\", v);\n";
+    out_ << "    return buf;\n";
+    out_ << "}\n\n";
+
+    out_ << "static char* sd_to_str_char(char c) {\n";
+    out_ << "    char* buf = malloc(2);\n";
+    out_ << "    if (!buf) exit(1);\n";
+    out_ << "    buf[0] = c;\n";
+    out_ << "    buf[1] = '\\0';\n";
+    out_ << "    return buf;\n";
+    out_ << "}\n\n";
+
+    out_ << "static int sd_parse_int(const char* s) {\n";
+    out_ << "    char* end = NULL;\n";
+    out_ << "    errno = 0;\n";
+    out_ << "    long v = strtol(s, &end, 10);\n";
+    out_ << "    if (end == s || *end != '\\0' || errno == ERANGE ||\n";
+    out_ << "        v < INT_MIN || v > INT_MAX) {\n";
+    out_ << "        fprintf(stderr, \"Error: parse_int: invalid int '%s'\\n\", s);\n";
+    out_ << "        exit(1);\n";
+    out_ << "    }\n";
+    out_ << "    return (int)v;\n";
+    out_ << "}\n\n";
+
+    out_ << "static double sd_parse_decimal(const char* s) {\n";
+    out_ << "    char* end = NULL;\n";
+    out_ << "    errno = 0;\n";
+    out_ << "    double v = strtod(s, &end);\n";
+    out_ << "    if (end == s || *end != '\\0' || errno == ERANGE) {\n";
+    out_ << "        fprintf(stderr, \"Error: parse_decimal: invalid decimal '%s'\\n\", s);\n";
+    out_ << "        exit(1);\n";
+    out_ << "    }\n";
+    out_ << "    return v;\n";
     out_ << "}\n\n";
 
     out_ << "typedef struct sd_array {\n";
@@ -178,6 +242,8 @@ void CodeGen::collect_tuple_types(Statement* stmt) {
         for (auto& s : fn->body) collect_tuple_types(s.get());
     } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
         for (auto& s : loop->body) collect_tuple_types(s.get());
+    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
+        for (auto& s : fe->body) collect_tuple_types(s.get());
     } else if (auto* w = dynamic_cast<WhileStmt*>(stmt)) {
         for (auto& s : w->body) collect_tuple_types(s.get());
     } else if (auto* f = dynamic_cast<ForStmt*>(stmt)) {
@@ -229,6 +295,33 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                 if (i > 0) out_ << ", ";
                 emit_expr(call->args[i].get());
             }
+            out_ << ")";
+        } else if (call->name == "input") {
+            out_ << "sd_read_line()";
+        } else if (call->name == "tostr") {
+            TypeKind at = get_expr_type(call->args[0].get());
+            if (at == TypeKind::Text) {
+                emit_expr(call->args[0].get());
+            } else if (at == TypeKind::Decimal) {
+                out_ << "sd_to_str_decimal(";
+                emit_expr(call->args[0].get());
+                out_ << ")";
+            } else if (at == TypeKind::Char) {
+                out_ << "sd_to_str_char(";
+                emit_expr(call->args[0].get());
+                out_ << ")";
+            } else {
+                out_ << "sd_to_str_int(";
+                emit_expr(call->args[0].get());
+                out_ << ")";
+            }
+        } else if (call->name == "parse_int") {
+            out_ << "sd_parse_int(";
+            emit_expr(call->args[0].get());
+            out_ << ")";
+        } else if (call->name == "parse_decimal") {
+            out_ << "sd_parse_decimal(";
+            emit_expr(call->args[0].get());
             out_ << ")";
         } else {
             out_ << call->name << "(";
@@ -361,9 +454,17 @@ void CodeGen::emit_stmt(Statement* stmt) {
         }
     } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
         emit_line_directive(print->line, source_file_);
-        TypeKind etype = get_expr_type(print->expr.get());
-        out_ << "    printf(\"" << type_to_format(etype) << "\\n\", ";
-        emit_expr(print->expr.get(), etype == TypeKind::Text);
+        out_ << "    printf(\"";
+        for (size_t i = 0; i < print->args.size(); i++) {
+            if (i > 0) out_ << " ";
+            out_ << type_to_format(get_expr_type(print->args[i].get()));
+        }
+        out_ << "\\n\", ";
+        for (size_t i = 0; i < print->args.size(); i++) {
+            if (i > 0) out_ << ", ";
+            TypeKind at = get_expr_type(print->args[i].get());
+            emit_expr(print->args[i].get(), at == TypeKind::Text);
+        }
         out_ << ");\n";
     } else if (auto* expr_stmt = dynamic_cast<ExprStmt*>(stmt)) {
         emit_line_directive(expr_stmt->line, source_file_);
@@ -379,6 +480,33 @@ void CodeGen::emit_stmt(Statement* stmt) {
             emit_stmt(body_stmt.get());
         }
         out_ << "    }\n";
+    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
+        emit_line_directive(fe->line, source_file_);
+        TypeKind itype = get_expr_type(fe->iterable.get());
+        std::string idx = fe->index_name.empty()
+            ? "_fe"
+            : fe->index_name;
+        if (itype == TypeKind::Array) {
+            TypeKind elem = fe->element_type;
+            out_ << "    for (int " << idx << " = 0; " << idx << " < ";
+            emit_expr(fe->iterable.get());
+            out_ << ".length; " << idx << "++) {\n";
+            out_ << "        " << type_to_c(elem) << " " << fe->value_name
+                 << " = ((" << type_to_c(elem) << "*)";
+            emit_expr(fe->iterable.get());
+            out_ << ".data)[" << idx << "];\n";
+            for (auto& body_stmt : fe->body) emit_stmt(body_stmt.get());
+            out_ << "    }\n";
+        } else {
+            out_ << "    for (int " << idx << " = 0; " << idx << " < (int)strlen(";
+            emit_expr(fe->iterable.get());
+            out_ << "); " << idx << "++) {\n";
+            out_ << "        char " << fe->value_name << " = " << idx << "[" ;
+            emit_expr(fe->iterable.get());
+            out_ << "];\n";
+            for (auto& body_stmt : fe->body) emit_stmt(body_stmt.get());
+            out_ << "    }\n";
+        }
     } else if (auto* while_stmt = dynamic_cast<WhileStmt*>(stmt)) {
         emit_line_directive(while_stmt->line, source_file_);
         out_ << "    while (";

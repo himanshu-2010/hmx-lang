@@ -1,22 +1,23 @@
 # HMX Transpiler — Test Execution Report
 
-**Date:** 2026-09-16  
+**Date:** 2026-09-17  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (155 / 155)
+**Status:** ALL TESTS PASSED (181 / 181)
 
 ---
 
 ## Executive Summary
 
-A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **Tier 1 operators and loop control**:
-1. **Unary minus / plus**: `-x`, `+x` on `int` / `decimal`, binding tighter than `*` `/` `%`.
-2. **Modulo**: `a % b` (int only) and compound `a %= b`.
-3. **`break` / `continue`**: loop control with a switch-case guard (requires an inner loop).
+A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **Tier 2 loop, I/O, and conversion features**:
+1. **`foreach`**: `foreach (x in coll)` and `foreach (i, x in coll)` over arrays and text, value-copy loop variables, with `break`/`continue` support.
+2. **`input()`**: reads a stdin line as `text` (empty string at end of input).
+3. **Conversions**: `tostr`, `parse_int`, `parse_decimal` (runtime error + exit code 1 on malformed input).
+4. **Variadic `print(a, b, c)`**: space-separated single-line output via one `printf`.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 155
-> - **Passed:** 155
+> - **Total Test Cases Executed:** 181
+> - **Passed:** 181
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -35,7 +36,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (31/31 Passed)
+### 1. Integration Fixtures (34/34 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -68,10 +69,13 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `arrays.hmx` | **[NEW]** Array Support | Array literals, indexing, element assignment, `length()`, typed params, returns | **PASS** |
 | `tuples.hmx` | **[NEW]** Tuple Support | Multi-value return, destructuring, multi-assignment, whole-tuple vars, tuple params, `[int]` member | **PASS** |
 | `neg_mod_break.hmx` | **[NEW]** Tier 1 Ops | Unary minus, modulo (incl. compound `%=`), `break`/`continue` inside loops | **PASS** |
+| `foreach.hmx` | **[NEW]** Tier 2 `foreach` | Array sum via `foreach`, index+value form, char iteration with `continue`, value-copy semantics | **PASS** |
+| `conversions.hmx` | **[NEW]** Tier 2 Conversions | `tostr` on int/decimal/bool/char/byte/text, `parse_int`/`parse_decimal`, concatenation of conversions | **PASS** |
+| `print_multi.hmx` | **[NEW]** Tier 2 Variadic Print | `print(a, b, c)` space-separated output across ints, text, bool, char, decimal, negatives | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (88/88 Passed)
+### 2. Negative & Error Handling Suite (99/99 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -149,12 +153,23 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `continue_outside_loop` | **[NEW]** Continue at Top Level | Top-level `continue` | `continue outside of a loop` | **PASS** |
 | `break_in_switch_no_loop` | **[NEW]** Break in Switch Case | `loop (1) { switch { case 1: break } }` | `break inside a switch case requires an enclosing loop` | **PASS** |
 | `continue_in_switch_no_loop` | **[NEW]** Continue in Switch Case | `loop (1) { switch { case 1: continue } }` | `continue inside a switch case requires an enclosing loop` | **PASS** |
+| `foreach_on_int` | **[NEW]** Non-Iterable | `foreach (x in 5)` iterable must be array/text | `foreach iterable must be an array or text, got int` | **PASS** |
+| `foreach_on_tuple` | **[NEW]** Tuple Iterable | `foreach (x in pair())` | `foreach iterable must be an array or text, got tuple` | **PASS** |
+| `foreach_var_out_of_scope` | **[NEW]** Loop Scoping | foreach var referenced after loop | `undefined variable` | **PASS** |
+| `input_with_args` | **[NEW]** Arity | `input(5)` | `builtin 'input' expects 0 arguments, got 1` | **PASS** |
+| `tostr_on_array` | **[NEW]** Bad `tostr` Arg | `tostr([1, 2])` | `builtin 'tostr' expects int, decimal, bool, byte, char, or text` | **PASS** |
+| `tostr_wrong_arity` | **[NEW]** Arity | `tostr()` | `builtin 'tostr' expects 1 arguments, got 0` | **PASS** |
+| `parse_int_on_int` | **[NEW]** Bad `parse_int` Arg | `parse_int(42)` | `builtin 'parse_int' expects text, got int` | **PASS** |
+| `parse_decimal_on_bool` | **[NEW]** Bad `parse_decimal` Arg | `parse_decimal(true)` | `builtin 'parse_decimal' expects text, got bool` | **PASS** |
+| `print_zero_args` | **[NEW]** Empty `print()` | `print()` requires ≥ 1 argument | `syntax error near` | **PASS** |
+| `print_array_arg` | **[NEW]** Array in `print` | `print(a, 5)` | `cannot print an array` | **PASS** |
+| `print_tuple_arg` | **[NEW]** Tuple in `print` | `print(pair())` | `cannot print a tuple` | **PASS** |
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (36/36 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (48/48 Passed)
 
-These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, and string concatenation chains.
+These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
 | Test Case Name | Category | Tested Behavior | Expected Output / Code | Status |
 | :--- | :--- | :--- | :--- | :---: |
@@ -190,6 +205,18 @@ These tests verify exact runtime output matching and process exit code propagati
 | `break_continue` | **[NEW]** Loop Control | `continue` skips, `break` stops `loop` & `while` | `1\n3\n4\n4\n1\n2\n4\n5\n6` | **PASS** |
 | `break_in_switch_with_inner_loop` | **[NEW]** Switch+Loop | `break` in case requires inner loop | `1` | **PASS** |
 | `modulo_exit_code` | **[NEW]** Exit Code | `1` iff `100 % 7 == 2` | Exit Code: `42` | **PASS** |
+| `foreach_array_sum` | **[NEW]** Tier 2 `foreach` | Sum, value-copy mutation, element unchanged | `15\n55\n3` | **PASS** |
+| `foreach_index_form` | **[NEW]** Tier 2 `foreach` | Index+value over array and over text | `0\n0\n1\n20\n2\n60\n0\na\n1\nb\n2\nc` | **PASS** |
+| `foreach_text_chars` | **[NEW]** Tier 2 `foreach` | `continue` skips char; vowel count over text | `2\n5` | **PASS** |
+| `input_echo_and_length` | **[NEW]** Tier 2 `input` | Two stdin lines echoed; `length()` of second | `hello\n5` | **PASS** |
+| `input_concat` | **[NEW]** Tier 2 `input` | stdin line concatenated into greeting | `hi ada` | **PASS** |
+| `input_empty_lines` | **[NEW]** Tier 2 `input` | Empty stdin lines become empty strings | `0\n0` | **PASS** |
+| `tostr_variants` | **[NEW]** Tier 2 `tostr` | int/decimal/bool/char/byte/text conversion | `-7\n1.250000\n1\n0\nk\n3\nx\n6 items` | **PASS** |
+| `parse_and_use` | **[NEW]** Tier 2 Parsing | `parse_int` / `parse_decimal` arithmetic + `tostr` | `46\n7\n3.600000\n9!` | **PASS** |
+| `input_parse_loop` | **[NEW]** Tier 2 I/O Combo | Two stdin lines parsed and summed | `12` | **PASS** |
+| `parse_int_runtime_error` | **[NEW]** Runtime Error | `parse_int("12abc")` aborts with exit code 1 | Exit Code: `1` | **PASS** |
+| `print_mixed_args` | **[NEW]** Tier 2 Variadic Print | Mixed int/text/bool/char/decimal args | `n = 5\n1 2 3\nab c\n1 x 0.500000\n8 64 512` | **PASS** |
+| `print_text_concat_and_multi` | **[NEW]** Tier 2 Variadic Print | Concatenated text + multi-arg + `tostr` args | `go gh gh done\n12 0.750000 p` | **PASS** |
 
 ---
 

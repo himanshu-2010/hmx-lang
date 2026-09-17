@@ -92,11 +92,13 @@ The following words are reserved and cannot be used as identifiers:
 | `else` | Alternative branch |
 | `loop` | Counted loop |
 | `while` | Conditional loop |
+| `foreach` | Element-wise iteration |
 | `for` | Header-controlled loop |
 | `do` | Post-condition loop |
 | `break` | Exit the enclosing loop early |
 | `continue` | Skip to the next iteration of the enclosing loop |
 | `print` | Output statement |
+| `in` | `foreach` iterable separator |
 | `return` | Function return value |
 | `true` / `false` | Boolean literals |
 | `and` / `or` / `not` | Boolean operators (word forms) |
@@ -794,6 +796,48 @@ switch (value) {
 The switch value and cases must use the same `int`, `byte`, or `char` type. Duplicate
 case values and multiple `default` branches are compile errors.
 
+### 11.8 The `foreach` Statement **[Implemented]**
+
+`foreach` iterates over every element of an array or over the characters of a text
+value. Both forms accept an optional index variable.
+
+**Syntax:**
+```
+foreach_stmt : "foreach" "(" IDENTIFIER "in" expression ")" "{" statement+ "}"
+             | "foreach" "(" IDENTIFIER "," IDENTIFIER "in" expression ")" "{" statement+ "}"
+```
+
+The iterable must be an array or a text value; anything else is a compile error.
+
+```hmx
+let scores = [3, 7, 2, 8]
+foreach (s in scores) {
+    print(s)
+}
+
+let words = ["a", "bb", "ccc"]
+foreach (i, w in words) {          // i is the 0-based index, w the element copy
+    print(i, w)
+}
+
+foreach (ch in "abc") {            // iterates chars of the text
+    print(ch)
+}
+```
+
+The loop variable is a **copy** of each element (arrays) or a `char` (text): assigning
+to it inside the body never modifies the underlying collection. `break` and
+`continue` work inside `foreach` bodies exactly like other loops, and the loop
+variable is scoped to the body (referencing it after the loop is an error).
+
+```hmx
+let a = [10, 20, 30]
+foreach (x in a) {
+    x = x * 2              // modifies x only; a[0] stays 10
+}
+print(a[0])                // 10
+```
+
 ---
 
 ## 12. Functions
@@ -921,22 +965,24 @@ as a statement but not used as a value.
 
 ### 13.1 `print`
 
-The `print` statement outputs a value followed by a newline.
+The `print` statement outputs one or more values on a single line, space-separated
+and terminated by a newline. It requires at least one argument.
 
 **Syntax:**
 ```
-print_stmt  : "print" "(" expression ")"
+print_stmt  : "print" "(" expression ("," expression)* ")"
 ```
 
 ```hmx
-print("hello")
-print(42)
-print(2.5)
-print(true)
-print(count + 1)
+print("hello")                 // hello
+print(42)                      // 42
+print(2.5)                     // 2.500000
+print(true)                    // 1
+print(count + 1, "left")       // 15 left
+print("a", "b", "c")           // a b c
 ```
 
-The format specifier is selected automatically from the expression's type:
+The format specifier is selected automatically from each argument's type:
 
 | Expression type | Output format |
 |---|---|
@@ -944,6 +990,10 @@ The format specifier is selected automatically from the expression's type:
 | `decimal` | floating-point (`%f`) |
 | `text` | string |
 | `bool` | `1` or `0` |
+| `char` | single character |
+| `byte` | integer |
+
+Arrays and tuples cannot be printed directly; index or destructure them first.
 
 ```hmx
 let total = 10
@@ -967,6 +1017,46 @@ print(substring(message, 0, 5))
 ```hmx
 let values: [int] = [3, 5, 7]
 print(length(values))     // prints 3
+```
+
+### 13.3 `input` **[Implemented]**
+
+`input()` reads one line from standard input and returns it as `text` with the
+trailing newline (and CRLF) removed. At end of input it returns the empty string.
+
+```hmx
+let name = input()       // waits for a line on stdin
+print("hi", name)
+```
+
+### 13.4 Conversions: `tostr`, `parse_int`, `parse_decimal` **[Implemented]**
+
+`tostr(value)` converts an `int`, `decimal`, `bool`, `char`, or `byte` into its
+text form, matching how `print` renders that type. Passing `text` returns it
+unchanged. It accepts exactly one argument.
+
+```hmx
+print(tostr(42))          // 42
+print(tostr(2.5))         // 2.500000
+print(tostr(false))       // 0
+print(tostr('Z'))         // Z
+print(tostr(7) + "!")     // 7!
+```
+
+`parse_int(text)` parses a decimal integer into an `int`; `parse_decimal(text)`
+parses a floating-point number into a `decimal`. Trivial whitespace is not
+accepted (the whole string must parse). Malformed input terminates the program
+at runtime with a message on stderr and exit code 1.
+
+```hmx
+let n = parse_int("100")
+print(n - 1)              // 99
+let d = parse_decimal("3.5")
+print(d + 0.5)            // 4.000000
+```
+
+```hmx
+parse_int("12abc")   // runtime error: parse_int: invalid int '12abc'
 ```
 
 ---
@@ -1019,6 +1109,11 @@ Error [line 6]: undefined variable 'nope'
 - **Definite returns** for typed functions: every reachable path must return a value.
 - **Loop control**: `break`/`continue` outside a loop, or directly inside a switch
   case without an enclosing loop, is a compile error.
+- **`foreach`** iterable must be an array or `text`; the loop variable is scoped to
+  the body.
+- **Built-ops**: `print` requires ≥ 1 argument and rejects arrays/tuples; builtin
+  call arity and argument types are checked (`input` takes 0 args, `tostr` takes
+  one supported scalar, `parse_int`/`parse_decimal` take one `text`).
 - **Operator domains**: `%` / `%=` require `int`; unary `-`/`+` require `int` or
   `decimal`.
 

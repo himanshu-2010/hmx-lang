@@ -719,6 +719,87 @@ test_error "continue_in_switch_no_loop" \
     }' \
     "continue inside a switch case requires an enclosing loop"
 
+test_error "foreach_on_int" \
+    'fn main() {
+        foreach (x in 5) {
+            print(x)
+        }
+    }' \
+    "foreach iterable must be an array or text, got int"
+
+test_error "foreach_on_tuple" \
+    'fn pair() -> (int, int) {
+        return 1, 2
+    }
+    fn main() {
+        foreach (x in pair()) {
+            print(x)
+        }
+    }' \
+    "foreach iterable must be an array or text, got tuple"
+
+test_error "foreach_var_out_of_scope" \
+    'fn main() {
+        let a = [1, 2]
+        foreach (x in a) {
+            print(x)
+        }
+        print(x)
+    }' \
+    "undefined variable"
+
+test_error "input_with_args" \
+    'fn main() {
+        print(input(5))
+    }' \
+    "builtin 'input' expects 0 arguments, got 1"
+
+test_error "tostr_on_array" \
+    'fn main() {
+        print(tostr([1, 2]))
+    }' \
+    "builtin 'tostr' expects int, decimal, bool, byte, char, or text"
+
+test_error "tostr_wrong_arity" \
+    'fn main() {
+        print(tostr())
+    }' \
+    "builtin 'tostr' expects 1 arguments, got 0"
+
+test_error "parse_int_on_int" \
+    'fn main() {
+        print(parse_int(42))
+    }' \
+    "builtin 'parse_int' expects text, got int"
+
+test_error "parse_decimal_on_bool" \
+    'fn main() {
+        print(parse_decimal(true))
+    }' \
+    "builtin 'parse_decimal' expects text, got bool"
+
+test_error "print_zero_args" \
+    'fn main() {
+        print()
+    }' \
+    "syntax error near"
+
+test_error "print_array_arg" \
+    'fn main() {
+        let a = [1, 2]
+        print(a, 5)
+    }' \
+    "cannot print an array"
+
+test_error "print_tuple_arg" \
+    'fn pair() -> (int, int) {
+        return 1, 2
+    }
+    fn main() {
+        print(pair())
+    }' \
+    "cannot print a tuple"
+
 echo ""
 echo "Negative Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

@@ -111,32 +111,57 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         if (call->name == "main") {
             throw CompileError(line(), "cannot call function 'main'");
         }
-        if (call->name == "length" || call->name == "substring") {
-            size_t expected = call->name == "length" ? 1 : 3;
+        if (call->name == "length" || call->name == "substring" ||
+            call->name == "input" || call->name == "tostr" ||
+            call->name == "parse_int" || call->name == "parse_decimal") {
+            size_t expected = 1;
+            if (call->name == "substring") expected = 3;
+            if (call->name == "input") expected = 0;
             if (call->args.size() != expected) {
                 throw CompileError(line(), "builtin '" + call->name + "' expects " +
                     std::to_string(expected) + " arguments, got " +
                     std::to_string(call->args.size()));
             }
-            TypeKind arg0 = resolve_expr(call->args[0].get());
-            if (call->name == "length") {
-                if (arg0 == TypeKind::Text || arg0 == TypeKind::Array) {
-                    result = TypeKind::Int;
-                } else {
+            if (call->name == "input") {
+                result = TypeKind::Text;
+            } else if (call->name == "tostr") {
+                TypeKind arg0 = resolve_expr(call->args[0].get());
+                if (arg0 != TypeKind::Int && arg0 != TypeKind::Decimal &&
+                    arg0 != TypeKind::Bool && arg0 != TypeKind::Char &&
+                    arg0 != TypeKind::Byte && arg0 != TypeKind::Text) {
                     throw CompileError(line(),
-                        "builtin 'length' expects text or array, got " +
-                        type_to_string(arg0));
-                }
-            } else {
-                if (arg0 != TypeKind::Text) {
-                    throw CompileError(line(), "builtin 'substring' expects text as argument 1");
-                }
-                for (size_t i = 1; i < 3; i++) {
-                    if (resolve_expr(call->args[i].get()) != TypeKind::Int) {
-                        throw CompileError(line(), "builtin 'substring' expects int indexes");
-                    }
+                        "builtin 'tostr' expects int, decimal, bool, byte, char, or text");
                 }
                 result = TypeKind::Text;
+            } else if (call->name == "parse_int" || call->name == "parse_decimal") {
+                TypeKind arg0 = resolve_expr(call->args[0].get());
+                if (arg0 != TypeKind::Text) {
+                    throw CompileError(line(),
+                        "builtin '" + call->name + "' expects text, got " +
+                        type_to_string(arg0));
+                }
+                result = call->name == "parse_int" ? TypeKind::Int : TypeKind::Decimal;
+            } else {
+                TypeKind arg0 = resolve_expr(call->args[0].get());
+                if (call->name == "length") {
+                    if (arg0 == TypeKind::Text || arg0 == TypeKind::Array) {
+                        result = TypeKind::Int;
+                    } else {
+                        throw CompileError(line(),
+                            "builtin 'length' expects text or array, got " +
+                            type_to_string(arg0));
+                    }
+                } else {
+                    if (arg0 != TypeKind::Text) {
+                        throw CompileError(line(), "builtin 'substring' expects text as argument 1");
+                    }
+                    for (size_t i = 1; i < 3; i++) {
+                        if (resolve_expr(call->args[i].get()) != TypeKind::Int) {
+                            throw CompileError(line(), "builtin 'substring' expects int indexes");
+                        }
+                    }
+                    result = TypeKind::Text;
+                }
             }
             expr->resolved_type = result;
             return result;
@@ -532,14 +557,16 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             }
         }
     } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
-        TypeKind pt = resolve_expr(print->expr.get());
-        if (pt == TypeKind::Array) {
-            throw CompileError(stmt->line,
-                "cannot print an array; index its elements or use length(arr)");
-        }
-        if (pt == TypeKind::Tuple) {
-            throw CompileError(stmt->line,
-                "cannot print a tuple; destructure it or index its elements");
+        for (auto& arg : print->args) {
+            TypeKind pt = resolve_expr(arg.get());
+            if (pt == TypeKind::Array) {
+                throw CompileError(stmt->line,
+                    "cannot print an array; index its elements or use length(arr)");
+            }
+            if (pt == TypeKind::Tuple) {
+                throw CompileError(stmt->line,
+                    "cannot print a tuple; destructure it or index its elements");
+            }
         }
     } else if (auto* expr_stmt = dynamic_cast<ExprStmt*>(stmt)) {
         bool saved = allow_void_call_;
@@ -607,6 +634,32 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         push_scope();
         loop_depth_++;
         for (auto& s : loop->body) resolve_stmt(s.get());
+        loop_depth_--;
+        pop_scope();
+    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
+        TypeKind it = resolve_expr(fe->iterable.get());
+        if (it != TypeKind::Array && it != TypeKind::Text) {
+            throw CompileError(stmt->line,
+                "foreach iterable must be an array or text, got " + type_to_string(it));
+        }
+        push_scope();
+        if (!fe->index_name.empty()) {
+            define(fe->index_name, TypeKind::Int);
+        }
+        if (it == TypeKind::Array) {
+            TypeKind elem = expr_array_element_type(fe->iterable.get());
+            if (elem == TypeKind::Unknown) {
+                throw CompileError(stmt->line,
+                    "foreach cannot infer element type for this array");
+            }
+            fe->element_type = elem;
+            define(fe->value_name, elem);
+        } else {
+            fe->element_type = TypeKind::Char;
+            define(fe->value_name, TypeKind::Char);
+        }
+        loop_depth_++;
+        for (auto& s : fe->body) resolve_stmt(s.get());
         loop_depth_--;
         pop_scope();
     } else if (auto* while_stmt = dynamic_cast<WhileStmt*>(stmt)) {

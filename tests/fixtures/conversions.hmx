@@ -1,0 +1,18 @@
+fn main() {
+    let i = 42
+    let d = 2.5
+    let b = false
+    let c = 'Q'
+    let by: byte = 9
+    print(tostr(i))
+    print(tostr(d))
+    print(tostr(b))
+    print(tostr(c))
+    print(tostr(by))
+    print(tostr("txt"))
+    print(tostr(i) + "|" + tostr(by))
+    let n = parse_int("100")
+    print(n - 1)
+    let dec = parse_decimal("3.5")
+    print(dec + 0.5)
+}

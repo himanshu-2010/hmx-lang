@@ -181,7 +181,7 @@ struct ArrayAssignStmt : Statement {
 };
 
 struct PrintStmt : Statement {
-    ExprPtr expr;
+    std::vector<ExprPtr> args;
 };
 
 struct LoopStmt : Statement {
@@ -204,6 +204,14 @@ struct ForStmt : Statement {
 struct DoWhileStmt : Statement {
     std::vector<StmtPtr> body;
     ExprPtr condition;
+};
+
+struct ForeachStmt : Statement {
+    std::string value_name;
+    std::string index_name;     // empty when only the value form is used
+    ExprPtr iterable;
+    std::vector<StmtPtr> body;
+    TypeKind element_type = TypeKind::Unknown;   // filled by resolver
 };
 
 struct IfStmt : Statement {

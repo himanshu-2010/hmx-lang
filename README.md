@@ -19,13 +19,15 @@ The current compiler supports:
 - Character and byte values
 - Arithmetic, comparisons, boolean logic, and text concatenation
 - Integer modulo `%`, compound assignment (`+=`, `%=`, ...), and unary `-` / `+`
-- String built-ins `length` and `substring`
+- String built-ins `length` and `substring`, plus `input` for stdin lines
+- Type conversions via `tostr`, `parse_int`, and `parse_decimal`
 - `if` / `else` conditionals
 - `else if` conditional chains
 - `switch` statements with automatic case breaks, plus `break` / `continue` loop control
 - Ternary expressions and explicit numeric casts
 - Immutable `const` bindings
-- `loop`, `while`, `for`, and `do ... while` loops
+- `loop`, `while`, `for`, `foreach`, and `do ... while` loops
+- Variadic `print(a, b, c)` for space-separated single-line output
 - Functions with typed parameters and return values
 - Function calls, forward calls, and recursion
 - Arrays with typed elements, indexing, element assignment, and `length()`
@@ -138,8 +140,8 @@ These words are reserved and cannot be used as variable or function names:
 | Category | Keywords |
 | --- | --- |
 | Declarations | `let`, `const`, `fn` |
-| Control flow | `if`, `else`, `loop`, `while`, `for`, `do`, `break`, `continue` |
-| Functions and output | `return`, `print` |
+| Control flow | `if`, `else`, `loop`, `foreach`, `while`, `for`, `do`, `break`, `continue` |
+| Functions and output | `return`, `print`, `in` |
 | Boolean values | `true`, `false` |
 | Boolean operators | `and`, `or`, `not` |
 | Types and casts | `int`, `decimal`, `text`, `bool`, `as` |
@@ -276,12 +278,20 @@ fn main() {
     do {
         total--
     } while (total > 0)
+
+    let values = [10, 20, 30]
+    foreach (i, v in values) {
+        print(i, v)
+    }
 }
 ```
 
 - `loop(count)` requires an `int` count.
 - `while` and `do ... while` conditions require `bool`.
 - `for` uses `for (initializer; condition; update)`.
+- `foreach (x in iterable)` iterates an array's elements or a text's characters;
+  `foreach (i, x in iterable)` additionally provides the 0-based index. The loop
+  variable is a copy.
 - A variable declared in a `for` initializer is scoped to that loop.
 - `break` exits a loop early; `continue` skips to the next iteration. Both require an
   enclosing loop and are rejected directly inside a `switch` case unless the case has
@@ -323,9 +333,19 @@ Line comments and non-nesting block comments are supported:
 print("comments are ignored")
 ```
 
-`print` accepts an expression and writes it followed by a newline. Integers, decimals,
-text, booleans, variables, and expressions can be printed. Booleans print as `1` or
-`0`; decimals use the generated C `%f` formatting.
+`print` accepts one or more expressions and writes them space-separated on one line
+followed by a newline. Integers, decimals, text, booleans, characters, variables,
+and expressions can be printed. Booleans print as `1` or `0`; decimals use the
+generated C `%f` formatting.
+
+```hmx
+print("score", 42, "ok")   // score 42 ok
+```
+
+`input()` reads one line from standard input (empty string at end of input).
+Conversions bridge text and values: `tostr(42)` → `"42"`, `parse_int("42")` → `42`,
+`parse_decimal("2.5")` → `2.5`. Malformed `parse_int` / `parse_decimal` input
+terminates the program at runtime.
 
 ## Compiler Pipeline
 
@@ -376,10 +396,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | 31 `.hmx` fixtures | 31/31 passed |
-| Negative | Type, syntax, and resolver errors | 88/88 passed |
-| Stress/output | Recursion, loops, strings, arrays, tuples, unary/modulo/loop-control, exit codes | 36/36 passed |
-| Total | 155 test cases | 155/155 passed |
+| Integration | 34 `.hmx` fixtures | 34/34 passed |
+| Negative | Type, syntax, and resolver errors | 99/99 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print | 48/48 passed |
+| Total | 181 test cases | 181/181 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

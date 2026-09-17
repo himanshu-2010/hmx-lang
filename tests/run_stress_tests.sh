@@ -60,6 +60,34 @@ test_exit_code() {
     fi
 }
 
+test_output_with_input() {
+    local test_name="$1"
+    local code="$2"
+    local stdin_data="$3"
+    local expected_output="$4"
+
+    local file="$TMPDIR/${test_name}.hmx"
+    printf '%s\n' "$code" > "$file"
+
+    local actual_output
+    set +e
+    actual_output=$(printf '%s' "$stdin_data" | "$BIN" run "$file" 2>&1)
+    local exit_code=$?
+    set -e
+
+    if [ $exit_code -eq 0 ] && [ "$actual_output" = "$expected_output" ]; then
+        echo "PASS (Input/Output): $test_name"
+        PASS=$((PASS+1))
+    else
+        echo "FAIL (Input/Output): $test_name"
+        echo "   Expected output:"
+        echo "$expected_output" | sed 's/^/   /'
+        echo "   Got (exit $exit_code):"
+        echo "$actual_output" | sed 's/^/   /'
+        FAIL=$((FAIL+1))
+    fi
+}
+
 echo "=== Running Output Verification & Stress Tests ==="
 
 test_exit_code "exit_code_zero" \
@@ -489,6 +517,158 @@ test_exit_code "modulo_exit_code" \
         return 1
     }' \
     42
+
+test_output "foreach_array_sum" \
+    'fn main() {
+        let nums = [1, 2, 3, 4, 5]
+        let total = 0
+        foreach (x in nums) {
+            total = total + x
+        }
+        print(total)
+        let squares = 0
+        foreach (v in nums) {
+            v = v * v
+            squares = squares + v
+        }
+        print(squares)
+        print(nums[2])
+    }' \
+    "$(printf '15\n55\n3')"
+
+test_output "foreach_index_form" \
+    'fn main() {
+        let items = [10, 20, 30]
+        foreach (i, v in items) {
+            print(i)
+            print(i * v)
+        }
+        let word = "abc"
+        foreach (i, ch in word) {
+            print(i)
+            print(ch)
+        }
+    }' \
+    "$(printf '0\n0\n1\n20\n2\n60\n0\na\n1\nb\n2\nc')"
+
+test_output "foreach_text_chars" \
+    'fn main() {
+        let msg = "hay"
+        let out_len = 0
+        foreach (ch in msg) {
+            if (ch == '"'"'a'"'"') {
+                continue
+            }
+            out_len = out_len + 1
+        }
+        print(out_len)
+        let vowel_count = 0
+        foreach (ch in "aeiou") {
+            if (ch == '"'"'a'"'"' or ch == '"'"'e'"'"' or ch == '"'"'i'"'"' or ch == '"'"'o'"'"' or ch == '"'"'u'"'"') {
+                vowel_count = vowel_count + 1
+            }
+        }
+        print(vowel_count)
+    }' \
+    "$(printf '2\n5')"
+
+test_output_with_input "input_echo_and_length" \
+    'fn main() {
+        let a = input()
+        let b = input()
+        print(a)
+        print(length(b))
+    }' \
+    'hello
+world' \
+    "$(printf 'hello\n5')"
+
+test_output_with_input "input_concat" \
+    'fn main() {
+        let name = input()
+        let greeting = "hi " + name
+        print(greeting)
+    }' \
+    'ada' \
+    "$(printf 'hi ada')"
+
+test_output_with_input "input_empty_lines" \
+    'fn main() {
+        let a = input()
+        let b = input()
+        print(length(a))
+        print(length(b))
+    }' \
+    $'\n' \
+    "$(printf '0\n0')"
+
+test_exit_code "parse_int_runtime_error" \
+    'fn main() {
+        let n = parse_int("12abc")
+        print(n)
+    }' \
+    1
+
+test_output "tostr_variants" \
+    'fn main() {
+        print(tostr(-7))
+        print(tostr(1.25))
+        print(tostr(true))
+        print(tostr(false))
+        print(tostr('"'"'k'"'"'))
+        let by: byte = 3
+        print(tostr(by))
+        print(tostr("x"))
+        print(tostr(6) + " items")
+    }' \
+    "$(printf -- '-7\n1.250000\n1\n0\nk\n3\nx\n6 items')"
+
+test_output "parse_and_use" \
+    'fn main() {
+        let a = parse_int("50")
+        let b = parse_int("-4")
+        print(a + b)
+        print(parse_int("007"))
+        let d = parse_decimal("2.5")
+        print(parse_decimal("1.1") + d)
+        let s = tostr(parse_int("9"))
+        print(s + "!")
+    }' \
+    "$(printf '46\n7\n3.600000\n9!')"
+
+test_output_with_input "input_parse_loop" \
+    'fn main() {
+        let total = 0
+        let a = input()
+        total = total + parse_int(a)
+        let b = input()
+        total = total + parse_int(b)
+        print(total)
+    }' \
+    '3
+9' \
+    "$(printf '12')"
+
+test_output "print_mixed_args" \
+    'fn main() {
+        print("n =", 5)
+        print(1, 2, 3)
+        print("a" + "b", "c")
+        print(true, '"
+'"'x'"'"', 0.5)
+        let i = 8
+        print(i, i * i, i * i * i)
+    }' \
+    "$(printf 'n = 5\n1 2 3\nab c\n1 x 0.500000\n8 64 512')"
+
+test_output "print_text_concat_and_multi" \
+    'fn main() {
+        let name = "gh"
+        let msg = "go " + name
+        print(msg, name, "done")
+        print(tostr(12), tostr(0.75), tostr('"'"'p'"'"'))
+    }' \
+    "$(printf 'go gh gh done\n12 0.750000 p')"
 
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
