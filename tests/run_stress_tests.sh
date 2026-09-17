@@ -824,6 +824,129 @@ test_exit_code "closures_exit_capture" \
     }' \
     42
 
+test_output "nonlocal_break_loop" \
+    'fn main() {
+        let total = 0
+        loop (5) {
+            fn bail() {
+                break
+            }
+            total = total + 1
+            if (total == 2) {
+                bail()
+            }
+        }
+        print(total)
+    }' \
+    '2'
+
+test_output "nonlocal_continue_for" \
+    'fn main() {
+        let total = 0
+        for (let i = 0; i < 10; i++) {
+            fn skip() {
+                continue
+            }
+            if (i == 5) {
+                skip()
+            }
+            total = total + 1
+        }
+        print(total)
+    }' \
+    '9'
+
+test_output "nonlocal_continue_foreach" \
+    'fn main() {
+        let total = 0
+        foreach (i, x in ["a", "b", "c", "d"]) {
+            fn skip() {
+                continue
+            }
+            if (x == "c") {
+                skip()
+            }
+            total = total + 1
+        }
+        print(total)
+    }' \
+    '3'
+
+test_output "nonlocal_break_while" \
+    'fn main() {
+        let i = 0
+        while (i < 100) {
+            fn stop() {
+                break
+            }
+            i = i + 1
+            if (i == 7) {
+                stop()
+            }
+        }
+        print(i)
+    }' \
+    '7'
+
+test_output "nonlocal_break_dowhile" \
+    'fn main() {
+        let j = 0
+        do {
+            fn halt() {
+                break
+            }
+            j = j + 1
+            if (j == 4) {
+                halt()
+            }
+        } while (j < 50)
+        print(j)
+    }' \
+    '4'
+
+test_output "nonlocal_nested_targets" \
+    'fn main() {
+        let j = 0
+        loop (3) {
+            fn bail() {
+                break
+            }
+            let k = 0
+            while (k < 100) {
+                fn inner() {
+                    continue
+                }
+                k = k + 1
+                if (k == 7) {
+                    inner()
+                }
+            }
+            print("inner", k)
+            j = j + 1
+            if (j == 2) {
+                bail()
+            }
+        }
+        print("after", j)
+    }' \
+    "$(printf 'inner 100\ninner 100\nafter 2')"
+
+test_output "nonlocal_non_main_owner" \
+    'fn outer() {
+        loop (2) {
+            fn bail() {
+                break
+            }
+            print("iter")
+            bail()
+        }
+        print("after")
+    }
+    fn main() {
+        outer()
+    }' \
+    "$(printf 'iter\nafter')"
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

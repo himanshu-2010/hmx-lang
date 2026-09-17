@@ -97,7 +97,122 @@ void TypeResolver::require_function_value(const std::string& fname) {
         throw CompileError(line(),
             "function '" + fname + "' must be declared before it is used as a value");
     }
+    auto dit = fn_decls_.find(fname);
+    if (dit != fn_decls_.end() && dit->second->has_nonlocal) {
+        throw CompileError(line(),
+            "cannot use function '" + fname + "' as a value because it has a non-local break/continue target");
+    }
     require_capture_visibility(fname);
+}
+
+void TypeResolver::require_nonlocal_call(const std::string& fname, const FunctionDecl* cdecl, int error_line) {
+    const Statement* target_loop = nullptr;
+    for (auto it = lex_loop_stack_.rbegin(); it != lex_loop_stack_.rend(); ++it) {
+        if ((*it)->nl_id == cdecl->nl_target_loop_id) {
+            target_loop = *it;
+            break;
+        }
+    }
+    if (!target_loop || current_fn_ != target_loop->nl_owner) {
+        throw CompileError(error_line,
+            "cannot call '" + fname + "' from here: its non-local break/continue target loop is not active here");
+    }
+}
+
+bool TypeResolver::is_loop_stmt(const Statement* stmt) const {
+    return dynamic_cast<const LoopStmt*>(stmt) ||
+           dynamic_cast<const ForeachStmt*>(stmt) ||
+           dynamic_cast<const WhileStmt*>(stmt) ||
+           dynamic_cast<const ForStmt*>(stmt) ||
+           dynamic_cast<const DoWhileStmt*>(stmt);
+}
+
+void TypeResolver::analyze_nonlocal_exits(Program& program) {
+    next_loop_id_ = 0;
+    std::vector<Statement*> lex_stack;
+    std::vector<int> switch_depths;
+    analyze_nonlocal_stmts(program.statements, nullptr, lex_stack, 0, switch_depths);
+}
+
+void TypeResolver::analyze_nonlocal_stmts(const std::vector<StmtPtr>& stmts, FunctionDecl* enclosing,
+                                          std::vector<Statement*>& lex_stack, int local_depth,
+                                          std::vector<int>& switch_depths) {
+    for (auto& sp : stmts) {
+        Statement* stmt = sp.get();
+        if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
+            fn->has_nonlocal = false;
+            fn->nl_target_loop_id = -1;
+            fn->nl_use_break = false;
+            fn->nl_use_continue = false;
+            std::vector<int> saved_switch = std::move(switch_depths);
+            switch_depths.clear();
+            analyze_nonlocal_stmts(fn->body, fn, lex_stack, 0, switch_depths);
+            switch_depths = std::move(saved_switch);
+        } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
+            analyze_nonlocal_stmts(ifs->then_body, enclosing, lex_stack, local_depth, switch_depths);
+            analyze_nonlocal_stmts(ifs->else_body, enclosing, lex_stack, local_depth, switch_depths);
+        } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
+            switch_depths.push_back(local_depth);
+            for (auto& c : sw->cases) {
+                analyze_nonlocal_stmts(c.body, enclosing, lex_stack, local_depth, switch_depths);
+            }
+            switch_depths.pop_back();
+        } else if (auto* f = dynamic_cast<ForStmt*>(stmt)) {
+            f->nl_id = next_loop_id_++;
+            f->nl_owner = enclosing;
+            lex_stack.push_back(f);
+            analyze_nonlocal_stmts(f->body, enclosing, lex_stack, local_depth + 1, switch_depths);
+            lex_stack.pop_back();
+        } else if (is_loop_stmt(stmt)) {
+            stmt->nl_id = next_loop_id_++;
+            stmt->nl_owner = enclosing;
+            lex_stack.push_back(stmt);
+            if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
+                analyze_nonlocal_stmts(loop->body, enclosing, lex_stack, local_depth + 1, switch_depths);
+            } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
+                analyze_nonlocal_stmts(fe->body, enclosing, lex_stack, local_depth + 1, switch_depths);
+            } else if (auto* w = dynamic_cast<WhileStmt*>(stmt)) {
+                analyze_nonlocal_stmts(w->body, enclosing, lex_stack, local_depth + 1, switch_depths);
+            } else if (auto* dw = dynamic_cast<DoWhileStmt*>(stmt)) {
+                analyze_nonlocal_stmts(dw->body, enclosing, lex_stack, local_depth + 1, switch_depths);
+            }
+            lex_stack.pop_back();
+        } else if (auto* brk = dynamic_cast<BreakStmt*>(stmt)) {
+            if (lex_stack.empty()) {
+                throw CompileError(stmt->line, "break outside of a loop");
+            }
+            Statement* nearest = lex_stack.back();
+            if (nearest->nl_owner == enclosing) {
+                if (!switch_depths.empty() && local_depth <= switch_depths.back()) {
+                    throw CompileError(stmt->line,
+                        "break inside a switch case requires an enclosing loop within the case");
+                }
+            } else {
+                brk->nonlocal = true;
+                enclosing->has_nonlocal = true;
+                enclosing->nl_target_loop_id = nearest->nl_id;
+                enclosing->nl_use_break = true;
+                nearest->nl_target = true;
+            }
+        } else if (auto* cont = dynamic_cast<ContinueStmt*>(stmt)) {
+            if (lex_stack.empty()) {
+                throw CompileError(stmt->line, "continue outside of a loop");
+            }
+            Statement* nearest = lex_stack.back();
+            if (nearest->nl_owner == enclosing) {
+                if (!switch_depths.empty() && local_depth <= switch_depths.back()) {
+                    throw CompileError(stmt->line,
+                        "continue inside a switch case requires an enclosing loop within the case");
+                }
+            } else {
+                cont->nonlocal = true;
+                enclosing->has_nonlocal = true;
+                enclosing->nl_target_loop_id = nearest->nl_id;
+                enclosing->nl_use_continue = true;
+                nearest->nl_target = true;
+            }
+        }
+    }
 }
 
 bool TypeResolver::has_type(const std::string& name) const {
@@ -350,6 +465,10 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             throw CompileError(line(), "undefined function '" + call->name + "'");
         }
         require_capture_visibility(call->name);
+        auto ndit = fn_decls_.find(call->name);
+        if (ndit != fn_decls_.end() && ndit->second->has_nonlocal) {
+            require_nonlocal_call(call->name, ndit->second, line());
+        }
         size_t fixed = sig->variadic ? sig->param_types.size() - 1 : sig->param_types.size();
         bool has_default = false;
         for (bool d : sig->param_has_default) if (d) { has_default = true; break; }
@@ -902,7 +1021,9 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         }
         push_scope();
         loop_depth_++;
+        lex_loop_stack_.push_back(loop);
         for (auto& s : loop->body) resolve_stmt(s.get());
+        lex_loop_stack_.pop_back();
         loop_depth_--;
         pop_scope();
     } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
@@ -928,7 +1049,9 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             define(fe->value_name, TypeKind::Char);
         }
         loop_depth_++;
+        lex_loop_stack_.push_back(fe);
         for (auto& s : fe->body) resolve_stmt(s.get());
+        lex_loop_stack_.pop_back();
         loop_depth_--;
         pop_scope();
     } else if (auto* while_stmt = dynamic_cast<WhileStmt*>(stmt)) {
@@ -939,7 +1062,9 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         }
         push_scope();
         loop_depth_++;
+        lex_loop_stack_.push_back(while_stmt);
         for (auto& s : while_stmt->body) resolve_stmt(s.get());
+        lex_loop_stack_.pop_back();
         loop_depth_--;
         pop_scope();
     } else if (auto* for_stmt = dynamic_cast<ForStmt*>(stmt)) {
@@ -962,13 +1087,17 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         current_line_ = for_stmt->update->line;
         resolve_stmt(for_stmt->update.get());
         loop_depth_++;
+        lex_loop_stack_.push_back(for_stmt);
         for (auto& s : for_stmt->body) resolve_stmt(s.get());
+        lex_loop_stack_.pop_back();
         loop_depth_--;
         pop_scope();
     } else if (auto* do_while = dynamic_cast<DoWhileStmt*>(stmt)) {
         push_scope();
         loop_depth_++;
+        lex_loop_stack_.push_back(do_while);
         for (auto& s : do_while->body) resolve_stmt(s.get());
+        lex_loop_stack_.pop_back();
         loop_depth_--;
         pop_scope();
         current_line_ = stmt->line;
@@ -1115,23 +1244,27 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 }
             }
         }
-    } else if (dynamic_cast<BreakStmt*>(stmt)) {
-        if (loop_depth_ == 0) {
-            throw CompileError(stmt->line, "break outside of a loop");
+    } else if (auto* brk = dynamic_cast<BreakStmt*>(stmt)) {
+        if (!brk->nonlocal) {
+            if (loop_depth_ == 0) {
+                throw CompileError(stmt->line, "break outside of a loop");
+            }
+            if (!switch_entry_loop_depths_.empty() &&
+                loop_depth_ <= switch_entry_loop_depths_.back()) {
+                throw CompileError(stmt->line,
+                    "break inside a switch case requires an enclosing loop within the case");
+            }
         }
-        if (!switch_entry_loop_depths_.empty() &&
-            loop_depth_ <= switch_entry_loop_depths_.back()) {
-            throw CompileError(stmt->line,
-                "break inside a switch case requires an enclosing loop within the case");
-        }
-    } else if (dynamic_cast<ContinueStmt*>(stmt)) {
-        if (loop_depth_ == 0) {
-            throw CompileError(stmt->line, "continue outside of a loop");
-        }
-        if (!switch_entry_loop_depths_.empty() &&
-            loop_depth_ <= switch_entry_loop_depths_.back()) {
-            throw CompileError(stmt->line,
-                "continue inside a switch case requires an enclosing loop within the case");
+    } else if (auto* cont = dynamic_cast<ContinueStmt*>(stmt)) {
+        if (!cont->nonlocal) {
+            if (loop_depth_ == 0) {
+                throw CompileError(stmt->line, "continue outside of a loop");
+            }
+            if (!switch_entry_loop_depths_.empty() &&
+                loop_depth_ <= switch_entry_loop_depths_.back()) {
+                throw CompileError(stmt->line,
+                    "continue inside a switch case requires an enclosing loop within the case");
+            }
         }
     } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
         std::vector<std::unordered_map<std::string, Symbol>> saved_scopes = std::move(scopes_);
@@ -1314,6 +1447,7 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
 
 void TypeResolver::resolve(Program& program) {
     collect_functions(program);
+    analyze_nonlocal_exits(program);
     push_scope();
     for (auto& stmt : program.statements) {
         resolve_stmt(stmt.get());

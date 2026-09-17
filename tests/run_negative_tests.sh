@@ -947,14 +947,103 @@ test_error "nested_fn_named_main" \
 
 test_error "nested_fn_break_outside_loop" \
     'fn main() {
-        loop (3) {
-            fn helper() {
-                break
-            }
-            helper()
+        let x = 1
+        fn helper() {
+            break
         }
+        print(x)
     }' \
     "break outside of a loop"
+
+test_error "nl_reject_call_outside_loop" \
+    'fn main() {
+        loop (3) {
+            fn bail() {
+                break
+            }
+        }
+        bail()
+    }' \
+    "its non-local break/continue target loop is not active here"
+
+test_error "nl_reject_call_from_other_fn" \
+    'fn owner() {
+        loop (3) {
+            fn bail() {
+                break
+            }
+            bail()
+        }
+    }
+    fn main() {
+        bail()
+    }' \
+    "its non-local break/continue target loop is not active here"
+
+test_error "nl_reject_forwarded_via_wrapper" \
+    'fn main() {
+        loop (3) {
+            fn bail() {
+                break
+            }
+            fn wrapper() {
+                bail()
+            }
+            wrapper()
+        }
+    }' \
+    "its non-local break/continue target loop is not active here"
+
+test_error "nl_reject_cross_loop_call" \
+    'fn main() {
+        loop (3) {
+            fn bail() {
+                break
+            }
+            fn swipe() {
+                continue
+            }
+        }
+        loop (3) {
+            bail()
+            swipe()
+        }
+    }' \
+    "its non-local break/continue target loop is not active here"
+
+test_error "nl_reject_token_as_value" \
+    'fn main() {
+        loop (3) {
+            fn bail() {
+                break
+            }
+            let f = bail
+        }
+    }' \
+    "cannot use function 'bail' as a value because it has a non-local break/continue target"
+
+test_error "nl_reject_token_as_arg" \
+    'fn apply(f: fn(int) -> int, x: int) -> int {
+        return f(x)
+    }
+    fn main() {
+        loop (3) {
+            fn bail(n: int) -> int {
+                break
+            }
+            apply(bail, 5)
+        }
+    }' \
+    "function 'bail'"
+
+test_error "nl_continue_outside_loop" \
+    'fn main() {
+        fn helper() {
+            continue
+        }
+        helper()
+    }' \
+    "continue outside of a loop"
 
 test_error "default_param_type_mismatch" \
     'fn f(a: int = "x") {

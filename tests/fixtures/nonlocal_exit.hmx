@@ -1,0 +1,63 @@
+// Non-local exit: break/continue from a nested function
+// breaks/continues the nearest loop in the enclosing function.
+fn main() {
+    let total = 0
+    loop (3) {
+        fn bail() {
+            break
+        }
+        total = total + 1
+        if (total == 2) {
+            bail()
+        }
+    }
+    print(total)
+
+    let hits = 0
+    foreach (i, x in [10, 20, 30, 40]) {
+        fn skip() {
+            continue
+        }
+        if (x == 30) {
+            skip()
+        }
+        hits = hits + 1
+    }
+    print(hits)
+
+    let i = 0
+    while (i < 100) {
+        fn stop() {
+            break
+        }
+        i = i + 1
+        if (i == 7) {
+            stop()
+        }
+    }
+    print(i)
+
+    let j = 0
+    do {
+        fn halt() {
+            break
+        }
+        j = j + 1
+        if (j == 4) {
+            halt()
+        }
+    } while (j < 50)
+    print(j)
+
+    let k = 0
+    for (let n = 0; n < 100; n++) {
+        fn skippy() {
+            continue
+        }
+        if (n % 2 == 0) {
+            skippy()
+        }
+        k = k + 1
+    }
+    print(k)
+}

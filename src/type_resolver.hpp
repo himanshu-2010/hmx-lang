@@ -61,6 +61,8 @@ private:
     int current_line_ = 0;
     int loop_depth_ = 0;
     std::vector<int> switch_entry_loop_depths_;
+    std::vector<Statement*> lex_loop_stack_;       // loops whose bodies lexically enclose the current stmt
+    int next_loop_id_ = 0;                         // unique loop ids for non-local exit bookkeeping
 
     void push_scope();
     void pop_scope();
@@ -86,5 +88,11 @@ private:
     bool resolve_block(const std::vector<StmtPtr>& statements);
     void collect_functions(Program& program);
     void collect_functions_stmt(Statement* stmt);
+    void analyze_nonlocal_exits(Program& program);
+    void analyze_nonlocal_stmts(const std::vector<StmtPtr>& stmts, FunctionDecl* enclosing,
+                                std::vector<Statement*>& lex_stack, int local_depth,
+                                std::vector<int>& switch_depths);
+    bool is_loop_stmt(const Statement* stmt) const;
+    void require_nonlocal_call(const std::string& fname, const FunctionDecl* cdecl, int line);
     TypeKind infer_from_literal(Expression* expr);
 };

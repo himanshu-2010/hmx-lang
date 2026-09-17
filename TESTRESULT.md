@@ -2,13 +2,13 @@
 
 **Date:** 2026-09-17  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (219 / 219)
+**Status:** ALL TESTS PASSED (234 / 234)
 
 ---
 
 ## Executive Summary
 
-A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **function types, higher-order calls, and closures**:
+A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **function types, higher-order calls, closures, and non-local exit**:
 1. **`foreach`**: `foreach (x in coll)` and `foreach (i, x in coll)` over arrays and text, value-copy loop variables, with `break`/`continue` support.
 2. **`input()`**: reads a stdin line as `text` (empty string at end of input).
 3. **Conversions**: `tostr`, `parse_int`, `parse_decimal` (runtime error + exit code 1 on malformed input).
@@ -20,11 +20,12 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 9. **Function values**: a named function (other than `main`) is a first-class value; can be passed, returned, stored, and called via variables.
 10. **Higher-order calls**: calling a variable of function type triggers arity + type checking.
 11. **Closures**: nested functions capture enclosing locals by-value snapshot; heap-allocated env survives enclosing scope; captured variables are read-only.
+12. **Non-local exit**: `break` / `continue` inside a nested function break/continue the nearest loop of the enclosing function (restricted to direct calls from the loop's owner inside the loop).
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 219
-> - **Passed:** 219
+> - **Total Test Cases Executed:** 234
+> - **Passed:** 234
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -43,7 +44,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (37/37 Passed)
+### 1. Integration Fixtures (38/38 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -82,10 +83,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `nested_functions.hmx` | **[NEW]** Tier 2 Nested Functions | Nested helpers with params/returns, nested-in-nested, recursion, loop-declared helper, top-level calls | **PASS** |
 | `variadic_defaults.hmx` | **[NEW]** Tier 2 Defaults + Variadic | Default padding, default recursion, variadic `foreach` sum, empty + multi-arg tails | **PASS** |
 | `closures.hmx` | **[NEW]** Closures + HOF | Capture, nested capture, forwarding through fn-value params, recursive closures, shared-array capture, two-closure independence | **PASS** |
+| `nonlocal_exit.hmx` | **[NEW]** Non-local Exit | `break` from nested fn in `loop`, `while`, and `do-while`; `continue` from nested fn in `foreach` and `for` | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (124/124 Passed)
+### 2. Negative & Error Handling Suite (131/131 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -178,7 +180,14 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `nested_fn_duplicate_global` | **[NEW]** Global Collision | nested fn mirrors a top-level name | `duplicate declaration of function` | **PASS** |
 | `nested_fn_duplicate_sibling` | **[NEW]** Sibling Collision | two nested fns with the same name | `duplicate declaration of function` | **PASS** |
 | `nested_fn_named_main` | **[NEW]** Reserved `main` | nested fn named `main` | `duplicate declaration of function` | **PASS** |
-| `nested_fn_break_outside_loop` | **[NEW]** Loop Isolation | `break` in nested fn not affected by enclosing loop | `break outside of a loop` | **PASS** |
+| `nested_fn_break_outside_loop` | **[NEW]** Loop Isolation | `break` in nested fn declared outside any loop | `break outside of a loop` | **PASS** |
+| `nl_reject_call_outside_loop` | **[NEW]** Non-local Exits | breaker called after its target loop ends | `target loop is not active here` | **PASS** |
+| `nl_reject_call_from_other_fn` | **[NEW]** Non-local Exits | breaker called from a different function | `target loop is not active here` | **PASS** |
+| `nl_reject_forwarded_via_wrapper` | **[NEW]** Non-local Exits | breaker invoked from a wrapper nested fn | `target loop is not active here` | **PASS** |
+| `nl_reject_cross_loop_call` | **[NEW]** Non-local Exits | breaker of loop A called inside loop B | `target loop is not active here` | **PASS** |
+| `nl_reject_token_as_value` | **[NEW]** Non-local Exits | breaker assigned to a variable | `cannot use function 'bail' as a value` | **PASS** |
+| `nl_reject_token_as_arg` | **[NEW]** Non-local Exits | breaker passed as a higher-order argument | `function 'bail'` | **PASS** |
+| `nl_continue_outside_loop` | **[NEW]** Non-local Exits | `continue` in nested fn with no loop anywhere | `continue outside of a loop` | **PASS** |
 | `default_param_type_mismatch` | **[NEW]** Default Value Mismatch | `a: int = "x"` | `must be a literal of type int` | **PASS** |
 | `default_param_non_literal` | **[NEW]** Non-Literal Default | `a: int = 1 + 2` | `must be a literal of type int` | **PASS** |
 | `default_param_not_trailing` | **[NEW]** Default Run Broken | required param after a defaulted one | `cannot follow a parameter with a default value` | **PASS** |
@@ -203,7 +212,7 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (58/58 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (65/65 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -263,6 +272,13 @@ These tests verify exact runtime output matching and process exit code propagati
 | `closures_snapshot_env` | **[NEW]** Capture Snapshot | value captured at `let f = bump` time; later mutation to `total` is invisible | `0` | **PASS** |
 | `closures_nested_forwarding` | **[NEW]** Nested Capture Chain | outer→inner→caller forwarding chain via direct call | `5` | **PASS** |
 | `closures_exit_capture` | **[NEW]** Capture Exit Code | captured int compared in if-branch returning 42 | Exit Code: `42` | **PASS** |
+| `nonlocal_break_loop` | **[NEW]** Non-local Exit | nested-fn `break` ends a `loop` at iteration 2 | `2` | **PASS** |
+| `nonlocal_continue_for` | **[NEW]** Non-local Exit | nested-fn `continue` skips one `for` iteration | `9` | **PASS** |
+| `nonlocal_continue_foreach` | **[NEW]** Non-local Exit | nested-fn `continue` skips one `foreach` iteration | `3` | **PASS** |
+| `nonlocal_break_while` | **[NEW]** Non-local Exit | nested-fn `break` ends a `while` at 7 | `7` | **PASS** |
+| `nonlocal_break_dowhile` | **[NEW]** Non-local Exit | nested-fn `break` ends a `do-while` at 4 | `4` | **PASS** |
+| `nonlocal_nested_targets` | **[NEW]** Non-local Exit | inner-fn `continue` + outer-fn `break` in one function | `inner 100\ninner 100\nafter 2` | **PASS** |
+| `nonlocal_non_main_owner` | **[NEW]** Non-local Exit | breaker owned by a non-main function | `iter\nafter` | **PASS** |
 
 ---
 
@@ -300,12 +316,13 @@ cd build && cmake .. && make && cd ..
 ---
 
 > [!TIP]
-> **Conclusion:** Tier 1 and Tier 2 work, plus function types, higher-order calls, and closures, now
-> lands end-to-end without regressions: unary minus/plus, int-only modulo (incl. compound `%=`),
-> and `break`/`continue` loop control, `foreach`, `input()`, `tostr`/`parse_int`/
+> **Conclusion:** Tier 1 and Tier 2 work, plus function types, higher-order calls, closures, and
+> non-local exit, now lands end-to-end without regressions: unary minus/plus, int-only modulo
+> (incl. compound `%=`), `break`/`continue` loop control, `foreach`, `input()`, `tostr`/`parse_int`/
 > `parse_decimal`, variadic `print`, nested functions, default parameter values, variadic
-> `...type` parameters, `fn(...)  -> ...` type annotations, function values as first-class
-> data (pass, return, store, call via variable), and nested-function closures capturing
-> enclosing locals by-value snapshot — all compile through the HMX pipeline and pass
+> `...type` parameters, `fn(...) -> ...` type annotations, function values as first-class
+> data (pass, return, store, call via variable), nested-function closures capturing
+> enclosing locals by-value snapshot, and `break`/`continue` from nested functions targeting
+> an enclosing loop — all compile through the HMX pipeline and pass
 > integration, negative, and stress/output tests. The bison parser still carries
 > six harmless shift/reduce conflicts (all resolved by shift).

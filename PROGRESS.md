@@ -283,6 +283,46 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   §12.5 rewritten (function types, closures, capture rules, roadmap trimmed);
   README.md features/tests/roadmap; TESTRESULT.md.
 
+### Milestone (post-plan) — Non-local `break` / `continue` — DONE
+- **Design (locked):** a `break`/`continue` in a nested function with no loop of
+  its own targets the nearest lexically enclosing loop in the enclosing function
+  chain; the nested function is a "breaker." Call-site restriction: a breaker is
+  callable only directly from the function owning its target loop, lexically
+  inside that loop — no forwarding through wrappers, no function values, no
+  higher-order/indirect calls, no recursion through a breaker.
+- **AST:** `Statement` gains `nl_id`/`nl_target`/`nl_owner`; `FunctionDecl` gains
+  `has_nonlocal`/`nl_target_loop_id`/`nl_use_break`/`nl_use_continue`;
+  `BreakStmt`/`ContinueStmt` gain `nonlocal`.
+- **Resolver:** pass A `analyze_nonlocal_exits()` runs after `collect_functions`:
+  assigns `nl_id`+`nl_owner` to every loop (loop/while/for/foreach/do-while),
+  classifies each break/continue by presence of a loop enclosing the *statement
+  site*, replicates the switch-case local-break guard, and errors
+  "break/continue outside of a loop" when no loop exists anywhere. `resolve_stmt`
+  maintains a `lex_loop_stack_` of currently active loops (target loops indexed by
+  id); `require_nonlocal_call` rejects breaker calls outside the active target
+  loop ("cannot call 'bail' from here: its non-local break/continue target loop
+  is not active here"); `require_function_value` rejects breakers used as values.
+- **Codegen:** `#include <setjmp.h>`; each target loop is wrapped with
+  `jmp_buf _sd_nl_buf<id>;` before the loop and re-armed per iteration via
+  `volatile int st = setjmp(buf); if (st == 1) break; if (st == 0) { body }`
+  (resuming at 1 = break; 2 = continue skips the body so `for`/`foreach`/`loop`
+  still run their update step). Breakers get a hidden `void* _sd_nl` param (after
+  `_sd_env`); call sites pass `(void*)_sd_nl_buf<callee->nl_target_loop_id>`;
+  non-local break/continue emit `longjmp(*(jmp_buf*)_sd_nl, 1/2)`.
+- **Behavior change:** the previous negative test where a nested fn inside a loop
+  used `break` became *valid* under this feature; replaced with a nested fn
+  declared outside any loop (still "break outside of a loop").
+- **Tests:** fixture `nonlocal_exit.hmx` (break in loop/while/do-while, continue
+  in foreach/for); 7 new negatives (call outside loop, cross-function call,
+  wrapper forwarding, cross-loop call, break/continue token as value, breaker as
+  HOF argument, continue outside any loop); 7 new stress (break in loop/while/
+  do-while, continue in for/foreach, nested non-local targets in one function,
+  breaker owned by non-main function).
+- Full regression: 38/38 integration, 131/131 negative, 65/65 stress/output = **234**.
+- Docs: SYNTAX.md §12.6 (non-local exit semantics + restrictions + lowering),
+  §12 hoisting bullets updated; README.md features/nested-fn section/tests;
+  TESTRESULT.md.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

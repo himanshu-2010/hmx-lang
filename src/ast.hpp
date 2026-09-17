@@ -156,6 +156,9 @@ struct ArrayIndexExpr : Expression {
 struct Statement : ASTNode {
     int line = 0;
     TypeKind resolved_type = TypeKind::Unknown;
+    int nl_id = -1;                       // unique loop id (assigned by resolver for every loop)
+    bool nl_target = false;               // true if some nested function non-locally exits this loop
+    struct FunctionDecl* nl_owner = nullptr;  // function whose body lexically contains this loop
     virtual ~Statement() = default;
 };
 
@@ -273,6 +276,10 @@ struct FunctionDecl : Statement {
     bool has_return_type = false;
     std::vector<StmtPtr> body;
     std::vector<CapturedVar> captures;            // outer locals referenced by body (filled by resolver)
+    bool has_nonlocal = false;                    // body non-locally breaks/continues an enclosing loop
+    int nl_target_loop_id = -1;                   // loop (Statement::nl_id) targeted by the non-local exit
+    bool nl_use_break = false;                    // non-local break present
+    bool nl_use_continue = false;                 // non-local continue present
 };
 
 struct ReturnStmt : Statement {
@@ -280,9 +287,13 @@ struct ReturnStmt : Statement {
     std::vector<TypeDesc> return_tuple_members;   // filled by resolver for tuple returns
 };
 
-struct BreakStmt : Statement {};
+struct BreakStmt : Statement {
+    bool nonlocal = false;    // set by resolver: breaks an enclosing function's loop
+};
 
-struct ContinueStmt : Statement {};
+struct ContinueStmt : Statement {
+    bool nonlocal = false;    // set by resolver: continues an enclosing function's loop
+};
 
 struct ExprStmt : Statement {
     ExprPtr expr;

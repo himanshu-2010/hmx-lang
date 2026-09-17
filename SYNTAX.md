@@ -1122,11 +1122,75 @@ Nested functions are otherwise **hoisted to program scope**:
   `duplicate declaration of function`.
 - `main` remains reserved for the program entry point and cannot be declared
   (nested or otherwise).
-- `return`, `break`, and `continue` inside a nested function belong to the nested
-  function itself, never to the enclosing function's loops.
+- `return` inside a nested function belongs to the nested function itself, never
+  to the enclosing function. `break` and `continue`, however, may non-locally
+  target an enclosing function's nearest loop when the nested function has no
+  loop of its own enclosing it (see §12.6).
 
 **Out of scope (roadmap):** currying, multiple return values from function-type
 params, closures over captured-array-resizing writes.
+
+---
+
+### 12.6 Non-local `break` / `continue` **[Implemented]**
+
+A `break` or `continue` written inside a **nested function** that has no loop of
+its own enclosing it targets the **nearest enclosing loop** in the enclosing
+function chain at the point where the nested function is declared. This is a
+**non-local exit**: the nested function's call terminates that loop even though
+the loop lives in an enclosing function.
+
+```hmx
+fn main() {
+    let total = 0
+    loop (5) {
+        fn bail() {          // declared inside the loop
+            break            // non-locally breaks `loop (5)`
+        }
+        total = total + 1
+        if (total == 2) {
+            bail()           // call arms the exit
+        }
+    }
+    print(total)             // 2
+}
+```
+
+Semantics:
+
+- The target loop is the nearest loop lexically enclosing the **nested
+  function's declaration** (skipping any intermediate nested functions that have
+  their own "in-between" but no loop).
+- A non-local `break` terminates the target loop; a non-local `continue` jumps to
+  the target loop's condition (or update step for `for`, `foreach`, and `loop`).
+- A function may use non-local exit even if it has parameter/return types; only
+  `main` may not be a breaker's caller (it cannot be a breaker itself, since
+  breakers can never be called indirectly).
+
+Call-site restriction (compile error):
+
+- A breaker function may be called **only directly from the function that owns
+  its target loop, at a call site lexically inside that loop**. Calling it from
+  any other place is rejected with
+  `cannot call 'bail' from here: its non-local break/continue target loop is not active here`.
+
+Consequences of the restriction:
+
+- **No forwarding:** a breaker cannot be invoked from a wrapper nested function.
+- **No function values:** a breaker cannot be assigned, passed, or stored; using
+  it as a value is rejected with
+  `cannot use function 'bail' as a value because it has a non-local break/continue target`.
+- **No indirect/higher-order calls** of breakers, and no recursion through a
+  breaker (a breaker's own body is not inside its target loop).
+- Inside a loop whose function also declares breakers, ordinary local
+  `break`/`continue` in the loop body behave exactly as before; the local form is
+  chosen whenever the statement appears directly in a loop body rather than in a
+  nested function.
+
+Lowering: the target loop is re-armed each iteration via `setjmp`/`longjmp`
+(`longjmp(..., 1)` = break, `longjmp(..., 2)` = continue). A breaker function
+receives a hidden extra argument carrying the target loop's setjmp buffer, so its
+signature is not user-observable (no overload or call-site syntax change).
 
 ---
 

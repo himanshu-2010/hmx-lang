@@ -31,6 +31,7 @@ The current compiler supports:
 - Functions with typed parameters and return values
  - Function calls, forward calls, recursion, and nested function declarations
  - First-class function types (`fn(int) -> int`) with higher-order calls and closures
+ - Non-local `break` / `continue` from nested functions targeting an enclosing loop
  - Arrays with typed elements, indexing, element assignment, and `length()`
 - Multiple return values via tuples with destructuring
 - Compile-time type checking with line-numbered diagnostics
@@ -372,6 +373,31 @@ parameters, return values, and `let` bindings. A function name (except `main`)
 is itself a value: it can be passed, returned, stored, and called through a
 variable.
 
+A nested function with no loop of its own may also issue a **non-local exit**:
+`break` / `continue` inside it breaks/continues the nearest loop of the enclosing
+function (breaking a loop, or skipping to the next iteration) when the enclosing
+function calls it directly from inside that loop:
+
+```hmx
+fn main() {
+    let total = 0
+    loop (5) {
+        fn bail() {
+            break              // breaks the `loop (5)`
+        }
+        total = total + 1
+        if (total == 2) {
+            bail()
+        }
+    }
+    print(total)               // 2
+}
+```
+
+Breakers are callable only from their loop-owning function inside the target
+loop; they cannot be used as function values, forwarded, or called indirectly.
+See `SYNTAX.md` §12.6.
+
 ## Comments and Output
 
 Line comments and non-nesting block comments are supported:
@@ -446,10 +472,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | 37 `.hmx` fixtures | 37/37 passed |
-| Negative | Type, syntax, and resolver errors | 124/124 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, defaults & variadic params | 58/58 passed |
-| Total | 219 test cases | 219/219 passed |
+| Integration | 38 `.hmx` fixtures | 38/38 passed |
+| Negative | Type, syntax, and resolver errors | 131/131 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params | 65/65 passed |
+| Total | 234 test cases | 234/234 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

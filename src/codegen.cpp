@@ -18,7 +18,8 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "#include <stdlib.h>\n";
     out_ << "#include <string.h>\n";
     out_ << "#include <errno.h>\n";
-    out_ << "#include <limits.h>\n\n";
+    out_ << "#include <limits.h>\n";
+    out_ << "#include <setjmp.h>\n\n";
 
     out_ << "static char* sd_concat(const char* a, const char* b) {\n";
     out_ << "    size_t la = strlen(a), lb = strlen(b);\n";
@@ -261,6 +262,7 @@ std::string CodeGen::emit_function_signature(FunctionDecl* fn) {
     }
     s += " " + fn->name + "(";
     if (fn->name != "main") s += "void* _sd_env";
+    if (fn->name != "main" && fn->has_nonlocal) s += ", void* _sd_nl";
     for (size_t i = 0; i < fn->params.size(); i++) {
         if (i > 0 || fn->name != "main") s += ", ";
         s += c_type_for_desc(codegen_param_desc(fn->params[i])) + " " + fn->params[i].name;
@@ -488,6 +490,9 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                 size_t fixed = (variadic_index == (size_t)-1) ? callee->params.size() : variadic_index;
                 out_ << call->name << "(";
                 emit_env_arg(callee);
+                if (callee->has_nonlocal) {
+                    out_ << ", (void*)_sd_nl_buf" << callee->nl_target_loop_id;
+                }
                 for (size_t i = 0; i < fixed; i++) {
                     out_ << ", ";
                     if (i < call->args.size()) {
@@ -670,51 +675,93 @@ void CodeGen::emit_stmt(Statement* stmt) {
         out_ << ";\n";
     } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
         emit_line_directive(loop->line, source_file_);
+        if (loop->nl_target) {
+            out_ << "    jmp_buf _sd_nl_buf" << loop->nl_id << ";\n";
+        }
         out_ << "    for (int _i = 0; _i < ";
         emit_expr(loop->count.get());
         out_ << "; _i++) {\n";
+        if (loop->nl_target) {
+            out_ << "    volatile int _sd_nls" << loop->nl_id << " = setjmp(_sd_nl_buf" << loop->nl_id << ");\n";
+            out_ << "    if (_sd_nls" << loop->nl_id << " == 1) break;\n";
+            out_ << "    if (_sd_nls" << loop->nl_id << " == 0) {\n";
+        }
         for (auto& body_stmt : loop->body) {
             emit_stmt(body_stmt.get());
+        }
+        if (loop->nl_target) {
+            out_ << "    }\n";
         }
         out_ << "    }\n";
     } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
         emit_line_directive(fe->line, source_file_);
         TypeKind itype = get_expr_type(fe->iterable.get());
-        std::string idx = fe->index_name.empty()
-            ? "_fe"
-            : fe->index_name;
+        std::string idx = fe->index_name.empty() ? "_fe" : fe->index_name;
+        if (fe->nl_target) {
+            out_ << "    jmp_buf _sd_nl_buf" << fe->nl_id << ";\n";
+        }
+        auto nl_arm = [&]() {
+            if (fe->nl_target) {
+                out_ << "    volatile int _sd_nls" << fe->nl_id << " = setjmp(_sd_nl_buf" << fe->nl_id << ");\n";
+                out_ << "    if (_sd_nls" << fe->nl_id << " == 1) break;\n";
+                out_ << "    if (_sd_nls" << fe->nl_id << " == 0) {\n";
+            }
+        };
+        auto nl_disarm = [&]() {
+            if (fe->nl_target) {
+                out_ << "    }\n";
+            }
+        };
         if (itype == TypeKind::Array) {
             TypeKind elem = fe->element_type;
             out_ << "    for (int " << idx << " = 0; " << idx << " < ";
             emit_expr(fe->iterable.get());
             out_ << ".length; " << idx << "++) {\n";
+            nl_arm();
             out_ << "        " << type_to_c(elem) << " " << fe->value_name
                  << " = ((" << type_to_c(elem) << "*)";
             emit_expr(fe->iterable.get());
             out_ << ".data)[" << idx << "];\n";
             for (auto& body_stmt : fe->body) emit_stmt(body_stmt.get());
+            nl_disarm();
             out_ << "    }\n";
         } else {
             out_ << "    for (int " << idx << " = 0; " << idx << " < (int)strlen(";
             emit_expr(fe->iterable.get());
             out_ << "); " << idx << "++) {\n";
+            nl_arm();
             out_ << "        char " << fe->value_name << " = " << idx << "[" ;
             emit_expr(fe->iterable.get());
             out_ << "];\n";
             for (auto& body_stmt : fe->body) emit_stmt(body_stmt.get());
+            nl_disarm();
             out_ << "    }\n";
         }
     } else if (auto* while_stmt = dynamic_cast<WhileStmt*>(stmt)) {
         emit_line_directive(while_stmt->line, source_file_);
+        if (while_stmt->nl_target) {
+            out_ << "    jmp_buf _sd_nl_buf" << while_stmt->nl_id << ";\n";
+        }
         out_ << "    while (";
         emit_expr(while_stmt->condition.get());
         out_ << ") {\n";
+        if (while_stmt->nl_target) {
+            out_ << "    volatile int _sd_nls" << while_stmt->nl_id << " = setjmp(_sd_nl_buf" << while_stmt->nl_id << ");\n";
+            out_ << "    if (_sd_nls" << while_stmt->nl_id << " == 1) break;\n";
+            out_ << "    if (_sd_nls" << while_stmt->nl_id << " == 0) {\n";
+        }
         for (auto& body_stmt : while_stmt->body) {
             emit_stmt(body_stmt.get());
+        }
+        if (while_stmt->nl_target) {
+            out_ << "    }\n";
         }
         out_ << "    }\n";
     } else if (auto* for_stmt = dynamic_cast<ForStmt*>(stmt)) {
         emit_line_directive(for_stmt->line, source_file_);
+        if (for_stmt->nl_target) {
+            out_ << "    jmp_buf _sd_nl_buf" << for_stmt->nl_id << ";\n";
+        }
         out_ << "    for (";
         emit_for_component(for_stmt->init.get());
         out_ << "; ";
@@ -722,15 +769,34 @@ void CodeGen::emit_stmt(Statement* stmt) {
         out_ << "; ";
         emit_for_component(for_stmt->update.get());
         out_ << ") {\n";
+        if (for_stmt->nl_target) {
+            out_ << "    volatile int _sd_nls" << for_stmt->nl_id << " = setjmp(_sd_nl_buf" << for_stmt->nl_id << ");\n";
+            out_ << "    if (_sd_nls" << for_stmt->nl_id << " == 1) break;\n";
+            out_ << "    if (_sd_nls" << for_stmt->nl_id << " == 0) {\n";
+        }
         for (auto& body_stmt : for_stmt->body) {
             emit_stmt(body_stmt.get());
+        }
+        if (for_stmt->nl_target) {
+            out_ << "    }\n";
         }
         out_ << "    }\n";
     } else if (auto* do_while = dynamic_cast<DoWhileStmt*>(stmt)) {
         emit_line_directive(do_while->line, source_file_);
+        if (do_while->nl_target) {
+            out_ << "    jmp_buf _sd_nl_buf" << do_while->nl_id << ";\n";
+        }
         out_ << "    do {\n";
+        if (do_while->nl_target) {
+            out_ << "    volatile int _sd_nls" << do_while->nl_id << " = setjmp(_sd_nl_buf" << do_while->nl_id << ");\n";
+            out_ << "    if (_sd_nls" << do_while->nl_id << " == 1) break;\n";
+            out_ << "    if (_sd_nls" << do_while->nl_id << " == 0) {\n";
+        }
         for (auto& body_stmt : do_while->body) {
             emit_stmt(body_stmt.get());
+        }
+        if (do_while->nl_target) {
+            out_ << "    }\n";
         }
         out_ << "    } while (";
         emit_expr(do_while->condition.get());
@@ -790,10 +856,18 @@ void CodeGen::emit_stmt(Statement* stmt) {
         out_ << "    }\n";
     } else if (auto* brk = dynamic_cast<BreakStmt*>(stmt)) {
         emit_line_directive(brk->line, source_file_);
-        out_ << "    break;\n";
+        if (brk->nonlocal) {
+            out_ << "    longjmp(*(jmp_buf*)_sd_nl, 1);\n";
+        } else {
+            out_ << "    break;\n";
+        }
     } else if (auto* cont = dynamic_cast<ContinueStmt*>(stmt)) {
         emit_line_directive(cont->line, source_file_);
-        out_ << "    continue;\n";
+        if (cont->nonlocal) {
+            out_ << "    longjmp(*(jmp_buf*)_sd_nl, 2);\n";
+        } else {
+            out_ << "    continue;\n";
+        }
     } else if (dynamic_cast<FunctionDecl*>(stmt)) {
         // Nested function declarations are hoisted to program scope during
         // generation; nothing is emitted at their definition site.
