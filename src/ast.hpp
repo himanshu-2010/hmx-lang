@@ -13,15 +13,27 @@ enum class TypeKind {
     Byte,
     Array,
     Tuple,
+    Function,
     Unknown
 };
+
+struct FunctionTypeInfo;
 
 struct TypeDesc {
     TypeKind type = TypeKind::Unknown;
     TypeKind element_type = TypeKind::Unknown;          // valid when type == Array
     std::vector<TypeDesc> tuple_members;                // valid when type == Tuple
+    std::shared_ptr<FunctionTypeInfo> fn_info = nullptr; // valid when type == Function
     bool operator==(const TypeDesc& other) const;
+    bool operator!=(const TypeDesc& other) const { return !(*this == other); }
     bool operator<(const TypeDesc& other) const;
+};
+
+struct FunctionTypeInfo {
+    std::vector<TypeDesc> params;
+    TypeDesc ret;
+    bool operator==(const FunctionTypeInfo& other) const;
+    bool operator<(const FunctionTypeInfo& other) const;
 };
 
 std::string type_to_c(TypeKind kind);
@@ -70,6 +82,8 @@ struct BoolLiteral : Expression {
 
 struct Identifier : Expression {
     std::string name;
+    bool is_function_reference = false;   // resolved to a defined function used as a value
+    TypeDesc fn_type;                     // function's type when is_function_reference
     explicit Identifier(std::string n) : name(std::move(n)) {}
 };
 
@@ -116,6 +130,8 @@ struct CastExpr : Expression {
 struct CallExpr : Expression {
     std::string name;
     std::vector<ExprPtr> args;
+    bool is_function_value_call = false;   // set by resolver: name is a function-typed value
+    TypeDesc fn_type;                      // function type of the value when is_function_value_call
     CallExpr(std::string n, std::vector<ExprPtr> a)
         : name(std::move(n)), args(std::move(a)) {}
 };
@@ -150,6 +166,7 @@ struct VarDecl : Statement {
     TypeKind annotation = TypeKind::Unknown;
     TypeKind array_element_type = TypeKind::Unknown;   // valid when annotation == Array
     std::vector<TypeDesc> tuple_members;               // valid when annotation == Tuple
+    TypeDesc annotation_desc;                          // full desc for Function annotations
     bool has_annotation = false;
     bool is_mutable = true;
     ExprPtr initializer;
@@ -232,6 +249,11 @@ struct SwitchStmt : Statement {
     std::vector<SwitchCase> cases;
 };
 
+struct CapturedVar {
+    std::string name;
+    TypeDesc desc;                 // type of the captured variable
+};
+
 struct FunctionDecl : Statement {
     std::string name;
     struct Param {
@@ -239,6 +261,7 @@ struct FunctionDecl : Statement {
         TypeKind type;
         TypeKind array_element_type = TypeKind::Unknown;   // valid when type == Array
         std::vector<TypeDesc> tuple_members;               // valid when type == Tuple
+        TypeDesc desc;                                     // full descriptor (Function etc.)
         ExprPtr default_value;                             // null when no default
         bool variadic = false;                             // trailing ...elem collector
     };
@@ -246,8 +269,10 @@ struct FunctionDecl : Statement {
     TypeKind return_type = TypeKind::Unknown;
     TypeKind return_array_element_type = TypeKind::Unknown;  // valid when return_type == Array
     std::vector<TypeDesc> return_tuple_members;              // valid when return_type == Tuple
+    TypeDesc return_desc;                                    // full descriptor (Function etc.)
     bool has_return_type = false;
     std::vector<StmtPtr> body;
+    std::vector<CapturedVar> captures;            // outer locals referenced by body (filled by resolver)
 };
 
 struct ReturnStmt : Statement {

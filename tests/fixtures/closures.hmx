@@ -1,0 +1,46 @@
+fn apply(f: fn(int) -> int, x: int) -> int {
+    return f(x)
+}
+
+fn twice(a: int) -> int {
+    return a * 2
+}
+
+fn make_mult(m: int) -> fn(int) -> int {
+    fn mult(a: int) -> int {
+        return a * m
+    }
+    return mult
+}
+
+fn nested() -> int {
+    let x = 100
+    fn inner() -> int {
+        return x
+    }
+    fn outer() -> int {
+        let y = 7
+        fn inn2() -> int {
+            return x + y
+        }
+        return inn2() + inner()
+    }
+    return outer()
+}
+
+fn main() {
+    print(apply(twice, 21))
+    let by3 = make_mult(3)
+    print(by3(5))
+    let by10 = make_mult(10)
+    print(by10(6))
+    print(nested())
+
+    let sum = 0
+    fn add_part(v: int) -> int {
+        return v + sum
+    }
+    let acc = add_part
+    print(acc(1))
+    print(acc(2))
+}

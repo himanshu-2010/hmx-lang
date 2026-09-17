@@ -1,5 +1,15 @@
 #include "type_resolver.hpp"
 #include <algorithm>
+#include <set>
+
+static TypeDesc param_type_desc(const FunctionDecl::Param& p) {
+    if (p.type == TypeKind::Function) return p.desc;
+    TypeDesc d;
+    d.type = p.type;
+    d.element_type = p.array_element_type;
+    d.tuple_members = p.tuple_members;
+    return d;
+}
 
 void TypeResolver::push_scope() {
     scopes_.emplace_back();
@@ -11,11 +21,12 @@ void TypeResolver::pop_scope() {
 
 void TypeResolver::define(const std::string& name, TypeKind type, bool is_mutable,
                           TypeKind array_element_type,
-                          const std::vector<TypeDesc>& tuple_members) {
+                          const std::vector<TypeDesc>& tuple_members,
+                          const TypeDesc& desc) {
     if (scopes_.back().count(name)) {
         throw CompileError(line(), "duplicate declaration of variable '" + name + "'");
     }
-    scopes_.back()[name] = {type, is_mutable, array_element_type, tuple_members};
+    scopes_.back()[name] = {type, is_mutable, array_element_type, tuple_members, desc};
 }
 
 const Symbol* TypeResolver::find_symbol(const std::string& name) const {
@@ -24,6 +35,69 @@ const Symbol* TypeResolver::find_symbol(const std::string& name) const {
         if (found != it->end()) return &found->second;
     }
     return nullptr;
+}
+
+const Symbol* TypeResolver::find_outer_symbol(const std::string& name) {
+    for (auto it = outer_scope_stack_.rbegin(); it != outer_scope_stack_.rend(); ++it) {
+        for (auto m = it->rbegin(); m != it->rend(); ++m) {
+            auto found = m->find(name);
+            if (found != m->end()) {
+                register_capture(name, found->second);
+                return &found->second;
+            }
+        }
+    }
+    return nullptr;
+}
+
+bool TypeResolver::is_in_outer_scopes(const std::string& name) const {
+    for (auto it = outer_scope_stack_.rbegin(); it != outer_scope_stack_.rend(); ++it) {
+        for (auto m = it->rbegin(); m != it->rend(); ++m) {
+            if (m->count(name)) return true;
+        }
+    }
+    return false;
+}
+
+void TypeResolver::register_capture(const std::string& name, const Symbol& sym) {
+    if (!current_fn_ || current_fn_->name == "main") return;
+    for (auto& c : current_fn_->captures) {
+        if (c.name == name) return;
+    }
+    TypeDesc d = sym.desc;
+    if (d.type == TypeKind::Unknown && sym.type != TypeKind::Unknown) {
+        d.type = sym.type;
+        d.element_type = sym.array_element_type;
+        d.tuple_members = sym.tuple_members;
+    }
+    current_fn_->captures.push_back({name, d});
+}
+
+void TypeResolver::require_capture_visibility(const std::string& fname) {
+    if (fname == "main") return;
+    if (current_fn_ && fname == current_fn_->name) return;
+    auto it = fn_decls_.find(fname);
+    if (it == fn_decls_.end()) return;
+    if (!resolved_functions_.count(fname)) return;
+    for (auto& c : it->second->captures) {
+        const Symbol* s = find_symbol(c.name);
+        if (!s) s = find_outer_symbol(c.name);
+        if (!s) {
+            throw CompileError(line(),
+                "cannot call '" + fname + "' from here: captured variable '" +
+                c.name + "' is not in scope");
+        }
+    }
+}
+
+void TypeResolver::require_function_value(const std::string& fname) {
+    if (fname == "main") return;
+    if (current_fn_ && current_fn_->name == fname) return;
+    if (!resolved_functions_.count(fname)) {
+        throw CompileError(line(),
+            "function '" + fname + "' must be declared before it is used as a value");
+    }
+    require_capture_visibility(fname);
 }
 
 bool TypeResolver::has_type(const std::string& name) const {
@@ -41,17 +115,21 @@ const FunctionSig* TypeResolver::get_function(const std::string& name) const {
     return nullptr;
 }
 
-TypeKind TypeResolver::expr_array_element_type(Expression* expr) const {
+TypeKind TypeResolver::expr_array_element_type(Expression* expr) {
     if (auto* arr = dynamic_cast<ArrayLiteral*>(expr)) {
         return arr->element_type;
     }
     if (auto* id = dynamic_cast<Identifier*>(expr)) {
         const Symbol* s = find_symbol(id->name);
+        if (!s) s = find_outer_symbol(id->name);
         if (s && s->type == TypeKind::Array) return s->array_element_type;
     }
     if (auto* call = dynamic_cast<CallExpr*>(expr)) {
         const FunctionSig* sig = get_function(call->name);
         if (sig && sig->return_type == TypeKind::Array) return sig->return_element_type;
+        if (call->is_function_value_call && call->fn_type.fn_info &&
+            call->fn_type.fn_info->ret.type == TypeKind::Array)
+            return call->fn_type.fn_info->ret.element_type;
     }
     if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->is_tuple && idx->element_type == TypeKind::Array) {
@@ -61,16 +139,35 @@ TypeKind TypeResolver::expr_array_element_type(Expression* expr) const {
     return TypeKind::Unknown;
 }
 
-std::vector<TypeDesc> TypeResolver::expr_tuple_members(Expression* expr) const {
+std::vector<TypeDesc> TypeResolver::expr_tuple_members(Expression* expr) {
     if (auto* id = dynamic_cast<Identifier*>(expr)) {
         const Symbol* s = find_symbol(id->name);
+        if (!s) s = find_outer_symbol(id->name);
         if (s && s->type == TypeKind::Tuple) return s->tuple_members;
     }
     if (auto* call = dynamic_cast<CallExpr*>(expr)) {
         const FunctionSig* sig = get_function(call->name);
         if (sig && sig->return_type == TypeKind::Tuple) return sig->return_tuple_members;
+        if (call->is_function_value_call && call->fn_type.fn_info &&
+            call->fn_type.fn_info->ret.type == TypeKind::Tuple)
+            return call->fn_type.fn_info->ret.tuple_members;
     }
     return {};
+}
+
+TypeDesc TypeResolver::expr_function_type(Expression* expr) {
+    if (auto* id = dynamic_cast<Identifier*>(expr)) {
+        if (id->is_function_reference) return id->fn_type;
+        const Symbol* s = find_symbol(id->name);
+        if (!s) s = find_outer_symbol(id->name);
+        if (s && s->type == TypeKind::Function) return s->desc;
+    }
+    if (auto* call = dynamic_cast<CallExpr*>(expr)) {
+        if (call->is_function_value_call && call->fn_type.fn_info) return call->fn_type;
+        const FunctionSig* sig = get_function(call->name);
+        if (sig && sig->return_type == TypeKind::Function) return sig->return_desc;
+    }
+    return TypeDesc{};
 }
 
 bool TypeResolver::types_match(TypeKind a, TypeKind ae, const std::vector<TypeDesc>& am,
@@ -103,10 +200,28 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
     else if (dynamic_cast<CharLiteral*>(expr))
         result = TypeKind::Char;
     else if (auto* id = dynamic_cast<Identifier*>(expr)) {
-        if (!has_type(id->name)) {
-            throw CompileError(line(), "undefined variable '" + id->name + "'");
+        const Symbol* sym = find_symbol(id->name);
+        if (!sym) {
+            sym = find_outer_symbol(id->name);
+            if (!sym) {
+                auto fit = functions_.find(id->name);
+                if (fit != functions_.end() && fit->first != "main") {
+                    require_function_value(id->name);
+                    id->is_function_reference = true;
+                    id->fn_type = fit->second.fn_type;
+                    result = TypeKind::Function;
+                } else if (fit != functions_.end()) {
+                    throw CompileError(line(),
+                        "cannot use function 'main' as a value");
+                } else {
+                    throw CompileError(line(), "undefined variable '" + id->name + "'");
+                }
+            } else {
+                result = sym->type;
+            }
+        } else {
+            result = get_type(id->name);
         }
-        result = get_type(id->name);
     } else if (auto* call = dynamic_cast<CallExpr*>(expr)) {
         if (call->name == "main") {
             throw CompileError(line(), "cannot call function 'main'");
@@ -168,8 +283,73 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         }
         const FunctionSig* sig = get_function(call->name);
         if (!sig) {
+            const Symbol* lsym = find_symbol(call->name);
+            if (!lsym) lsym = find_outer_symbol(call->name);
+            if (lsym && lsym->type == TypeKind::Function && lsym->desc.fn_info) {
+                const FunctionTypeInfo& info = *lsym->desc.fn_info;
+                call->is_function_value_call = true;
+                call->fn_type = lsym->desc;
+                if (call->args.size() != info.params.size()) {
+                    throw CompileError(line(),
+                        "function '" + call->name + "' expects " +
+                        std::to_string(info.params.size()) + " arguments, got " +
+                        std::to_string(call->args.size()));
+                }
+                for (size_t i = 0; i < call->args.size(); i++) {
+                    TypeKind at = resolve_expr(call->args[i].get());
+                    const TypeDesc& expected = info.params[i];
+                    if (at != expected.type) {
+                        throw CompileError(line(),
+                            "type mismatch: argument " + std::to_string(i + 1) +
+                            " of '" + call->name + "' expects " +
+                            type_desc_to_string(expected) + ", got " + type_to_string(at));
+                    }
+                    if (expected.type == TypeKind::Array) {
+                        TypeKind arg_elem = expr_array_element_type(call->args[i].get());
+                        if (arg_elem != expected.element_type) {
+                            throw CompileError(line(),
+                                "type mismatch: argument " + std::to_string(i + 1) +
+                                " of '" + call->name + "' expects array of " +
+                                type_to_string(expected.element_type) + ", got array of " +
+                                type_to_string(arg_elem));
+                        }
+                    }
+                    if (expected.type == TypeKind::Tuple) {
+                        std::vector<TypeDesc> arg_members = expr_tuple_members(call->args[i].get());
+                        if (arg_members != expected.tuple_members) {
+                            throw CompileError(line(),
+                                "type mismatch: argument " + std::to_string(i + 1) +
+                                " of '" + call->name + "' expects tuple " +
+                                tuple_type_to_string(expected.tuple_members) + ", got tuple " +
+                                tuple_type_to_string(arg_members));
+                        }
+                    }
+                    if (expected.type == TypeKind::Function) {
+                        TypeDesc atd = expr_function_type(call->args[i].get());
+                        if (atd != expected) {
+                            throw CompileError(line(),
+                                "type mismatch: argument " + std::to_string(i + 1) +
+                                " of '" + call->name + "' expects " +
+                                type_desc_to_string(expected) + ", got " +
+                                (atd.type == TypeKind::Function ? type_desc_to_string(atd) : type_to_string(at)));
+                        }
+                    }
+                }
+                if (info.ret.type == TypeKind::Unknown) {
+                    if (!allow_void_call_) {
+                        throw CompileError(line(),
+                            "function '" + call->name + "' returns nothing and cannot be used as a value");
+                    }
+                    result = TypeKind::Unknown;
+                } else {
+                    result = info.ret.type;
+                }
+                expr->resolved_type = result;
+                return result;
+            }
             throw CompileError(line(), "undefined function '" + call->name + "'");
         }
+        require_capture_visibility(call->name);
         size_t fixed = sig->variadic ? sig->param_types.size() - 1 : sig->param_types.size();
         bool has_default = false;
         for (bool d : sig->param_has_default) if (d) { has_default = true; break; }
@@ -226,6 +406,17 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                         tuple_type_to_string(arg_members));
                 }
             }
+            if (sig->param_types[i] == TypeKind::Function) {
+                TypeDesc atd = expr_function_type(call->args[i].get());
+                const TypeDesc& expected = sig->param_descs[i];
+                if (!atd.fn_info || atd != expected) {
+                    throw CompileError(line(),
+                        "type mismatch: argument " + std::to_string(i + 1) +
+                        " of '" + call->name + "' expects " +
+                        type_desc_to_string(expected) + ", got " +
+                        (atd.type == TypeKind::Function ? type_desc_to_string(atd) : type_to_string(at)));
+                }
+            }
         }
         if (sig->variadic) {
             for (size_t i = fixed; i < call->args.size(); i++) {
@@ -275,6 +466,7 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         }
     } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         const Symbol* sym = find_symbol(idx->name);
+        if (!sym) sym = find_outer_symbol(idx->name);
         if (!sym) {
             throw CompileError(line(), "undefined variable '" + idx->name + "'");
         }
@@ -329,6 +521,9 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         }
         if (then_type == TypeKind::Tuple || else_type == TypeKind::Tuple) {
             throw CompileError(line(), "ternary branches cannot be tuples");
+        }
+        if (then_type == TypeKind::Function || else_type == TypeKind::Function) {
+            throw CompileError(line(), "ternary branches cannot be functions");
         }
         if (then_type != else_type) {
             throw CompileError(line(), "ternary branches must have the same type, got " +
@@ -448,7 +643,17 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                     type_to_string(init_type));
                 }
             }
-            if (var->annotation == TypeKind::Array) {
+            if (var->annotation == TypeKind::Function) {
+                TypeDesc init_desc = expr_function_type(var->initializer.get());
+                if (init_desc != var->annotation_desc) {
+                    throw CompileError(var->line,
+                        "type mismatch: variable '" + var->name + "' declared as " +
+                        type_desc_to_string(var->annotation_desc) + " but initialized with " +
+                        (init_desc.type == TypeKind::Function ? type_desc_to_string(init_desc) : type_to_string(init_type)));
+                }
+                define(var->name, TypeKind::Function, var->is_mutable, TypeKind::Unknown, {},
+                       var->annotation_desc);
+            } else if (var->annotation == TypeKind::Array) {
                 if (auto* arrlit = dynamic_cast<ArrayLiteral*>(var->initializer.get())) {
                     if (arrlit->element_type == TypeKind::Unknown) {
                         arrlit->element_type = var->array_element_type;
@@ -500,11 +705,25 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 }
             }
             var->annotation = init_type;
-            define(var->name, init_type, var->is_mutable, elem, var->tuple_members);
+            if (init_type == TypeKind::Function) {
+                TypeDesc init_desc = expr_function_type(var->initializer.get());
+                if (!init_desc.fn_info) {
+                    throw CompileError(var->line,
+                        "cannot infer function type for '" + var->name + "'; use an annotation like fn(int) -> int");
+                }
+                var->annotation_desc = init_desc;
+                define(var->name, init_type, var->is_mutable, TypeKind::Unknown, {}, init_desc);
+            } else {
+                define(var->name, init_type, var->is_mutable, elem, var->tuple_members);
+            }
         }
     } else if (auto* aassign = dynamic_cast<ArrayAssignStmt*>(stmt)) {
         const Symbol* sym = find_symbol(aassign->name);
         if (!sym) {
+            if (is_in_outer_scopes(aassign->name)) {
+                throw CompileError(stmt->line,
+                    "cannot assign to captured variable '" + aassign->name + "'");
+            }
             throw CompileError(stmt->line,
                 "undefined variable '" + aassign->name + "'");
         }
@@ -533,15 +752,19 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         }
     } else if (auto* assign = dynamic_cast<AssignStmt*>(stmt)) {
         if (!has_type(assign->name)) {
+            if (is_in_outer_scopes(assign->name)) {
+                throw CompileError(stmt->line,
+                    "cannot assign to captured variable '" + assign->name + "'");
+            }
             throw CompileError(stmt->line,
                 "undefined variable '" + assign->name + "'");
         }
-        TypeKind var_type = get_type(assign->name);
         const Symbol* symbol = find_symbol(assign->name);
         if (symbol && !symbol->is_mutable) {
             throw CompileError(stmt->line,
                 "cannot modify immutable variable '" + assign->name + "'");
         }
+        TypeKind var_type = get_type(assign->name);
         if (assign->op == "++" || assign->op == "--") {
             if (var_type != TypeKind::Int && var_type != TypeKind::Decimal) {
                 throw CompileError(stmt->line,
@@ -571,6 +794,15 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                         " to " + tuple_type_to_string(symbol->tuple_members));
                 }
             }
+            if (var_type == TypeKind::Function) {
+                TypeDesc rhs_desc = expr_function_type(assign->rhs.get());
+                if (rhs_desc != symbol->desc) {
+                    throw CompileError(stmt->line,
+                        "type mismatch: cannot assign " +
+                        (rhs_desc.type == TypeKind::Function ? type_desc_to_string(rhs_desc) : type_to_string(rhs_type)) +
+                        " to " + type_desc_to_string(symbol->desc));
+                }
+            }
         } else {
             if (assign->op == "%=" && var_type != TypeKind::Int) {
                 throw CompileError(stmt->line,
@@ -595,6 +827,10 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             if (pt == TypeKind::Array) {
                 throw CompileError(stmt->line,
                     "cannot print an array; index its elements or use length(arr)");
+            }
+            if (pt == TypeKind::Function) {
+                throw CompileError(stmt->line,
+                    "cannot print a function");
             }
             if (pt == TypeKind::Tuple) {
                 throw CompileError(stmt->line,
@@ -860,6 +1096,15 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                     "type mismatch: return " + type_to_string(vt) +
                     " but function returns " + type_to_string(current_return_));
             }
+            if (current_return_ == TypeKind::Function) {
+                TypeDesc rt = expr_function_type(ret->values[0].get());
+                if (rt != current_return_desc_) {
+                    throw CompileError(stmt->line,
+                        "type mismatch: return " +
+                        (rt.type == TypeKind::Function ? type_desc_to_string(rt) : type_to_string(vt)) +
+                        " but function returns " + type_desc_to_string(current_return_desc_));
+                }
+            }
             if (current_return_ == TypeKind::Array) {
                 TypeKind elem = expr_array_element_type(ret->values[0].get());
                 if (elem != current_return_element_) {
@@ -892,12 +1137,20 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         std::vector<std::unordered_map<std::string, Symbol>> saved_scopes = std::move(scopes_);
         scopes_.clear();
         push_scope();
+        std::vector<std::vector<std::unordered_map<std::string, Symbol>>> saved_outer =
+            std::move(outer_scope_stack_);
+        outer_scope_stack_ = saved_outer;
+        outer_scope_stack_.push_back(saved_scopes);
+        FunctionDecl* saved_fn = current_fn_;
+        current_fn_ = fn;
+        fn->captures.clear();
         for (auto& p : fn->params) {
-            define(p.name, p.type, true, p.array_element_type, p.tuple_members);
+            define(p.name, p.type, true, p.array_element_type, p.tuple_members,
+                   param_type_desc(p));
             if (p.default_value) {
                 TypeKind dt = infer_from_literal(p.default_value.get());
                 TypeKind expect = (p.type == TypeKind::Byte) ? TypeKind::Int : p.type;
-                if (dt == TypeKind::Unknown || dt != expect) {
+                if (p.type == TypeKind::Function || dt == TypeKind::Unknown || dt != expect) {
                     throw CompileError(fn->line,
                         "default value for parameter '" + p.name + "' of function '" +
                         fn->name + "' must be a literal of type " +
@@ -915,6 +1168,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         }
         TypeKind saved_ret = current_return_;
         TypeKind saved_ret_elem = current_return_element_;
+        TypeDesc saved_ret_desc = current_return_desc_;
         std::vector<TypeDesc> saved_ret_tuple = current_return_tuple_;
         bool saved_in_fn = in_function_;
         int saved_loop_depth = loop_depth_;
@@ -923,20 +1177,25 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         switch_entry_loop_depths_.clear();
         current_return_ = fn->has_return_type ? fn->return_type : TypeKind::Unknown;
         current_return_element_ = fn->has_return_type ? fn->return_array_element_type : TypeKind::Unknown;
+        current_return_desc_ = fn->has_return_type ? fn->return_desc : TypeDesc{};
         current_return_tuple_ = fn->has_return_type ? fn->return_tuple_members : std::vector<TypeDesc>{};
         in_function_ = true;
         bool function_returns = resolve_block(fn->body);
         if (fn->has_return_type && !function_returns) {
             throw CompileError(fn->line,
                 "function '" + fn->name + "' may exit without returning " +
-                type_to_string(fn->return_type));
+                type_desc_to_string(fn->return_desc));
         }
         in_function_ = saved_in_fn;
         current_return_ = saved_ret;
         current_return_element_ = saved_ret_elem;
+        current_return_desc_ = saved_ret_desc;
         current_return_tuple_ = saved_ret_tuple;
         loop_depth_ = saved_loop_depth;
         switch_entry_loop_depths_ = std::move(saved_switch_depths);
+        current_fn_ = saved_fn;
+        outer_scope_stack_ = std::move(saved_outer);
+        resolved_functions_.insert(fn->name);
         pop_scope();
         scopes_ = std::move(saved_scopes);
         always_returns = false;
@@ -970,11 +1229,15 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
                 "duplicate declaration of function '" + fn->name + "'");
         }
         FunctionSig sig;
+        std::vector<TypeDesc> param_descs;
         for (auto& p : fn->params) {
             sig.param_types.push_back(p.type);
             sig.param_element_types.push_back(p.array_element_type);
             sig.param_tuple_members.push_back(p.tuple_members);
             sig.param_has_default.push_back(p.default_value != nullptr);
+            TypeDesc pd = param_type_desc(p);
+            sig.param_descs.push_back(pd);
+            param_descs.push_back(pd);
         }
         if (fn->params.empty()) {
             sig.variadic = false;
@@ -983,7 +1246,8 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
             if (sig.variadic) {
                 sig.variadic_element_type = fn->params.back().array_element_type;
                 if (sig.variadic_element_type == TypeKind::Array ||
-                    sig.variadic_element_type == TypeKind::Tuple) {
+                    sig.variadic_element_type == TypeKind::Tuple ||
+                    fn->params.back().type == TypeKind::Function) {
                     throw CompileError(fn->line,
                         "variadic parameter of function '" + fn->name +
                         "' must collect a scalar type");
@@ -1019,8 +1283,16 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
         sig.return_type = fn->has_return_type ? fn->return_type : TypeKind::Unknown;
         sig.return_element_type = fn->has_return_type ? fn->return_array_element_type : TypeKind::Unknown;
         sig.return_tuple_members = fn->has_return_type ? fn->return_tuple_members : std::vector<TypeDesc>{};
+        sig.return_desc = fn->has_return_type ? fn->return_desc : TypeDesc{};
         sig.has_return = fn->has_return_type;
+        TypeDesc ftd;
+        ftd.type = TypeKind::Function;
+        ftd.fn_info = std::make_shared<FunctionTypeInfo>();
+        ftd.fn_info->params = param_descs;
+        ftd.fn_info->ret = fn->has_return_type ? fn->return_desc : TypeDesc{};
+        sig.fn_type = ftd;
         functions_[fn->name] = sig;
+        fn_decls_[fn->name] = fn;
         recurse(fn->body);
     } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
         recurse(ifs->then_body);

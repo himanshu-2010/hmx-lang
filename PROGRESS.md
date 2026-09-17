@@ -239,6 +239,50 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - Docs: SYNTAX.md §12.2 defaults + variadic ¶, §12.4 call arity, §14.4 errors,
   README.md functions/tests/roadmap; TESTRESULT.md.
 
+### Milestone (post-plan) — Function types, higher-order calls & closures — DONE
+- **Design (locked):** function type syntax `fn(<param_types>) -> <type>` in
+  annotations, parameters, and return types. Lowered to C via a runtime
+  `sd_closure { void* fn; void* env; }`. Every non-`main` user function gets a
+  hidden leading `void* _sd_env` parameter; direct by-name calls pass a stack env
+  (or `0`); closure **values** (passed/returned/stored via a variable of function
+  type) get **heap** env copies (`sd_copy_env`) so they outlive the caller.
+- **AST:** `TypeKind::Function`; `TypeDesc` gains `shared_ptr<FunctionTypeInfo>
+  {params, ret}` with deep `==` (`operator!=` added) and `<`. `CapturedVar`
+  (compiled name, type, depth) on `FunctionDecl`; `IdentifierExpr`/`CallExpr`
+  gain `function_value`/`function_reference` flags.
+- **Parser:** `type_spec` extended with `fn ( fn_type_params? ) -> type_spec`.
+  Still **6 shift/reduce conflicts** (unchanged), zero warnings.
+- **Resolver:** capture machinery — `outer_scope_stack_` (enclosing fn frames),
+  `current_fn_`, `fn_decls_`, `resolved_functions_`; `find_outer_symbol` walks the
+  actual enclosing function chain; `register_capture` snapshots the symbol's real
+  `TypeDesc` (fixes `void outer;`). `require_capture_visibility` errors on
+  out-of-scope captures ("cannot call 'g' from here: captured variable 'x' is not
+  in scope"). `require_function_value` enforces declaration-before-use for function
+  values and rejects `main` as a value. Deep function-desc checks on
+  var/assign/param/arg/return; calling a variable of function type is a
+  higher-order call with full arity + type matching; `print` and ternary reject
+  Function; `expr_array_element_type`/`expr_tuple_members` fall back to
+  `find_outer_symbol` for captured identifiers. Capture = read-only ("cannot assign
+  to captured variable"), by-value snapshot (arrays share backing).
+- **Codegen:** `sd_make_closure`, `sd_copy_env` helpers; per-capturing-fn
+  `sd_env_<name>` struct typedefs; `emit_function_signature` prepends `_sd_env`;
+  `emit_env_arg` (stack) vs `emit_env_heap_arg` (heap); direct calls pass env;
+  higher-order calls emit
+  `((<ret>(*)(void*,...))<name>.fn)(<name>.env, args...)`; identifier emission:
+  function references → `sd_make_closure((void*)f, heapEnv)`, captured locals →
+  `((sd_env_<name>*)_sd_env)-><name>`. Fixed registration-before-main-emission
+  ordering bug; return of fn values uses heap env copies (no stack escape).
+- **Tests:** fixture `closures.hmx` (capture, nested captures, forwarding through
+  fn-value params, recursive closures, shared-array capture, two-closure
+  independence); 11 new negatives (not-in-scope capture, forward-ref-to-value,
+  `main` as value, print/ternary fn, param/var/assign/return fn-type mismatches,
+  call arity); 4 new stress (hof fold, capture snapshot, nested forwarding,
+  exit-code capture).
+- Full regression: 37/37 integration, 124/124 negative, 58/58 stress/output = **219**.
+- Docs: SYNTAX.md §7.1 annotations + §12.2 fn-type grammar, §12.3 returning fns,
+  §12.5 rewritten (function types, closures, capture rules, roadmap trimmed);
+  README.md features/tests/roadmap; TESTRESULT.md.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.
@@ -249,6 +293,12 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - Duplicate declarations and missing definite returns are rejected by the type resolver.
 - `else if` chains are implemented and covered by `else_if.hmx`.
 - Ternary expressions, explicit numeric casts, and immutable `const` bindings are implemented.
+- Closures: calling an immediately-returned function value (`make()(x)`) is not parseable —
+  use `let g = make(); g(x)`. Bare tuple literals (`let t = (1, 2)`) are not in the grammar;
+  get tuples from function returns. Direct forward calls to capturing functions defined later
+  are not capture-validated (works when the captured var is in scope at the call site;
+  otherwise a gcc-stage error is accepted). Capturing functions can't be recursive refs
+  through fn-value types (identical closure types only); recursion works via direct calls.
 
 ## Relevant files
 - `src/lexer.l`, `src/parser.y`, `src/ast.hpp/cpp`, `src/type_resolver.hpp/cpp`, `src/codegen.hpp/cpp`, `src/main.cpp`

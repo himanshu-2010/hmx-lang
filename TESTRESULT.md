@@ -2,25 +2,29 @@
 
 **Date:** 2026-09-17  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (203 / 203)
+**Status:** ALL TESTS PASSED (219 / 219)
 
 ---
 
 ## Executive Summary
 
-A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **Tier 2 loop, I/O, conversion, output, nested-function, and parameter features**:
+A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **function types, higher-order calls, and closures**:
 1. **`foreach`**: `foreach (x in coll)` and `foreach (i, x in coll)` over arrays and text, value-copy loop variables, with `break`/`continue` support.
 2. **`input()`**: reads a stdin line as `text` (empty string at end of input).
 3. **Conversions**: `tostr`, `parse_int`, `parse_decimal` (runtime error + exit code 1 on malformed input).
 4. **Variadic `print(a, b, c)`**: space-separated single-line output via one `printf`.
-5. **Nested functions**: `fn` declarations inside function bodies, hoisted to program scope (no closures, program-unique names).
+5. **Nested functions**: `fn` declarations inside function bodies, hoisted to program scope, with program-unique names.
 6. **Default parameter values**: trailing `name: type = literal` defaults padded at call sites.
 7. **Variadic parameters**: a single trailing `...type` parameter collects extra args into an array.
+8. **Function types**: `fn(<param_types>) -> <return_type>` in annotations, parameters, and return types.
+9. **Function values**: a named function (other than `main`) is a first-class value; can be passed, returned, stored, and called via variables.
+10. **Higher-order calls**: calling a variable of function type triggers arity + type checking.
+11. **Closures**: nested functions capture enclosing locals by-value snapshot; heap-allocated env survives enclosing scope; captured variables are read-only.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 203
-> - **Passed:** 203
+> - **Total Test Cases Executed:** 219
+> - **Passed:** 219
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -39,7 +43,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (36/36 Passed)
+### 1. Integration Fixtures (37/37 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -77,10 +81,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `print_multi.hmx` | **[NEW]** Tier 2 Variadic Print | `print(a, b, c)` space-separated output across ints, text, bool, char, decimal, negatives | **PASS** |
 | `nested_functions.hmx` | **[NEW]** Tier 2 Nested Functions | Nested helpers with params/returns, nested-in-nested, recursion, loop-declared helper, top-level calls | **PASS** |
 | `variadic_defaults.hmx` | **[NEW]** Tier 2 Defaults + Variadic | Default padding, default recursion, variadic `foreach` sum, empty + multi-arg tails | **PASS** |
+| `closures.hmx` | **[NEW]** Closures + HOF | Capture, nested capture, forwarding through fn-value params, recursive closures, shared-array capture, two-closure independence | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (113/113 Passed)
+### 2. Negative & Error Handling Suite (124/124 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -183,10 +188,22 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `variadic_duplicate` | **[NEW]** Two Variadics | `x: ...int, y: ...int` | `more than one variadic parameter` | **PASS** |
 | `variadic_collects_array` | **[NEW]** Non-Scalar Element | `rest: ...[int]` | `must collect a scalar type` | **PASS** |
 | `variadic_wrong_type` | **[NEW]** Variadic Arg Type | `f(1, "s")` for `f(a: int, rest: ...int)` | `type mismatch: variadic argument 2 of 'f' expects int, got text` | **PASS** |
+| `nested_fn_assigns_captured` | **[NEW]** Captured Var Assign | `outer = 7` inside nested fn | `cannot assign to captured variable` | **PASS** |
+| `closures_capture_not_in_scope` | **[NEW]** Capture Not In Scope | Capturing fn uses var from unrelated scope | `captured variable 'local' is not in scope` | **PASS** |
+| `closures_forward_ref_value` | **[NEW]** Forward Ref as Value | `let f: fn(int) -> int = g` before `g` is declared | `must be declared before it is used as a value` | **PASS** |
+| `closures_use_main_value` | **[NEW]** `main` as Value | `apply(main, 3)` | `cannot use function 'main' as a value` | **PASS** |
+| `closures_print_function` | **[NEW]** Print Function | `print(f)` where `f` is a function | `cannot print a function` | **PASS** |
+| `closures_ternary_function` | **[NEW]** Ternary Function | `t ? f : f` where `f` is a function | `ternary branches cannot be functions` | **PASS** |
+| `closures_arg_fn_mismatch` | **[NEW]** Arg Function Type | `choose(true, f, g)` with wrong `g` type | `argument 3 of 'choose' expects` | **PASS** |
+| `closures_var_mismatch` | **[NEW]** Variable Function Type | `fn(int, int) -> int = twice` | `but initialized with` | **PASS** |
+| `closures_assign_mismatch` | **[NEW]** Assignment Function Type | `f = concat` with wrong function type | `cannot assign` | **PASS** |
+| `closures_return_fn_mismatch` | **[NEW]** Return Function Type | `return h` where `h` has wrong function type | `but function returns` | **PASS** |
+| `closures_return_mismatch` | **[NEW]** Return Kind Mismatch | `return 5` in fn returning function type | `but function returns function` | **PASS** |
+| `closures_call_arity` | **[NEW]** HOF Arity | `f(1, 2)` where `f: fn(int) -> int` | `expects 1 arguments, got 2` | **PASS** |
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (54/54 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (58/58 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -242,6 +259,10 @@ These tests verify exact runtime output matching and process exit code propagati
 | `default_padding` | **[NEW]** Tier 2 Defaults | Omitted trailing args receive defaults | `a 0 3\nb 1 3\nc 0 9` | **PASS** |
 | `variadic_mixed_defaults` | **[NEW]** Tier 2 Defaults + Variadic | defaulted prefix + variadic tail, first/last tail access | `- 0\n+ 1\n5 5\n+ 3\n1 3` | **PASS** |
 | `variadic_exit_recursion` | **[NEW]** Tier 2 Defaults | defaulted recursion returning 42 | Exit Code: `42` | **PASS** |
+| `closures_hof_fold` | **[NEW]** HOF Fold | `apply(add, 30, 12)` and `apply(mul, 6, 7)` via fn-value params | `42\n42` | **PASS** |
+| `closures_snapshot_env` | **[NEW]** Capture Snapshot | value captured at `let f = bump` time; later mutation to `total` is invisible | `0` | **PASS** |
+| `closures_nested_forwarding` | **[NEW]** Nested Capture Chain | outer→inner→caller forwarding chain via direct call | `5` | **PASS** |
+| `closures_exit_capture` | **[NEW]** Capture Exit Code | captured int compared in if-branch returning 42 | Exit Code: `42` | **PASS** |
 
 ---
 
@@ -279,10 +300,12 @@ cd build && cmake .. && make && cd ..
 ---
 
 > [!TIP]
-> **Conclusion:** Tier 1 and Tier 2 work now lands end-to-end without regressions: unary minus/plus,
-> int-only modulo (incl. compound `%=`), and `break`/`continue` loop control (with a
-> switch-case guard requiring an inner loop), `foreach`, `input()`, `tostr`/`parse_int`/
-> `parse_decimal`, variadic `print`, nested functions, and finally default parameter
-> values plus variadic `...type` parameters all compile through the HMX pipeline and
-> pass integration, negative, and stress/output tests. The bison parser still carries
+> **Conclusion:** Tier 1 and Tier 2 work, plus function types, higher-order calls, and closures, now
+> lands end-to-end without regressions: unary minus/plus, int-only modulo (incl. compound `%=`),
+> and `break`/`continue` loop control, `foreach`, `input()`, `tostr`/`parse_int`/
+> `parse_decimal`, variadic `print`, nested functions, default parameter values, variadic
+> `...type` parameters, `fn(...)  -> ...` type annotations, function values as first-class
+> data (pass, return, store, call via variable), and nested-function closures capturing
+> enclosing locals by-value snapshot — all compile through the HMX pipeline and pass
+> integration, negative, and stress/output tests. The bison parser still carries
 > six harmless shift/reduce conflicts (all resolved by shift).

@@ -335,9 +335,11 @@ to numeric types with `as`, but they are not arithmetic operands.
 
 **Syntax:**
 ```
-var_decl  : "let" IDENTIFIER (":" TYPE)? "=" expression
+var_decl  : "let" IDENTIFIER (":" param_type)? "=" expression
           | "let" "(" id_list ")" "=" expression
-type_spec : TYPE | "[" param_type "]" | "(" elem_list ")"
+param_type : TYPE | "[" param_type "]" | "(" elem_list ")"
+           | "fn" "(" fn_type_params? ")" "->" param_type
+elem_list : param_type ("," param_type)+
 ```
 
 ```hmx
@@ -345,6 +347,7 @@ let count = 5
 let total: int = 0
 let pair: (int, int) = divmod(9, 2)
 let (q, r) = divmod(9, 2)    // destructuring declaration
+let doubler: fn(int) -> int = twice   // function value (see §12.5)
 ```
 
 `const` declares an immutable value. Constants can be read but cannot be assigned,
@@ -866,14 +869,20 @@ the variable-annotation style.
 
 **Syntax:**
 ```
-fn_decl  : "fn" IDENTIFIER "(" param_list? ")" ("->" type_spec)? "{" statement+ "}"
+fn_decl  : "fn" IDENTIFIER "(" param_list? ")" ("->" param_type)? "{" statement+ "}"
 param_list : param ("," param)*
-param    : IDENTIFIER ":" type_spec
-         | IDENTIFIER ":" type_spec "=" expression
-         | IDENTIFIER ":" "... " type_spec
-type_spec : TYPE | "[" param_type "]" | "(" elem_list ")"
-elem_list : type_spec ("," type_spec)+
+param    : IDENTIFIER ":" param_type
+         | IDENTIFIER ":" param_type "=" expression
+         | IDENTIFIER ":" "... " param_type
+param_type : TYPE | "[" param_type "]" | "(" elem_list ")"
+           | "fn" "(" fn_type_params? ")" "->" param_type
+fn_type_params : param_type ("," param_type)*
+elem_list : param_type ("," param_type)+
 ```
+
+A `param_type` of `fn(<param_types>) -> <type>` is a **function type** (see
+§12.5); it may be used for parameter annotations, return types, and
+`let`/`const` annotations (writing `let f: fn(int) -> int = ...`).
 
 ```hmx
 fn add(a: int, b: int) -> int {
@@ -994,7 +1003,8 @@ fn bad() -> int {
 }
 ```
 
-**Out of scope (roadmap):** closures.
+Returning a function value requires the exact function type, and a closure that
+is returned carries its captured environment (see §12.5).
 
 ### 12.4 Function Calls
 
@@ -1019,51 +1029,104 @@ add(3, "x")     // Error: type mismatch on argument 2
 Calling `main` is not allowed. A function that returns nothing (`void`) may be called
 as a statement but not used as a value.
 
-### 12.5 Nested Functions **[Implemented]**
+### 12.5 Function Types and Closures **[Implemented]**
 
-A `fn` declaration may appear anywhere inside another function's body, including
-inside loops and conditionals. Nested functions are **hoisted to program scope**: they
-compile to ordinary top-level C functions and behave like top-level functions.
+A **function type** is written `fn(<param_types...>) -> <return_type>`:
 
 ```hmx
-fn main() {
-    fn add(a: int, b: int) -> int {
-        return a + b
-    }
-    print(add(2, 3))        // 5
+fn apply(f: fn(int) -> int, x: int) -> int {
+    return f(x)
+}
 
-    fn fact(n: int) -> int {
-        if (n <= 1) {
-            return 1
-        }
-        return n * fact(n - 1)
-    }
-    print(fact(5))          // 120, recursion works
+fn twice(a: int) -> int {
+    return a * 2
+}
+
+fn main() {
+    print(apply(twice, 21))       // 42
 }
 ```
 
-Limitations that follow from hoisting:
+- A defined function's name (other than `main`) is a **value** of its function
+  type. It may be passed as an argument, returned, or stored in a variable.
+- Calling a variable of function type performs a **higher-order call**:
+  `f(x)` where `f: fn(int) -> int` invokes the stored function. Argument count
+  and exact function types are checked at compile time.
+- There are no anonymous function literals; a function value is always a named
+  function declared with `fn`.
+- A function must be **declared before it is used as a value** (bare-name
+  references and higher-order calls); ordinary by-name calls to later functions
+  remain allowed.
+- `print` and `?:` (ternary) reject function values.
 
-- **No closures.** A nested function cannot reference the enclosing function's local
-  variables or parameters; doing so is an `undefined variable` compile error.
-- **Program-unique names.** A nested function name must not collide with any other
-  function in the program (top-level or nested); duplicates are rejected with
+A **closure** is a nested function that references a variable of its enclosing
+function's scope. The referenced variables are *captured*:
+
+```hmx
+fn make_mult(m: int) -> fn(int) -> int {
+    fn mult(a: int) -> int {
+        return a * m          // m is captured
+    }
+    return mult
+}
+
+fn main() {
+    let by3 = make_mult(3)
+    print(by3(5))             // 15
+    let by10 = make_mult(10)
+    print(by10(6))            // 60
+}
+```
+
+A function may reference the locals and parameters of **any** enclosing function
+(its direct parent, its grandparent, and so on) and of its own parent's scope
+up to program scope:
+
+```hmx
+fn main() {
+    let x = 100
+    fn inner() -> int { return x }        // captures x
+    fn outer() -> int {
+        let y = 7
+        fn inn2() -> int { return x + y } // captures x and y
+        return inn2() + inner()
+    }
+    print(outer())                        // 207
+}
+```
+
+Capture rules:
+
+- Capturing functions are compiled with a hidden environment parameter; the
+  environment is built automatically at every call site and captured variables
+  are read back through it.
+- Captures are **snapshots**: the captured value is copied when a closure value
+  is created (passed, returned, stored, or assigned), so the closure sees the
+  value at creation time. A closure stored in a variable or returned from a
+  function survives long after the enclosing function returns; a closure called
+  directly (never stored) reads the variable's current value.
+- Captured variables are **read-only** inside the capturing function; assigning
+  to a captured variable is a compile error
+  (`cannot assign to captured variable 'x'`).
+- Captured **arrays** share their backing storage with the enclosing scope.
+- `main` cannot be called or used as a value, and it never captures.
+- A function value may only be created where the referenced function's captures
+  are in scope; using a capturing function where one of its captured variables
+  is not visible is a compile error
+  (`cannot call 'g' from here: captured variable 'x' is not in scope`).
+
+Nested functions are otherwise **hoisted to program scope**:
+
+- A nested function name must not collide with any other function in the program
+  (top-level or nested); duplicates are rejected with
   `duplicate declaration of function`.
 - `main` remains reserved for the program entry point and cannot be declared
   (nested or otherwise).
 - `return`, `break`, and `continue` inside a nested function belong to the nested
   function itself, never to the enclosing function's loops.
 
-```hmx
-fn main() {
-    let x = 5
-    fn show() {
-        print(x)            // Error: undefined variable 'x' (would require a closure)
-    }
-}
-```
-
-**Out of scope (roadmap):** function pointers / higher-order functions, closures.
+**Out of scope (roadmap):** currying, multiple return values from function-type
+params, closures over captured-array-resizing writes.
 
 ---
 

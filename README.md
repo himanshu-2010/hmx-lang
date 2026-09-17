@@ -29,8 +29,9 @@ The current compiler supports:
 - `loop`, `while`, `for`, `foreach`, and `do ... while` loops
 - Variadic `print(a, b, c)` for space-separated single-line output
 - Functions with typed parameters and return values
-- Function calls, forward calls, recursion, and nested function declarations
-- Arrays with typed elements, indexing, element assignment, and `length()`
+ - Function calls, forward calls, recursion, and nested function declarations
+ - First-class function types (`fn(int) -> int`) with higher-order calls and closures
+ - Arrays with typed elements, indexing, element assignment, and `length()`
 - Multiple return values via tuples with destructuring
 - Compile-time type checking with line-numbered diagnostics
 - Duplicate declaration detection and definite-return checking
@@ -346,20 +347,30 @@ print(sum(1, 2, 3, 4))   // 10
 ```
 
 Nested functions can be declared inside any function body, with their own scoping;
-they are emitted as top-level functions (no closures).
+they are emitted as top-level functions.
 
 Functions may also be declared inside other functions. Nested functions are hoisted to
-program scope: they behave like top-level functions, must have program-unique names,
-and cannot close over the enclosing function's locals.
+program scope: they must have program-unique names, and they may **capture** the
+enclosing function's locals and parameters (becoming closures), giving HMX
+first-class function values:
 
 ```hmx
 fn main() {
-    fn square(n: int) -> int {
-        return n * n
+    let base = 100
+    fn add(a: int) -> int {
+        return a + base          // captures base
     }
-    print(square(6))
+    print(add(5))                // 105
+
+    let f: fn(int) -> int = add
+    print(f(1))                  // 101, higher-order call
 }
 ```
+
+Function types are written `fn(<param types>) -> <type>` and may annotate
+parameters, return values, and `let` bindings. A function name (except `main`)
+is itself a value: it can be passed, returned, stored, and called through a
+variable.
 
 ## Comments and Output
 
@@ -435,10 +446,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | 36 `.hmx` fixtures | 36/36 passed |
-| Negative | Type, syntax, and resolver errors | 113/113 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, defaults & variadic params | 54/54 passed |
-| Total | 203 test cases | 203/203 passed |
+| Integration | 37 `.hmx` fixtures | 37/37 passed |
+| Negative | Type, syntax, and resolver errors | 124/124 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, defaults & variadic params | 58/58 passed |
+| Total | 219 test cases | 219/219 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is
@@ -494,7 +505,6 @@ The compiler's core milestone is complete. The following language features are l
 as planned and are not implemented yet:
 
 - Namespaces and modules across multiple `.hmx` files
-- Function pointers, higher-order functions, and closures
 - Unicode identifiers
 
 Engineering work still needed around the language includes better source locations,

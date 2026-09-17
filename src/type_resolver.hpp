@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ast.hpp"
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -17,13 +18,16 @@ struct FunctionSig {
     std::vector<TypeKind> param_types;
     std::vector<TypeKind> param_element_types;
     std::vector<std::vector<TypeDesc>> param_tuple_members;  // valid when param is Tuple
+    std::vector<TypeDesc> param_descs;                       // full descriptor per param
     std::vector<bool> param_has_default;                     // aligned with param_types
     bool variadic = false;                                   // trailing ...elem collector
     TypeKind variadic_element_type = TypeKind::Unknown;
     TypeKind return_type = TypeKind::Unknown;
     TypeKind return_element_type = TypeKind::Unknown;
     std::vector<TypeDesc> return_tuple_members;              // valid when return_type is Tuple
+    TypeDesc return_desc;                                    // full return descriptor
     bool has_return = false;
+    TypeDesc fn_type;                                        // type of this function as a value
 };
 
 struct Symbol {
@@ -31,6 +35,7 @@ struct Symbol {
     bool is_mutable;
     TypeKind array_element_type = TypeKind::Unknown;
     std::vector<TypeDesc> tuple_members = {};   // valid when type is Tuple
+    TypeDesc desc = {};                         // full descriptor (Function etc.)
 };
 
 class TypeResolver {
@@ -43,8 +48,13 @@ public:
 private:
     std::vector<std::unordered_map<std::string, Symbol>> scopes_;
     std::unordered_map<std::string, FunctionSig> functions_;
+    std::unordered_map<std::string, FunctionDecl*> fn_decls_;
+    std::vector<std::vector<std::unordered_map<std::string, Symbol>>> outer_scope_stack_;
+    std::set<std::string> resolved_functions_;
+    FunctionDecl* current_fn_ = nullptr;
     TypeKind current_return_ = TypeKind::Unknown;
     TypeKind current_return_element_ = TypeKind::Unknown;
+    TypeDesc current_return_desc_ = {};
     std::vector<TypeDesc> current_return_tuple_;
     bool in_function_ = false;
     bool allow_void_call_ = false;
@@ -56,11 +66,18 @@ private:
     void pop_scope();
     void define(const std::string& name, TypeKind type, bool is_mutable = true,
                 TypeKind array_element_type = TypeKind::Unknown,
-                const std::vector<TypeDesc>& tuple_members = {});
+                const std::vector<TypeDesc>& tuple_members = {},
+                const TypeDesc& desc = TypeDesc{});
     const Symbol* find_symbol(const std::string& name) const;
+    const Symbol* find_outer_symbol(const std::string& name);
+    bool is_in_outer_scopes(const std::string& name) const;
+    void register_capture(const std::string& name, const Symbol& sym);
+    void require_capture_visibility(const std::string& fname);
+    void require_function_value(const std::string& fname);
     int line() const { return current_line_; }
-    TypeKind expr_array_element_type(Expression* expr) const;
-    std::vector<TypeDesc> expr_tuple_members(Expression* expr) const;
+    TypeKind expr_array_element_type(Expression* expr);
+    std::vector<TypeDesc> expr_tuple_members(Expression* expr);
+    TypeDesc expr_function_type(Expression* expr);
     bool types_match(TypeKind a, TypeKind ae, const std::vector<TypeDesc>& am,
                      TypeKind b, TypeKind be, const std::vector<TypeDesc>& bm) const;
 

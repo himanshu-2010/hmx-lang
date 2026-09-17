@@ -63,6 +63,7 @@ Program* g_program = nullptr;
 %type <tlist> tuple_elem_list
 %type <idlist> id_list
 %type <tdesc> param_type
+%type <tlist> fn_type_params
 %type <program> program
 %type <stmts> stmt_list
 
@@ -303,6 +304,44 @@ var_decl
             free($2);
             $$ = v;
         }
+    | LET IDENTIFIER ':' FN '(' fn_type_params ')' ARROW param_type '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->annotation = TypeKind::Function;
+            auto* info = new FunctionTypeInfo();
+            info->params = std::move(*$6);
+            delete $6;
+            info->ret = *$9;
+            delete $9;
+            v->annotation_desc = TypeDesc{};
+            v->annotation_desc.type = TypeKind::Function;
+            v->annotation_desc.fn_info = std::shared_ptr<FunctionTypeInfo>(info);
+            v->is_mutable = true;
+            v->initializer = ExprPtr($11);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | LET IDENTIFIER ':' FN '(' ')' ARROW param_type '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->annotation = TypeKind::Function;
+            auto* info = new FunctionTypeInfo();
+            info->ret = *$8;
+            delete $8;
+            v->annotation_desc = TypeDesc{};
+            v->annotation_desc.type = TypeKind::Function;
+            v->annotation_desc.fn_info = std::shared_ptr<FunctionTypeInfo>(info);
+            v->is_mutable = true;
+            v->initializer = ExprPtr($10);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
     | CONST IDENTIFIER ':' '[' param_type ']' '=' expression
         {
             auto* v = new VarDecl();
@@ -327,6 +366,44 @@ var_decl
             delete $5;
             v->is_mutable = false;
             v->initializer = ExprPtr($8);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | CONST IDENTIFIER ':' FN '(' fn_type_params ')' ARROW param_type '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->annotation = TypeKind::Function;
+            auto* info = new FunctionTypeInfo();
+            info->params = std::move(*$6);
+            delete $6;
+            info->ret = *$9;
+            delete $9;
+            v->annotation_desc = TypeDesc{};
+            v->annotation_desc.type = TypeKind::Function;
+            v->annotation_desc.fn_info = std::shared_ptr<FunctionTypeInfo>(info);
+            v->is_mutable = false;
+            v->initializer = ExprPtr($11);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | CONST IDENTIFIER ':' FN '(' ')' ARROW param_type '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->annotation = TypeKind::Function;
+            auto* info = new FunctionTypeInfo();
+            info->ret = *$8;
+            delete $8;
+            v->annotation_desc = TypeDesc{};
+            v->annotation_desc.type = TypeKind::Function;
+            v->annotation_desc.fn_info = std::shared_ptr<FunctionTypeInfo>(info);
+            v->is_mutable = false;
+            v->initializer = ExprPtr($10);
             v->line = yylineno;
             free($2);
             $$ = v;
@@ -714,6 +791,42 @@ param_type
             delete $2;
             $$ = td;
         }
+    | FN '(' fn_type_params ')' ARROW param_type
+        {
+            auto* td = new TypeDesc{TypeKind::Function, TypeKind::Unknown, {}};
+            auto* info = new FunctionTypeInfo();
+            info->params = std::move(*$3);
+            delete $3;
+            info->ret = *$6;
+            delete $6;
+            td->fn_info = std::shared_ptr<FunctionTypeInfo>(info);
+            $$ = td;
+        }
+    | FN '(' ')' ARROW param_type
+        {
+            auto* td = new TypeDesc{TypeKind::Function, TypeKind::Unknown, {}};
+            auto* info = new FunctionTypeInfo();
+            info->ret = *$5;
+            delete $5;
+            td->fn_info = std::shared_ptr<FunctionTypeInfo>(info);
+            $$ = td;
+        }
+    ;
+
+fn_type_params
+    : fn_type_params ',' param_type
+        {
+            $1->push_back(*$3);
+            delete $3;
+            $$ = $1;
+        }
+    | param_type
+        {
+            auto* v = new std::vector<TypeDesc>();
+            v->push_back(*$1);
+            delete $1;
+            $$ = v;
+        }
     ;
 
 tuple_elem_list
@@ -782,6 +895,7 @@ param
             p->type = $3->type;
             p->array_element_type = $3->element_type;
             if (p->type == TypeKind::Tuple) p->tuple_members = std::move($3->tuple_members);
+            p->desc = *$3;
             delete $3;
             free($1);
             $$ = p;
@@ -793,6 +907,7 @@ param
             p->type = $3->type;
             p->array_element_type = $3->element_type;
             if (p->type == TypeKind::Tuple) p->tuple_members = std::move($3->tuple_members);
+            p->desc = *$3;
             p->default_value = ExprPtr($5);
             delete $3;
             free($1);
@@ -805,6 +920,7 @@ param
             p->type = TypeKind::Array;
             p->array_element_type = $4->type;
             p->variadic = true;
+            p->desc = TypeDesc{TypeKind::Array, $4->type, {}};
             delete $4;
             free($1);
             $$ = p;
@@ -833,6 +949,7 @@ fn_decl
             f->return_type = $6->type;
             f->return_array_element_type = $6->element_type;
             if (f->return_type == TypeKind::Tuple) f->return_tuple_members = std::move($6->tuple_members);
+            f->return_desc = *$6;
             delete $6;
             for (auto& s : *$8) {
                 f->body.push_back(std::move(s));
@@ -867,6 +984,7 @@ fn_decl
             f->return_type = $7->type;
             f->return_array_element_type = $7->element_type;
             if (f->return_type == TypeKind::Tuple) f->return_tuple_members = std::move($7->tuple_members);
+            f->return_desc = *$7;
             delete $7;
             for (auto& s : *$9) {
                 f->body.push_back(std::move(s));

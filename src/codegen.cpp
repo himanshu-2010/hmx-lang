@@ -1,5 +1,14 @@
 #include "codegen.hpp"
 
+static TypeDesc codegen_param_desc(const FunctionDecl::Param& p) {
+    if (p.type == TypeKind::Function) return p.desc;
+    TypeDesc d;
+    d.type = p.type;
+    d.element_type = p.array_element_type;
+    d.tuple_members = p.tuple_members;
+    return d;
+}
+
 std::string CodeGen::generate(Program& program, const std::string& source_file) {
     source_file_ = source_file;
     TypeResolver resolver;
@@ -114,15 +123,26 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "    return index;\n";
     out_ << "}\n\n";
 
-    for (auto& stmt : program.statements) collect_tuple_types(stmt.get());
+    out_ << "typedef struct sd_closure {\n";
+    out_ << "    void* fn;\n";
+    out_ << "    void* env;\n";
+    out_ << "} sd_closure;\n\n";
 
-    for (auto& [members, name] : tuple_types_) {
-        out_ << "typedef struct " << name << " {\n";
-        for (size_t i = 0; i < members.size(); i++) {
-            out_ << "    " << type_to_c(members[i].type) << " f" << i << ";\n";
-        }
-        out_ << "} " << name << ";\n\n";
-    }
+    out_ << "static sd_closure sd_make_closure(void* fn, void* env) {\n";
+    out_ << "    sd_closure c;\n";
+    out_ << "    c.fn = fn;\n";
+    out_ << "    c.env = env;\n";
+    out_ << "    return c;\n";
+    out_ << "}\n\n";
+
+    out_ << "static void* sd_copy_env(const void* src, size_t size) {\n";
+    out_ << "    void* r = malloc(size ? size : 1);\n";
+    out_ << "    if (!r) exit(1);\n";
+    out_ << "    if (size) memcpy(r, src, size);\n";
+    out_ << "    return r;\n";
+    out_ << "}\n\n";
+
+    for (auto& stmt : program.statements) collect_tuple_types(stmt.get());
 
     std::vector<Statement*> top_level;
 
@@ -132,6 +152,30 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
             for (auto& body_stmt : fn->body) collect_function_decls(body_stmt.get());
         } else {
             top_level.push_back(stmt.get());
+        }
+    }
+
+    for (auto* fn : all_functions_) {
+        for (auto& p : fn->params) register_desc_types(p.desc);
+        register_desc_types(fn->return_desc);
+        for (auto& c : fn->captures) register_desc_types(c.desc);
+    }
+
+    for (auto& [members, name] : tuple_types_) {
+        out_ << "typedef struct " << name << " {\n";
+        for (size_t i = 0; i < members.size(); i++) {
+            out_ << "    " << c_type_for_desc(members[i]) << " f" << i << ";\n";
+        }
+        out_ << "} " << name << ";\n\n";
+    }
+
+    for (auto* fn : all_functions_) {
+        if (fn->name != "main" && !fn->captures.empty()) {
+            out_ << "typedef struct sd_env_" << fn->name << " {\n";
+            for (auto& c : fn->captures) {
+                out_ << "    " << c_type_for_desc(c.desc) << " " << c.name << ";\n";
+            }
+            out_ << "} sd_env_" << fn->name << ";\n\n";
         }
     }
 
@@ -150,12 +194,14 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     FunctionDecl* main_fn = nullptr;
     for (auto* fn : all_functions_) {
         functions_by_name_[fn->name] = fn;
-        if (fn->name == "main") {
-            main_fn = fn;
-            for (auto& body_stmt : fn->body) {
-                emit_stmt(body_stmt.get());
-            }
+        if (fn->name == "main") main_fn = fn;
+    }
+    if (main_fn) {
+        current_fn_ = main_fn;
+        for (auto& body_stmt : main_fn->body) {
+            emit_stmt(body_stmt.get());
         }
+        current_fn_ = nullptr;
     }
 
     if (!main_fn || !main_fn->has_return_type) {
@@ -165,6 +211,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
 
     for (auto* fn : all_functions_) {
         if (fn->name != "main") {
+            current_fn_ = fn;
             out_ << emit_function_signature(fn) << " {\n";
             for (auto& body_stmt : fn->body) {
                 emit_stmt(body_stmt.get());
@@ -172,6 +219,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
             out_ << "}\n\n";
         }
     }
+    current_fn_ = nullptr;
     return out_.str();
 }
 
@@ -212,16 +260,69 @@ std::string CodeGen::emit_function_signature(FunctionDecl* fn) {
         s += "void";
     }
     s += " " + fn->name + "(";
+    if (fn->name != "main") s += "void* _sd_env";
     for (size_t i = 0; i < fn->params.size(); i++) {
-        if (i > 0) s += ", ";
-        if (fn->params[i].type == TypeKind::Tuple) {
-            s += tuple_name(fn->params[i].tuple_members) + " " + fn->params[i].name;
-        } else {
-            s += type_to_c(fn->params[i].type) + " " + fn->params[i].name;
-        }
+        if (i > 0 || fn->name != "main") s += ", ";
+        s += c_type_for_desc(codegen_param_desc(fn->params[i])) + " " + fn->params[i].name;
     }
     s += ")";
     return s;
+}
+
+std::string CodeGen::c_type_for_desc(const TypeDesc& d) {
+    if (d.type == TypeKind::Tuple) return tuple_name(d.tuple_members);
+    if (d.type == TypeKind::Function) return "sd_closure";
+    return type_to_c(d.type);
+}
+
+void CodeGen::register_desc_types(const TypeDesc& d) {
+    if (d.type == TypeKind::Tuple) tuple_name(d.tuple_members);
+    if (d.type == TypeKind::Function && d.fn_info) {
+        for (auto& p : d.fn_info->params) register_desc_types(p);
+        register_desc_types(d.fn_info->ret);
+    }
+}
+
+bool CodeGen::is_capture(const FunctionDecl* fn, const std::string& name) const {
+    if (!fn) return false;
+    for (auto& c : fn->captures) {
+        if (c.name == name) return true;
+    }
+    return false;
+}
+
+void CodeGen::emit_env_arg(const FunctionDecl* callee) {
+    if (callee->name == "main" || callee->captures.empty()) {
+        out_ << "((void*)0)";
+        return;
+    }
+    out_ << "(void*)&(sd_env_" << callee->name << "){";
+    for (size_t i = 0; i < callee->captures.size(); i++) {
+        if (i > 0) out_ << ", ";
+        emit_identifier_value(callee->captures[i].name);
+    }
+    out_ << "}";
+}
+
+void CodeGen::emit_env_heap_arg(const FunctionDecl* callee) {
+    if (callee->name == "main" || callee->captures.empty()) {
+        out_ << "((void*)0)";
+        return;
+    }
+    out_ << "sd_copy_env(&(sd_env_" << callee->name << "){";
+    for (size_t i = 0; i < callee->captures.size(); i++) {
+        if (i > 0) out_ << ", ";
+        emit_identifier_value(callee->captures[i].name);
+    }
+    out_ << "}, sizeof(sd_env_" << callee->name << "))";
+}
+
+void CodeGen::emit_identifier_value(const std::string& name) {
+    if (current_fn_ && is_capture(current_fn_, name)) {
+        out_ << "((sd_env_" << current_fn_->name << "*) _sd_env)->" << name;
+    } else {
+        out_ << name;
+    }
 }
 
 void CodeGen::emit_line_directive(int line, const std::string& file) {
@@ -304,7 +405,18 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
     } else if (auto* bl = dynamic_cast<BoolLiteral*>(expr)) {
         out_ << (bl->value ? "1" : "0");
     } else if (auto* id = dynamic_cast<Identifier*>(expr)) {
-        out_ << id->name;
+        if (id->is_function_reference) {
+            auto it = functions_by_name_.find(id->name);
+            if (it != functions_by_name_.end()) {
+                out_ << "sd_make_closure((void*)" << id->name << ", ";
+                emit_env_heap_arg(it->second);
+                out_ << ")";
+            } else {
+                throw std::runtime_error("internal error: unknown function reference '" + id->name + "'");
+            }
+        } else {
+            emit_identifier_value(id->name);
+        }
     } else if (auto* call = dynamic_cast<CallExpr*>(expr)) {
         if (call->name == "length") {
             if (get_expr_type(call->args[0].get()) == TypeKind::Array) {
@@ -349,9 +461,25 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
             out_ << "sd_parse_decimal(";
             emit_expr(call->args[0].get());
             out_ << ")";
+        } else if (call->is_function_value_call) {
+            const FunctionTypeInfo& info = *call->fn_type.fn_info;
+            out_ << "((" << c_type_for_desc(info.ret) << " (*)(void*";
+            for (size_t i = 0; i < info.params.size(); i++) {
+                out_ << ", " << c_type_for_desc(info.params[i]);
+            }
+            out_ << "))";
+            emit_identifier_value(call->name);
+            out_ << ".fn)(";
+            emit_identifier_value(call->name);
+            out_ << ".env";
+            for (size_t i = 0; i < call->args.size(); i++) {
+                out_ << ", ";
+                emit_expr(call->args[i].get());
+            }
+            out_ << ")";
         } else {
             auto it = functions_by_name_.find(call->name);
-            if (it != functions_by_name_.end() && !it->second->name.empty()) {
+            if (it != functions_by_name_.end()) {
                 const FunctionDecl* callee = it->second;
                 size_t variadic_index = (size_t)-1;
                 for (size_t i = 0; i < callee->params.size(); i++) {
@@ -359,8 +487,9 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                 }
                 size_t fixed = (variadic_index == (size_t)-1) ? callee->params.size() : variadic_index;
                 out_ << call->name << "(";
+                emit_env_arg(callee);
                 for (size_t i = 0; i < fixed; i++) {
-                    if (i > 0) out_ << ", ";
+                    out_ << ", ";
                     if (i < call->args.size()) {
                         emit_expr(call->args[i].get());
                     } else {
@@ -368,7 +497,7 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                     }
                 }
                 if (variadic_index != (size_t)-1) {
-                    if (fixed > 0) out_ << ", ";
+                    out_ << ", ";
                     if (call->args.size() > fixed) {
                         out_ << "sd_make_array(("
                              << type_to_c(callee->params[variadic_index].array_element_type)
@@ -416,10 +545,15 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         }
     } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->is_tuple) {
-            out_ << idx->name << ".f" << idx->member_index;
+            emit_identifier_value(idx->name);
+            out_ << ".f" << idx->member_index;
         } else {
-            out_ << "((" << type_to_c(idx->element_type) << "*)" << idx->name << ".data)";
-            out_ << "[sd_check_index(" << idx->name << ".length, ";
+            out_ << "((" << type_to_c(idx->element_type) << "*)";
+            emit_identifier_value(idx->name);
+            out_ << ".data)";
+            out_ << "[sd_check_index(";
+            emit_identifier_value(idx->name);
+            out_ << ".length, ";
             emit_expr(idx->index.get());
             out_ << ")]";
         }

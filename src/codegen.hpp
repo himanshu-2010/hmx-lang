@@ -27,4 +27,11 @@ private:
     std::string tuple_name(const std::vector<TypeDesc>& members);
     void collect_tuple_types(Statement* stmt);
     void collect_function_decls(Statement* stmt);
+    std::string c_type_for_desc(const TypeDesc& d);
+    void register_desc_types(const TypeDesc& d);
+    bool is_capture(const FunctionDecl* fn, const std::string& name) const;
+    void emit_identifier_value(const std::string& name);
+    void emit_env_arg(const FunctionDecl* callee);
+    void emit_env_heap_arg(const FunctionDecl* callee);
+    FunctionDecl* current_fn_ = nullptr;
 };

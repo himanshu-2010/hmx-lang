@@ -771,6 +771,59 @@ test_exit_code "variadic_exit_recursion" \
     }' \
     42
 
+test_output "closures_hof_fold" \
+    'fn apply(f: fn(int, int) -> int, a: int, b: int) -> int {
+        return f(a, b)
+    }
+    fn add(x: int, y: int) -> int { return x + y }
+    fn mul(x: int, y: int) -> int { return x * y }
+    fn main() {
+        print(apply(add, 30, 12))
+        print(apply(mul, 6, 7))
+    }' \
+    "$(printf -- '42\n42')"
+
+test_output "closures_snapshot_env" \
+    'fn counter() -> fn() -> int {
+        let total = 0
+        fn bump() -> int {
+            return total
+        }
+        let f = bump
+        total = 10
+        return f
+    }
+    fn main() {
+        let c = counter()
+        print(c())
+    }' \
+    "$(printf -- '0')"
+
+test_output "closures_nested_forwarding" \
+    'fn main() {
+        let outer = 5
+        fn g() -> int { return outer }
+        fn caller() -> int {
+            let f = g
+            return f()
+        }
+        print(caller())
+    }' \
+    "$(printf -- '5')"
+
+test_exit_code "closures_exit_capture" \
+    'fn main() -> int {
+        let code = 100
+        fn pick() -> int {
+            return code
+        }
+        if (pick() == 100) {
+            return 42
+        }
+        return 1
+    }' \
+    42
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

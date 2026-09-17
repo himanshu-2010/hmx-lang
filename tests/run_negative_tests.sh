@@ -800,15 +800,120 @@ test_error "print_tuple_arg" \
     }' \
     "cannot print a tuple"
 
-test_error "nested_fn_refs_outer_local" \
+test_error "nested_fn_assigns_captured" \
     'fn main() {
         let outer = 5
         fn helper() {
-            print(outer)
+            outer = 7
         }
         helper()
     }' \
-    "undefined variable"
+    "cannot assign to captured variable"
+
+test_error "closures_capture_not_in_scope" \
+    'fn other() {
+        let local = 5
+        fn g() -> int { return local }
+    }
+    fn main() {
+        print(g())
+    }' \
+    "captured variable 'local' is not in scope"
+
+test_error "closures_forward_ref_value" \
+    'fn main() {
+        let f: fn(int) -> int = g
+        fn g(n: int) -> int { return n }
+    }' \
+    "must be declared before it is used as a value"
+
+test_error "closures_use_main_value" \
+    'fn apply(f: fn(int) -> int, x: int) -> int { return f(x) }
+    fn main() {
+        print(apply(main, 3))
+    }' \
+    "cannot use function 'main' as a value"
+
+test_error "closures_print_function" \
+    'fn twice(a: int) -> int { return a + a }
+    fn main() {
+        let f: fn(int) -> int = twice
+        print(f)
+    }' \
+    "cannot print a function"
+
+test_error "closures_ternary_function" \
+    'fn twice(a: int) -> int { return a + a }
+    fn main() {
+        let f: fn(int) -> int = twice
+        let t = true
+        print(t ? f : f)
+    }' \
+    "ternary branches cannot be functions"
+
+test_error "closures_arg_fn_mismatch" \
+    'fn twice(a: int) -> int { return a + a }
+    fn concat(a: int, b: int) -> int { return a + b }
+    fn choose(b: bool, f: fn(int) -> int, g: fn(int) -> int) -> int {
+        if (b) { return f(1) }
+        return g(1)
+    }
+    fn main() {
+        let f: fn(int) -> int = twice
+        let g: fn(int, int) -> int = concat
+        print(choose(true, f, g))
+    }' \
+    "argument 3 of 'choose' expects"
+
+test_error "closures_var_mismatch" \
+    'fn twice(a: int) -> int { return a + a }
+    fn concat(a: int, b: int) -> int { return a + b }
+    fn main() {
+        let f: fn(int, int) -> int = twice
+    }' \
+    "but initialized with"
+
+test_error "closures_assign_mismatch" \
+    'fn twice(a: int) -> int { return a + a }
+    fn concat(a: int, b: int) -> int { return a + b }
+    fn main() {
+        let f: fn(int) -> int = twice
+        f = concat
+    }' \
+    "cannot assign"
+
+test_error "closures_return_mismatch" \
+    'fn make() -> fn(int) -> int {
+        let g = 1
+        fn h(n: int) -> int { return n + g }
+        return 5
+    }
+    fn main() {
+        let f = make()
+        print(f(3))
+    }' \
+    "but function returns function"
+
+test_error "closures_return_fn_mismatch" \
+    'fn make() -> fn(int) -> int {
+        let g = 1
+        fn h(n: int, k: int) -> int { return n + k + g }
+        return h
+    }
+    fn main() {
+        let f = make()
+        print(f(3))
+    }' \
+    "but function returns fn"
+
+test_error "closures_call_arity" \
+    'fn apply(f: fn(int) -> int, x: int) -> int { return f(x) }
+    fn twice(a: int) -> int { return a + a }
+    fn main() {
+        let f: fn(int) -> int = twice
+        print(f(1, 2))
+    }' \
+    "expects 1 arguments, got 2"
 
 test_error "nested_fn_duplicate_global" \
     'fn add() {
