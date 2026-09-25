@@ -1,5 +1,7 @@
 #include "codegen.hpp"
 
+#include <array>
+#include <charconv>
 #include <set>
 
 static TypeDesc codegen_param_desc(const FunctionDecl::Param& p) {
@@ -713,7 +715,13 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
     if (auto* num = dynamic_cast<NumberLiteral*>(expr)) {
         out_ << num->value;
     } else if (auto* dec = dynamic_cast<DecimalLiteral*>(expr)) {
-        out_ << dec->value;
+        // Emit a shortest-round-trip double literal so the C text is always a
+        // genuine double (e.g. "6.0", never "6" — an int passed to %f is UB).
+        std::array<char, 40> buf{};
+        auto [ptr, ec] = std::to_chars(buf.data(), buf.data() + buf.size(), dec->value);
+        std::string s(buf.data(), ptr);
+        if (s.find_first_of(".eE") == std::string::npos) s += ".0";
+        out_ << s;
     } else if (auto* str = dynamic_cast<StringLiteral*>(expr)) {
         out_ << "\"" << str->value << "\"";
     } else if (auto* ch = dynamic_cast<CharLiteral*>(expr)) {

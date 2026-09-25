@@ -7,7 +7,10 @@ export function Output({ stdout, exit }: OutputProps) {
   return (
     <section className="pane output">
       <header className="pane-title">
-        Output <span className="exit-code">exit: {exit}</span>
+        Output{" "}
+        <span className={`exit-code ${exit !== 0 ? "exit-nonzero" : ""}`}>
+          exit: {exit}
+        </span>
       </header>
       <pre className="output-body">{stdout || "(no output)"}</pre>
     </section>

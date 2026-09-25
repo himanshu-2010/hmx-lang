@@ -113,3 +113,19 @@ prior fixtures, and lands one complete feature.
 - Move implemented sections from `[Spec]` → `[Implemented]` in `SYNTAX.md`.
 - Run all fixtures + `hello.hmx`.
 - Clean build with no warnings.
+
+## Known codegen quirks (tracked)
+
+- **FIXED (2026-09):** decimal literals with integral values (`6.0`, `3.0`)
+  were emitted to C as bare ints (`6`, `3`) because `operator<< double` strips
+  the trailing `.0`; `printf("%f", 6 * 2)` then passed an `int` to `%f` (UB →
+  `0.000000`). Fixed in `codegen.cpp` by emitting shortest-round-trip double
+  literals via `std::to_chars`, appending `.0` when the text has no dot or
+  exponent. Caught by the doc-example validator
+  (`web-playground/tools/validate_docs.mjs`); all 358 native tests still pass.
+- **NOT FIXED:** HMX identifiers that are C keywords (e.g. `double`, `long`,
+  `static`, `struct`) still collide with generated C — codegen writes variable
+  and parameter names verbatim, so `let double = 2` fails in gcc with a
+  confusing error. The JS backend (web playground, M2–M4) targets JS
+  identifiers and is unaffected; a generalized identifier-mangling pass in
+  `codegen.cpp` would close it for the native binary.
