@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-25  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (269 / 269)
+**Status:** ALL TESTS PASSED (284 / 284)
 
 ---
 
@@ -25,11 +25,12 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 14. **Unicode identifiers**: any non-ASCII UTF-8 byte is a valid identifier character, emitted verbatim into the generated C.
 15. **Nested arrays & chained indexing**: recursive element type descriptors enable `[[int]]` annotations, nested-literal inference, `a[i][j]` reads, `a[i][j] = v` chained assignment, and nested `foreach`; bison conflict count still 6 SR (5 states), all resolved by shift.
 16. **Growable arrays (`sd_array*`) + array built-ins**: every array is a heap pointer with spare capacity; `push`/`pop`/`sort` mutate the shared backing in place, `slice`/`concat` build independent copies, `index_of` finds the first match (`-1` if absent), `contains` reports membership; immutable/captured arrays reject mutation, void built-ins reject value use, and `pop` on empty / out-of-range `slice` terminate at runtime with exit code 1.
+17. **Byte-level text ops**: `text[i]` read-indexing yields a `char` (runtime bounds-checked via `strlen`; assignment to a text character rejected at compile time), `ord(char)` → `int`, `chr(int)` → `char` (runtime `0..255` check, exit 1), and `split(text, sep)` → `[text]` preserving empty pieces (empty separator aborts with exit code 1).
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 269
-> - **Passed:** 269
+> - **Total Test Cases Executed:** 284
+> - **Passed:** 284
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -48,7 +49,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (46/46 Passed)
+### 1. Integration Fixtures (47/47 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -96,10 +97,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `mod_unicode` | **[NEW]** Module Unicode | Unicode identifiers (`ö`, `saludar`) inside an imported module | **PASS** |
 | `nested_arrays.hmx` | **[NEW]** Nested Arrays | `[[int]]` annotation, nested inference, `a[i][j]` reads, chained assignment, nested `foreach`, array-of-arrays from array vars | **PASS** |
 | `array_builtins.hmx` | **[NEW]** Growable Arrays | `push`/`pop`/`sort`/`slice`/`concat`/`index_of`/`contains` on int and text arrays; `push`/`pop` of whole rows on `[[int]]` | **PASS** |
+| `text_ops.hmx` | **[NEW]** Text Ops | `text[i]` indexing, char-of-text chains (`names[1][0]`), `ord`/`chr`, `split` with preserved empty pieces, `index_of` on split results | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (151/151 Passed)
+### 2. Negative & Error Handling Suite (160/160 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -241,10 +243,19 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `array_builtin_index_of_type_mismatch` | **[NEW]** `index_of` Value Mismatch | `index_of(["a"], 2)` | `index_of value of int does not match array of text` | **PASS** |
 | `array_builtin_index_of_nested` | **[NEW]** `index_of` Nested Elem | `index_of([[1]], [1])` | `requires an array of scalar or text elements` | **PASS** |
 | `array_builtin_pop_on_const` | **[NEW]** Pop Const Array | `pop(a)` on `const` array | `cannot modify immutable array` | **PASS** |
+| `text_index_assign` | **[NEW]** Text Char Assign | `s[0] = 'x'` on `text` | `cannot assign to a character of a text value` | **PASS** |
+| `text_index_non_int` | **[NEW]** Non-Int Text Index | `s[1.5]` | `text index must be int, got decimal` | **PASS** |
+| `ord_expects_char_int` | **[NEW]** `ord` on Int | `ord(5)` | `builtin 'ord' expects char, got int` | **PASS** |
+| `ord_expects_char_text` | **[NEW]** `ord` on Text | `ord("a")` | `builtin 'ord' expects char, got text` | **PASS** |
+| `ord_arity` | **[NEW]** `ord` Arity | `ord('a', 'b')` | `builtin 'ord' expects 1 arguments, got 2` | **PASS** |
+| `chr_expects_int` | **[NEW]** `chr` on Text | `chr("a")` | `builtin 'chr' expects int, got text` | **PASS** |
+| `split_expects_text1` | **[NEW]** `split` Non-Text 1 | `split(3, ",")` | `builtin 'split' expects text as argument 1, got int` | **PASS** |
+| `split_expects_text2` | **[NEW]** `split` Non-Text 2 | `split("a", 3)` | `builtin 'split' expects text as argument 2, got int` | **PASS** |
+| `split_arity` | **[NEW]** `split` Arity | `split("a")` | `builtin 'split' expects 2 arguments, got 1` | **PASS** |
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (72/72 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (77/77 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -318,6 +329,11 @@ These tests verify exact runtime output matching and process exit code propagati
 | `array_builtins` | **[NEW]** Array Built-ins | push/sort/pop/slice/concat/index_of/contains output | `4\n9\n9\n3\n2\n2\n5\n-1\n2\n1\n0\napple` | **PASS** |
 | `array_pop_empty` | **[NEW]** Runtime Error | `pop` on an empty array aborts | Exit Code: `1` | **PASS** |
 | `array_slice_oob` | **[NEW]** Runtime Error | out-of-range `slice` bounds abort | Exit Code: `1` | **PASS** |
+| `text_indexing` | **[NEW]** Text Ops Output | `s[i]`, `names[1][0]`, `ord`/`chr` arithmetic | `h\no\no\nd\n65\n97\nA\nc` | **PASS** |
+| `split_basic` | **[NEW]** `split` Output | split preserving empty pieces, `index_of`, concat, `foreach` | `4\na\nb\n\nc\n3\na!\n1\n\n1\n2\n3` | **PASS** |
+| `text_index_oob` | **[NEW]** Runtime Error | text index at/over length aborts | Exit Code: `1` | **PASS** |
+| `chr_out_of_range` | **[NEW]** Runtime Error | `chr(300)` aborts | Exit Code: `1` | **PASS** |
+| `split_empty_separator` | **[NEW]** Runtime Error | `split("abc", "")` aborts | Exit Code: `1` | **PASS** |
 
 ---
 
@@ -384,3 +400,12 @@ cd build && cmake .. && make && cd ..
 > inline loop/statement-expression C plus runtime helpers (`sd_push`,
 > `sd_ensure_capacity`). Runtime guards abort with exit code 1 on `pop` from an empty
 > array and out-of-range/reversed `slice`. Suites rerun at 46/151/72 = **269**.
+>
+> **0.A3 addition:** text values are now indexable as bytes — `text[i]` reads a `char`
+> with `strlen`-based bounds checking (assignment to a text character is a compile
+> error), and the character built-ins `ord`/`chr` plus `split(text, sep)` → `[text]`
+> complete the byte-level string set. `split` is lowered to a `sd_split` runtime
+> helper (strstr-based, preserving empty pieces), `chr` checks the `0..255` code
+> range, and an empty separator aborts; all three runtime failures exit 1. Also
+> fixed chained-index resolution so `m[i][j]` records its resolved type (chars were
+> formatting as ints). Suites rerun at 47/160/77 = **284**.

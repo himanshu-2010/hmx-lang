@@ -586,6 +586,62 @@ test_error "array_builtin_pop_on_const" \
     }' \
     "cannot modify immutable array 'a'"
 
+test_error "text_index_assign" \
+    'fn main() {
+        let s = "hi"
+        s[0] = '\''x'\''
+    }' \
+    "cannot assign to a character of a text value"
+
+test_error "text_index_non_int" \
+    'fn main() {
+        let s = "hi"
+        let c = s[1.5]
+    }' \
+    "text index must be int, got decimal"
+
+test_error "ord_expects_char_int" \
+    'fn main() {
+        let n = ord(5)
+    }' \
+    "builtin 'ord' expects char, got int"
+
+test_error "ord_expects_char_text" \
+    'fn main() {
+        let n = ord("a")
+    }' \
+    "builtin 'ord' expects char, got text"
+
+test_error "ord_arity" \
+    'fn main() {
+        let n = ord('\''a'\'', '\''b'\'')
+    }' \
+    "builtin 'ord' expects 1 arguments, got 2"
+
+test_error "chr_expects_int" \
+    'fn main() {
+        let c = chr("a")
+    }' \
+    "builtin 'chr' expects int, got text"
+
+test_error "split_expects_text1" \
+    'fn main() {
+        let p = split(3, ",")
+    }' \
+    "builtin 'split' expects text as argument 1, got int"
+
+test_error "split_expects_text2" \
+    'fn main() {
+        let p = split("a", 3)
+    }' \
+    "builtin 'split' expects text as argument 2, got int"
+
+test_error "split_arity" \
+    'fn main() {
+        let p = split("a")
+    }' \
+    "builtin 'split' expects 2 arguments, got 1"
+
 test_error "tuple_print" \
     'fn f() -> (int, int) {
         return 1, 2

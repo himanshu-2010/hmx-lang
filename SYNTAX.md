@@ -284,7 +284,7 @@ shares the backing storage, so element writes or structural changes (`push`,
 `pop`, `sort`) through either name are visible through both. The backing storage
 is heap-allocated by the generated code; arrays are growable (`push`) and carry
 spare capacity so repeated growth does not re-allocate on every push. The
-growable built-ins are described in §13.3.
+growable built-ins are described in §13.4.
 
 ### 5.4 Tuple Types **[Implemented]**
 
@@ -1319,7 +1319,47 @@ let values: [int] = [3, 5, 7]
 print(length(values))     // prints 3
 ```
 
-### 13.3 Array Built-ins **[Implemented]**
+### 13.3 Character Indexing and `ord` / `chr` / `split` **[Implemented]**
+
+A `text` value can be indexed with an `int` to read the character at that byte
+position, yielding a `char`:
+
+```hmx
+let s = "hello"
+print(s[0])              // h
+print(s[length(s) - 1])  // o
+```
+
+Indexes use the same bounds checking as arrays; an index at or beyond the length
+terminates the generated program. Characters in `text` are read-only: assigning
+to `s[i]` is rejected at compile time.
+
+Character conversion built-ins:
+
+- `ord(char)` returns the byte value of a character as `int`.
+- `chr(int)` returns the character with the given byte value. The code must
+  satisfy `0 <= code <= 255`; out-of-range codes terminate the generated program.
+
+```hmx
+print(ord(names[0][0]))   // 97
+print(chr(65))            // A
+print(chr(ord('b') + 1))  // c
+```
+
+`split(text, separator)` returns a new `[text]` array containing the pieces of
+the first argument split on every occurrence of `separator`. Empty and
+missing pieces are preserved, so `split("a,,b", ",")` yields three elements and
+`split("")` yields one empty element. The separator must not be empty; a runtime
+error terminates the program otherwise.
+
+```hmx
+let parts: [text] = split("a,b,,c", ",")
+print(length(parts))      // 4
+print(parts[0])           // a
+print(index_of(parts, "c"))  // 3
+```
+
+### 13.4 Array Built-ins **[Implemented]**
 
 Arrays are growable. The following built-ins operate on arrays; the array
 argument must be a mutable array variable or array expression in the current
@@ -1360,7 +1400,7 @@ print(contains(all, 9))      // 0
 `concat` is the only way to join arrays: the binary `+` operator remains
 text-concatenation only (§8.1).
 
-### 13.4 `input` **[Implemented]**
+### 13.5 `input` **[Implemented]**
 
 `input()` reads one line from standard input and returns it as `text` with the
 trailing newline (and CRLF) removed. At end of input it returns the empty string.
@@ -1370,7 +1410,7 @@ let name = input()       // waits for a line on stdin
 print("hi", name)
 ```
 
-### 13.5 Conversions: `tostr`, `parse_int`, `parse_decimal` **[Implemented]**
+### 13.6 Conversions: `tostr`, `parse_int`, `parse_decimal` **[Implemented]**
 
 `tostr(value)` converts an `int`, `decimal`, `bool`, `char`, or `byte` into its
 text form, matching how `print` renders that type. Passing `text` returns it

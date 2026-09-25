@@ -428,6 +428,60 @@ test_output "array_builtins" \
     }' \
     "$(printf '4\n9\n9\n3\n2\n2\n5\n-1\n2\n1\n0\napple')"
 
+test_output "text_indexing" \
+    'fn main() {
+        let s = "hello"
+        print(s[0])
+        print(s[4])
+        print(s[length(s) - 1])
+        let names: [text] = ["abc", "de"]
+        print(names[1][0])
+        print(ord('\''A'\''))
+        print(ord(names[0][0]))
+        print(chr(65))
+        print(chr(ord('\''b'\'') + 1))
+    }' \
+    "$(printf 'h\no\no\nd\n65\n97\nA\nc')"
+
+test_output "split_basic" \
+    'fn main() {
+        let parts: [text] = split("a,b,,c", ",")
+        print(length(parts))
+        print(parts[0])
+        print(parts[1])
+        print(parts[2])
+        print(parts[3])
+        print(index_of(parts, "c"))
+        print(parts[0] + "!")
+        let empty: [text] = split("", ";")
+        print(length(empty))
+        print(empty[0])
+        let nums: [text] = split("1 2 3", " ")
+        foreach (n in nums) {
+            print(n)
+        }
+    }' \
+    "$(printf '4\na\nb\n\nc\n3\na!\n1\n\n1\n2\n3')"
+
+test_exit_code "text_index_oob" \
+    'fn main() {
+        let s = "hi"
+        print(s[5])
+    }' \
+    1
+
+test_exit_code "chr_out_of_range" \
+    'fn main() {
+        print(chr(300))
+    }' \
+    1
+
+test_exit_code "split_empty_separator" \
+    'fn main() {
+        let p: [text] = split("abc", "")
+    }' \
+    1
+
 test_exit_code "array_pop_empty" \
     'fn main() {
         let a: [int] = []

@@ -283,6 +283,11 @@ TypeDesc TypeResolver::expr_element_desc(Expression* expr) {
         if (call->name == "slice" || call->name == "concat") {
             return expr_element_desc(call->args[0].get());
         }
+        if (call->name == "split") {
+            TypeDesc t;
+            t.type = TypeKind::Text;
+            return t;
+        }
         if (call->name == "pop") {
             TypeDesc inner = expr_element_desc(call->args[0].get());
             if (inner.type == TypeKind::Array) return inner.element();
@@ -554,6 +559,43 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             expr->resolved_type = result;
             return result;
         }
+        if (call->name == "ord" || call->name == "chr" || call->name == "split") {
+            size_t expected = call->name == "split" ? 2 : 1;
+            if (call->args.size() != expected) {
+                throw err(line(), "builtin '" + call->name + "' expects " +
+                    std::to_string(expected) + " arguments, got " +
+                    std::to_string(call->args.size()));
+            }
+            if (call->name == "ord") {
+                TypeKind a0 = resolve_expr(call->args[0].get());
+                if (a0 != TypeKind::Char) {
+                    throw err(line(),
+                        "builtin 'ord' expects char, got " + type_to_string(a0));
+                }
+                result = TypeKind::Int;
+            } else if (call->name == "chr") {
+                TypeKind a0 = resolve_expr(call->args[0].get());
+                if (a0 != TypeKind::Int) {
+                    throw err(line(),
+                        "builtin 'chr' expects int, got " + type_to_string(a0));
+                }
+                result = TypeKind::Char;
+            } else {
+                TypeKind a0 = resolve_expr(call->args[0].get());
+                if (a0 != TypeKind::Text) {
+                    throw err(line(),
+                        "builtin 'split' expects text as argument 1, got " + type_to_string(a0));
+                }
+                TypeKind a1 = resolve_expr(call->args[1].get());
+                if (a1 != TypeKind::Text) {
+                    throw err(line(),
+                        "builtin 'split' expects text as argument 2, got " + type_to_string(a1));
+                }
+                result = TypeKind::Array;
+            }
+            expr->resolved_type = result;
+            return result;
+        }
         const FunctionSig* sig = get_function(call->name);
         if (!sig) {
             const Symbol* lsym = find_symbol(call->name);
@@ -758,6 +800,17 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                 }
                 idx->elem = bd.element();
                 result = idx->elem.type;
+            } else if (bd.type == TypeKind::Text) {
+                TypeKind it = resolve_expr(idx->index.get());
+                if (it != TypeKind::Int) {
+                    throw err(line(),
+                        "text index must be int, got " + type_to_string(it));
+                }
+                idx->is_text = true;
+                TypeDesc elem_desc;
+                elem_desc.type = TypeKind::Char;
+                idx->elem = elem_desc;
+                result = TypeKind::Char;
             } else if (bd.type == TypeKind::Tuple) {
                 auto* num = dynamic_cast<NumberLiteral*>(idx->index.get());
                 if (!num) {
@@ -783,6 +836,7 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                 throw err(line(),
                     "cannot index value of type " + type_to_string(bd.type));
             }
+            expr->resolved_type = result;
             return result;
         }
         const Symbol* sym = find_symbol(idx->name);
@@ -802,6 +856,17 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             }
             idx->elem = sym->elem;
             result = sym->elem.type;
+        } else if (sym->type == TypeKind::Text) {
+            TypeKind it = resolve_expr(idx->index.get());
+            if (it != TypeKind::Int) {
+                throw err(line(),
+                    "text index must be int, got " + type_to_string(it));
+            }
+            idx->is_text = true;
+            TypeDesc elem_desc;
+            elem_desc.type = TypeKind::Char;
+            idx->elem = elem_desc;
+            result = TypeKind::Char;
         } else if (sym->type == TypeKind::Tuple) {
             auto* num = dynamic_cast<NumberLiteral*>(idx->index.get());
             if (!num) {
@@ -1049,6 +1114,10 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             throw err(stmt->line,
                 "undefined variable '" + aassign->name + "'");
         }
+        if (sym->type == TypeKind::Text) {
+            throw err(stmt->line,
+                "cannot assign to a character of a text value");
+        }
         if (sym->type != TypeKind::Array) {
             throw err(stmt->line,
                 "variable '" + aassign->name + "' is not an array");
@@ -1075,6 +1144,10 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
     } else if (auto* eassign = dynamic_cast<ElementAssignStmt*>(stmt)) {
         TypeKind tt = resolve_expr(eassign->target.get());
         auto* tidx = dynamic_cast<ArrayIndexExpr*>(eassign->target.get());
+        if (tidx->is_text) {
+            throw err(stmt->line,
+                "cannot assign to a character of a text value");
+        }
         if (tidx->is_tuple) {
             auto* base = dynamic_cast<ArrayIndexExpr*>(tidx->base.get());
             const Symbol* tsym = base ? find_symbol(base->name) : nullptr;

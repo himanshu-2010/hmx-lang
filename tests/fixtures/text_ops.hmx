@@ -1,0 +1,23 @@
+fn main() {
+    let s = "hello"
+    print(s[0])
+    print(s[4])
+    print(s[length(s) - 1])
+    let names: [text] = ["abc", "de"]
+    print(names[1][0])
+    print(ord('A'))
+    print(ord(names[0][0]))
+    print(chr(65))
+    print(chr(ord('b') + 1))
+    let parts: [text] = split("a,b,,c", ",")
+    print(length(parts))
+    print(parts[0])
+    print(parts[1])
+    print(parts[2])
+    print(parts[3])
+    print(index_of(parts, "c"))
+    print(parts[0] + "!")
+    let empty: [text] = split("", ";")
+    print(length(empty))
+    print(empty[0])
+}

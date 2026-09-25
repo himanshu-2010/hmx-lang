@@ -434,6 +434,38 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   (renumbered `input`→13.4, conversions→13.5); this entry.
 - Full regression: 46/46 integration, 151/151 negative, 72/72 stress/output = **269**.
 
+### 0.A3 — Byte-level text operations: `text[i]`, `ord`, `chr`, `split` — DONE
+- `text[i]` read-indexing: `ArrayIndexExpr` gained an `is_text` flag; the
+  resolver handles text in both the chained-index (on any expression whose
+  value is `text`, e.g. `names[i][j]` for `[text]`) and identifier paths,
+  requiring an `int` index and yielding `char`. Codegen emits
+  `(B)[sd_check_index((int)strlen(B), I)]` for both paths, so out-of-range
+  indexes reuse the array bounds error/exit. Assigning to a text character is
+  rejected at compile time (`ElementAssignStmt` for chains, plus a dedicated
+  "cannot assign to a character of a text value" message for the single-index
+  `s[i] = v` case in `ArrayAssignStmt`).
+- Bug fix: chained `ArrayIndexExpr` resolution returned `result` without
+  writing `expr->resolved_type`, so `print(m[i][j])` formatted chars/arrays as
+  int (masked for int arrays since `%d` is the formatter default). Now stored
+  before the early return.
+- Built-ins: `ord(char)` → `int` (codegen `(int)(unsigned char)(c)`);
+  `chr(int)` → `char` with a runtime `0..255` bounds check ("Error: chr expects
+  a character code between 0 and 255, got N", exit 1); `split(text, sep)`
+  → `[text]` via a new `sd_split` runtime helper (strstr-based loop; empty
+  pieces preserved, `split("")` yields one empty piece; empty separator is a
+  runtime error "Error: split separator must not be empty", exit 1). Resolver
+  type-checks each builtin's arity/arguments; `expr_element_desc(split(...))`
+  is `text` so `let p = split(...)` infers `[text]`.
+- Tests: `text_ops.hmx` fixture; 9 new negative tests (text element assignment,
+  non-int text index, `ord`/`chr` wrong arg types and arity, `split`
+  non-text args and arity); stress additions `text_indexing` and `split_basic`
+  (exact output) plus exit-code cases `text_index_oob`, `chr_out_of_range`,
+  `split_empty_separator`.
+- Docs: SYNTAX.md §13.3 Character Indexing & `ord`/`chr`/`split` (renumbered
+  array built-ins→13.4, `input`→13.5, conversions→13.6; §5.3 cross-reference
+  retargeted to §13.4); this entry.
+- Full regression: 47/47 integration, 160/160 negative, 77/77 stress/output = **284**.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

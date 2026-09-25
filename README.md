@@ -20,6 +20,7 @@ The current compiler supports:
 - Arithmetic, comparisons, boolean logic, and text concatenation
 - Integer modulo `%`, compound assignment (`+=`, `%=`, ...), and unary `-` / `+`
 - String built-ins `length` and `substring`, plus `input` for stdin lines
+- Byte-level text access: `text[i]` character indexing, `ord`, `chr`, and `split`
 - Type conversions via `tostr`, `parse_int`, and `parse_decimal`
 - `if` / `else` conditionals
 - `else if` conditional chains
@@ -477,10 +478,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers & modules | 46/46 passed |
-| Negative | Type, syntax, and resolver errors incl. module/`use` failures and array-builtin misuse | 151/151 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode & array built-ins | 72/72 passed |
-| Total | 269 test cases | 269/269 passed |
+| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules & text ops | 47/47 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array-builtin misuse & text-op misuse | 160/160 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array & text built-ins | 77/77 passed |
+| Total | 284 test cases | 284/284 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

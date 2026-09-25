@@ -159,6 +159,7 @@ struct ArrayIndexExpr : Expression {
     ExprPtr index;
     TypeDesc elem;                              // element descriptor after resolution
     bool is_tuple = false;                      // valid after resolution
+    bool is_text = false;                       // valid after resolution: indexing a text (char element)
     int member_index = -1;                      // valid after resolution when is_tuple
     ArrayIndexExpr(std::string n, ExprPtr i)
         : name(std::move(n)), base(nullptr), index(std::move(i)) {}

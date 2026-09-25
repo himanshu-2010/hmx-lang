@@ -143,6 +143,36 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "    return a;\n";
     out_ << "}\n\n";
 
+    out_ << "static sd_array* sd_split(const char* s, const char* sep) {\n";
+    out_ << "    size_t pl = strlen(sep ? sep : \"\");\n";
+    out_ << "    if (pl == 0) { fprintf(stderr, \"Error: split separator must not be empty\\n\"); exit(1); }\n";
+    out_ << "    sd_array* a = malloc(sizeof(sd_array));\n";
+    out_ << "    if (!a) exit(1);\n";
+    out_ << "    a->esize = (int)sizeof(char*);\n";
+    out_ << "    a->length = 0;\n";
+    out_ << "    a->capacity = 4;\n";
+    out_ << "    a->data = malloc(a->capacity * sizeof(char*));\n";
+    out_ << "    if (!a->data) exit(1);\n";
+    out_ << "    const char* cur = s;\n";
+    out_ << "    for (;;) {\n";
+    out_ << "        const char* hit = strstr(cur, sep);\n";
+    out_ << "        size_t len = hit ? (size_t)(hit - cur) : strlen(cur);\n";
+    out_ << "        char* piece = malloc(len + 1);\n";
+    out_ << "        if (!piece) exit(1);\n";
+    out_ << "        memcpy(piece, cur, len);\n";
+    out_ << "        piece[len] = '\\0';\n";
+    out_ << "        if (a->length >= a->capacity) {\n";
+    out_ << "            a->capacity *= 2;\n";
+    out_ << "            a->data = realloc(a->data, a->capacity * sizeof(char*));\n";
+    out_ << "            if (!a->data) exit(1);\n";
+    out_ << "        }\n";
+    out_ << "        ((char**)a->data)[a->length++] = piece;\n";
+    out_ << "        if (!hit) break;\n";
+    out_ << "        cur = hit + pl;\n";
+    out_ << "    }\n";
+    out_ << "    return a;\n";
+    out_ << "}\n\n";
+
     out_ << "static int sd_check_index(int length, int index) {\n";
     out_ << "    if (index < 0 || index >= length) {\n";
     out_ << "        fprintf(stderr, \"Error: array index out of bounds (index %d, length %d)\\n\", index, length);\n";
@@ -470,6 +500,20 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                 emit_expr(call->args[i].get());
             }
             out_ << ")";
+        } else if (call->name == "ord") {
+            out_ << "((int)(unsigned char)(";
+            emit_expr(call->args[0].get());
+            out_ << "))";
+        } else if (call->name == "chr") {
+            out_ << "({ int _sd_c = (";
+            emit_expr(call->args[0].get());
+            out_ << "); if (_sd_c < 0 || _sd_c > 255) { fprintf(stderr, \"Error: chr expects a character code between 0 and 255, got %d\\n\", _sd_c); exit(1); } (char)_sd_c; })";
+        } else if (call->name == "split") {
+            out_ << "sd_split((";
+            emit_expr(call->args[0].get());
+            out_ << "), (";
+            emit_expr(call->args[1].get());
+            out_ << "))";
         } else if (call->name == "push") {
             std::string T = c_type_for_desc(call->array_aux);
             out_ << "({ " << T << " _sd_v = (";
@@ -657,6 +701,13 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
             if (idx->is_tuple) {
                 emit_expr(idx->base.get());
                 out_ << ".f" << idx->member_index;
+            } else if (idx->is_text) {
+                emit_expr(idx->base.get());
+                out_ << "[sd_check_index((int)strlen(";
+                emit_expr(idx->base.get());
+                out_ << "), ";
+                emit_expr(idx->index.get());
+                out_ << ")]";
             } else {
                 std::string ct = c_type_for_desc(idx->elem);
                 out_ << "((" << ct << "*)";
@@ -671,6 +722,13 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         } else if (idx->is_tuple) {
             emit_identifier_value(idx->name);
             out_ << ".f" << idx->member_index;
+        } else if (idx->is_text) {
+            emit_identifier_value(idx->name);
+            out_ << "[sd_check_index((int)strlen(";
+            emit_identifier_value(idx->name);
+            out_ << "), ";
+            emit_expr(idx->index.get());
+            out_ << ")]";
         } else {
             out_ << "((" << c_type_for_desc(idx->elem) << "*)";
             emit_identifier_value(idx->name);
