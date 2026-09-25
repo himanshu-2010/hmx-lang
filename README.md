@@ -40,6 +40,8 @@ The current compiler supports:
   - Reference semantics: array copies share backing storage, so mutations through any alias are visible
 - Multiple return values via tuples with destructuring
   - Destructuring also works on arrays and text, with an optional `...rest` to capture the remainder
+  - Destructuring patterns nest: `((a, b), ...rest) = e` over nested tuples, arrays of tuples, nested arrays, and text elements
+  - Nested tuple types (`((int, int), int)`) and arrays of tuples (`[(int, int)]`)
 - Compile-time type checking with line-numbered diagnostics
 - Duplicate declaration detection and definite-return checking
 - Native executables and propagated `main` exit codes
@@ -480,10 +482,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops & `...rest` destructuring | 48/48 passed |
-| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse | 167/167 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring | 81/81 passed |
-| Total | 296 test cases | 296/296 passed |
+| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring | 49/49 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse | 173/173 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring | 89/89 passed |
+| Total | 311 test cases | 311/311 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

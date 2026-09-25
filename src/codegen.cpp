@@ -1,5 +1,7 @@
 #include "codegen.hpp"
 
+#include <set>
+
 static TypeDesc codegen_param_desc(const FunctionDecl::Param& p) {
     if (p.desc.type != TypeKind::Unknown) return p.desc;
     TypeDesc d;
@@ -224,13 +226,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
         for (auto& c : fn->captures) register_desc_types(c.desc);
     }
 
-    for (auto& [members, name] : tuple_types_) {
-        out_ << "typedef struct " << name << " {\n";
-        for (size_t i = 0; i < members.size(); i++) {
-            out_ << "    " << c_type_for_desc(members[i]) << " f" << i << ";\n";
-        }
-        out_ << "} " << name << ";\n\n";
-    }
+    emit_pending_tuple_types();
 
     for (auto* fn : all_functions_) {
         if (fn->name != "main" && !fn->captures.empty()) {
@@ -347,7 +343,9 @@ std::string CodeGen::c_type_for_desc(const TypeDesc& d) {
 }
 
 void CodeGen::register_desc_types(const TypeDesc& d) {
-    if (d.type == TypeKind::Tuple) tuple_name(d.tuple_members);
+    if (d.type == TypeKind::Tuple) {
+        register_tuple_types_deep(d);
+    }
     if (d.type == TypeKind::Function && d.fn_info) {
         for (auto& p : d.fn_info->params) register_desc_types(p);
         register_desc_types(d.fn_info->ret);
@@ -407,6 +405,11 @@ TypeKind CodeGen::get_expr_type(Expression* expr) {
 static std::string mangle_type_name(const TypeDesc& d) {
     if (d.type == TypeKind::Array)
         return "arr_of_" + mangle_type_name(d.element());
+    if (d.type == TypeKind::Tuple) {
+        std::string s = "tup";
+        for (auto& m : d.tuple_members) s += "_" + mangle_type_name(m);
+        return s;
+    }
     return type_to_string(d.type);
 }
 
@@ -421,21 +424,68 @@ std::string CodeGen::tuple_name(const std::vector<TypeDesc>& members) {
     return name;
 }
 
+void CodeGen::register_tuple_types_deep(const TypeDesc& d) {
+    if (d.type == TypeKind::Tuple) {
+        tuple_name(d.tuple_members);
+        for (auto& m : d.tuple_members) register_tuple_types_deep(m);
+    } else if (d.type == TypeKind::Array) {
+        register_tuple_types_deep(d.element());
+    } else if (d.type == TypeKind::Function && d.fn_info) {
+        for (auto& p : d.fn_info->params) register_tuple_types_deep(p);
+        register_tuple_types_deep(d.fn_info->ret);
+    }
+}
+
+void CodeGen::emit_pending_tuple_types() {
+    std::set<std::vector<TypeDesc>> emitted;
+    bool progress = true;
+    while (progress) {
+        progress = false;
+        std::vector<std::pair<std::vector<TypeDesc>, std::string>> pending;
+        for (auto& [members, name] : tuple_types_) {
+            if (!emitted.count(members)) pending.push_back({members, name});
+        }
+        for (auto& [members, name] : pending) {
+            if (emitted.count(members)) continue;
+            bool ready = true;
+            for (auto& m : members) {
+                if (m.type == TypeKind::Tuple && !emitted.count(m.tuple_members)) {
+                    ready = false;
+                    break;
+                }
+            }
+            if (!ready) continue;
+            out_ << "typedef struct " << name << " {\n";
+            for (size_t i = 0; i < members.size(); i++) {
+                out_ << "    " << c_type_for_desc(members[i]) << " f" << i << ";\n";
+            }
+            out_ << "} " << name << ";\n\n";
+            emitted.insert(members);
+            progress = true;
+        }
+    }
+}
+
 void CodeGen::collect_tuple_types(Statement* stmt) {
     if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
         if (var->annotation == TypeKind::Tuple && !var->tuple_members.empty()) {
-            tuple_name(var->tuple_members);
+            TypeDesc d{TypeKind::Tuple, {}, var->tuple_members, {}};
+            register_tuple_types_deep(d);
         }
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
-        if (!td->tuple_members.empty()) tuple_name(td->tuple_members);
+        for (auto& p : td->patterns) register_tuple_types_deep(p.vdesc);
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
-        if (!ma->tuple_members.empty()) tuple_name(ma->tuple_members);
+        for (auto& p : ma->patterns) register_tuple_types_deep(p.vdesc);
     } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
         for (auto& p : fn->params) {
-            if (p.type == TypeKind::Tuple && !p.tuple_members.empty()) tuple_name(p.tuple_members);
+            if (p.type == TypeKind::Tuple && !p.tuple_members.empty()) {
+                TypeDesc d{TypeKind::Tuple, {}, p.tuple_members, {}};
+                register_tuple_types_deep(d);
+            }
         }
         if (fn->return_type == TypeKind::Tuple && !fn->return_tuple_members.empty()) {
-            tuple_name(fn->return_tuple_members);
+            TypeDesc d{TypeKind::Tuple, {}, fn->return_tuple_members, {}};
+            register_tuple_types_deep(d);
         }
         for (auto& s : fn->body) collect_tuple_types(s.get());
     } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
@@ -457,7 +507,8 @@ void CodeGen::collect_tuple_types(Statement* stmt) {
         for (auto& c : sw->cases) for (auto& s : c.body) collect_tuple_types(s.get());
     } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
         if (ret->values.size() > 1 && !ret->return_tuple_members.empty()) {
-            tuple_name(ret->return_tuple_members);
+            TypeDesc d{TypeKind::Tuple, {}, ret->return_tuple_members, {}};
+            register_tuple_types_deep(d);
         }
     }
 }
@@ -784,6 +835,77 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
     }
 }
 
+void CodeGen::emit_binding(const DestructPattern& slot, const std::string& rhs,
+                           const TypeDesc& vd, bool declare) {
+    if (declare) {
+        out_ << "    " << c_type_for_desc(vd) << " " << slot.name << " = " << rhs << ";\n";
+    } else {
+        out_ << "    " << slot.name << " = " << rhs << ";\n";
+    }
+}
+
+void CodeGen::emit_destruct_level(const std::vector<DestructPattern>& slots,
+                                  const std::string& src, const TypeDesc& val,
+                                  bool declare) {
+    if (val.type == TypeKind::Tuple) {
+        for (size_t i = 0; i < slots.size(); i++) {
+            const DestructPattern& slot = slots[i];
+            const TypeDesc& member = val.tuple_members[i];
+            std::string member_src = "(" + src + ").f" + std::to_string(i);
+            if (slot.nested) {
+                emit_destruct_level(slot.items, member_src, member, declare);
+            } else {
+                emit_binding(slot, member_src, member, declare);
+            }
+        }
+        return;
+    }
+    if (val.type == TypeKind::Array) {
+        const TypeDesc& elem = val.element();
+        size_t n = 0;
+        for (auto& p : slots) if (!p.is_rest) n++;
+        out_ << "    if (" << src << "->length < " << n << ") { fprintf(stderr, \"Error: cannot destructure array of length %d into " << n << " targets\\n\", " << src << "->length); exit(1); }\n";
+        size_t fix_i = 0;
+        for (size_t i = 0; i < slots.size(); i++) {
+            const DestructPattern& slot = slots[i];
+            if (slot.is_rest) {
+                out_ << (declare ? "    sd_array* " : "    ") << slot.name
+                     << " = sd_array_slice(" << src << ", " << n << ", "
+                     << src << "->length);\n";
+                continue;
+            }
+            std::string T = c_type_for_desc(elem);
+            std::string member_src = "((" + T + "*)(" + src + ")->data)[" + std::to_string(fix_i) + "]";
+            if (slot.nested) {
+                emit_destruct_level(slot.items, member_src, elem, declare);
+            } else {
+                emit_binding(slot, member_src, elem, declare);
+            }
+            fix_i++;
+        }
+        return;
+    }
+    // Text source: src is a char*.
+    size_t n = 0;
+    for (auto& p : slots) if (!p.is_rest) n++;
+    std::string len_expr = "(int)strlen(" + src + ")";
+    out_ << "    if (" << len_expr << " < " << n << ") { fprintf(stderr, \"Error: cannot destructure text of length %d into " << n << " targets\\n\", " << len_expr << "); exit(1); }\n";
+    size_t fix_i = 0;
+    TypeDesc char_desc{TypeKind::Char, {}, {}, {}};
+    for (size_t i = 0; i < slots.size(); i++) {
+        const DestructPattern& slot = slots[i];
+        if (slot.is_rest) {
+            out_ << (declare ? "    char* " : "    ") << slot.name
+                 << " = sd_substring(" << src << ", " << n << ", "
+                 << "(int)strlen(" << src << "));\n";
+            continue;
+        }
+        std::string member_src = src + "[" + std::to_string(fix_i) + "]";
+        emit_binding(slot, member_src, char_desc, declare);
+        fix_i++;
+    }
+}
+
 void CodeGen::emit_stmt(Statement* stmt) {
     if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
         emit_line_directive(var->line, line_file_);
@@ -826,91 +948,50 @@ void CodeGen::emit_stmt(Statement* stmt) {
         out_ << ";\n";
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
         emit_line_directive(td->line, line_file_);
-        if (td->destruct_type == TypeKind::Array) {
-            std::string T = c_type_for_desc(td->destruct_elem);
-            std::string tmp = "__sd_d" + std::to_string(temp_counter_++);
-            std::string n = std::to_string(td->names.size());
+        std::string tmp = "__sd_d" + std::to_string(temp_counter_++);
+        TypeDesc val;
+        if (td->destruct_type == TypeKind::Tuple) {
+            val.type = TypeKind::Tuple;
+            val.tuple_members = td->tuple_members;
+            out_ << "    " << tuple_name(td->tuple_members) << " " << tmp << " = ";
+            emit_expr(td->rhs.get());
+            out_ << ";\n";
+        } else if (td->destruct_type == TypeKind::Array) {
+            val.type = TypeKind::Array;
+            val.elem = std::make_shared<TypeDesc>(td->destruct_elem);
             out_ << "    sd_array* " << tmp << " = ";
             emit_expr(td->rhs.get());
             out_ << ";\n";
-            out_ << "    if (" << tmp << "->length < " << n << ") { fprintf(stderr, \"Error: cannot destructure array of length %d into " << n << " targets\\n\", " << tmp << "->length); exit(1); }\n";
-            for (size_t i = 0; i < td->names.size(); i++) {
-                out_ << "    " << T << " " << td->names[i] << " = ((" << T << "*)"
-                     << tmp << "->data)[" << i << "];\n";
-            }
-            if (!td->rest_name.empty()) {
-                out_ << "    sd_array* " << td->rest_name << " = sd_array_slice("
-                     << tmp << ", " << n << ", " << tmp << "->length);\n";
-            }
-        } else if (td->destruct_type == TypeKind::Text) {
-            std::string tmp = "__sd_t" + std::to_string(temp_counter_++);
-            std::string n = std::to_string(td->names.size());
+        } else {
+            val.type = TypeKind::Text;
             out_ << "    char* " << tmp << " = ";
             emit_expr(td->rhs.get());
             out_ << ";\n";
-            out_ << "    int " << tmp << "_len = (int)strlen(" << tmp << ");\n";
-            out_ << "    if (" << tmp << "_len < " << n << ") { fprintf(stderr, \"Error: cannot destructure text of length %d into " << n << " targets\\n\", " << tmp << "_len); exit(1); }\n";
-            for (size_t i = 0; i < td->names.size(); i++) {
-                out_ << "    char " << td->names[i] << " = " << tmp << "[" << i << "];\n";
-            }
-            if (!td->rest_name.empty()) {
-                out_ << "    char* " << td->rest_name << " = sd_substring(" << tmp
-                     << ", " << n << ", " << tmp << "_len);\n";
-            }
-        } else {
-            std::string tname = tuple_name(td->tuple_members);
-            std::string tmp = "__sd_d" + std::to_string(temp_counter_++);
-            out_ << "    " << tname << " " << tmp << " = ";
-            emit_expr(td->rhs.get());
-            out_ << ";\n";
-            for (size_t i = 0; i < td->names.size(); i++) {
-                out_ << "    " << c_type_for_desc(td->tuple_members[i]) << " " << td->names[i]
-                     << " = " << tmp << ".f" << i << ";\n";
-            }
         }
+        emit_destruct_level(td->patterns, tmp, val, /*declare=*/true);
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
         emit_line_directive(ma->line, line_file_);
-        if (ma->destruct_type == TypeKind::Array) {
-            std::string T = c_type_for_desc(ma->destruct_elem);
-            std::string tmp = "__sd_d" + std::to_string(temp_counter_++);
-            std::string n = std::to_string(ma->names.size());
+        std::string tmp = "__sd_m" + std::to_string(temp_counter_++);
+        TypeDesc val;
+        if (ma->destruct_type == TypeKind::Tuple) {
+            val.type = TypeKind::Tuple;
+            val.tuple_members = ma->tuple_members;
+            out_ << "    " << tuple_name(ma->tuple_members) << " " << tmp << " = ";
+            emit_expr(ma->rhs.get());
+            out_ << ";\n";
+        } else if (ma->destruct_type == TypeKind::Array) {
+            val.type = TypeKind::Array;
+            val.elem = std::make_shared<TypeDesc>(ma->destruct_elem);
             out_ << "    sd_array* " << tmp << " = ";
             emit_expr(ma->rhs.get());
             out_ << ";\n";
-            out_ << "    if (" << tmp << "->length < " << n << ") { fprintf(stderr, \"Error: cannot destructure array of length %d into " << n << " targets\\n\", " << tmp << "->length); exit(1); }\n";
-            for (size_t i = 0; i < ma->names.size(); i++) {
-                out_ << "    " << ma->names[i] << " = ((" << T << "*)"
-                     << tmp << "->data)[" << i << "];\n";
-            }
-            if (!ma->rest_name.empty()) {
-                out_ << "    " << ma->rest_name << " = sd_array_slice("
-                     << tmp << ", " << n << ", " << tmp << "->length);\n";
-            }
-        } else if (ma->destruct_type == TypeKind::Text) {
-            std::string tmp = "__sd_t" + std::to_string(temp_counter_++);
-            std::string n = std::to_string(ma->names.size());
+        } else {
+            val.type = TypeKind::Text;
             out_ << "    char* " << tmp << " = ";
             emit_expr(ma->rhs.get());
             out_ << ";\n";
-            out_ << "    int " << tmp << "_len = (int)strlen(" << tmp << ");\n";
-            out_ << "    if (" << tmp << "_len < " << n << ") { fprintf(stderr, \"Error: cannot destructure text of length %d into " << n << " targets\\n\", " << tmp << "_len); exit(1); }\n";
-            for (size_t i = 0; i < ma->names.size(); i++) {
-                out_ << "    " << ma->names[i] << " = " << tmp << "[" << i << "];\n";
-            }
-            if (!ma->rest_name.empty()) {
-                out_ << "    " << ma->rest_name << " = sd_substring(" << tmp
-                     << ", " << n << ", " << tmp << "_len);\n";
-            }
-        } else {
-            std::string tname = tuple_name(ma->tuple_members);
-            std::string tmp = "__sd_m" + std::to_string(temp_counter_++);
-            out_ << "    " << tname << " " << tmp << " = ";
-            emit_expr(ma->rhs.get());
-            out_ << ";\n";
-            for (size_t i = 0; i < ma->names.size(); i++) {
-                out_ << "    " << ma->names[i] << " = " << tmp << ".f" << i << ";\n";
-            }
         }
+        emit_destruct_level(ma->patterns, tmp, val, /*declare=*/false);
     } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
         emit_line_directive(print->line, line_file_);
         out_ << "    printf(\"";

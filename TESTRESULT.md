@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-25  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (296 / 296)
+**Status:** ALL TESTS PASSED (311 / 311)
 
 ---
 
@@ -27,11 +27,13 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 16. **Growable arrays (`sd_array*`) + array built-ins**: every array is a heap pointer with spare capacity; `push`/`pop`/`sort` mutate the shared backing in place, `slice`/`concat` build independent copies, `index_of` finds the first match (`-1` if absent), `contains` reports membership; immutable/captured arrays reject mutation, void built-ins reject value use, and `pop` on empty / out-of-range `slice` terminate at runtime with exit code 1.
 17. **Byte-level text ops**: `text[i]` read-indexing yields a `char` (runtime bounds-checked via `strlen`; assignment to a text character rejected at compile time), `ord(char)` → `int`, `chr(int)` → `char` (runtime `0..255` check, exit 1), and `split(text, sep)` → `[text]` preserving empty pieces (empty separator aborts with exit code 1).
 18. **Array/text destructuring with `...rest`**: `let (a, b, ...rest) = expr` and the multi-assign form bind the first `N` elements (arrays / text characters) with a runtime `length ≥ N` check; `...rest` captures the remainder as a new `[elem]` array or `text` substring; tuples still require an exact match and reject `...rest`.
+19. **Nested destructuring patterns**: any destructuring slot may itself be a parenthesized list — deep tuple nesting (`(((a,b),c),d)`), arrays of tuples (`[(int,int)]` with `((p,q), second)`), rest inside a nested array group (`((x, y, ...zs), row)`), and nested patterns over text elements (`(w0, (c1, c2))`) all type-check and lower correctly; nested tuple types and arrays of tuples were lifted from "not supported".
+20. **Nested tuple type support**: `((int, int), int)` annotations and `[(int, int)]` arrays now work via structural tuple typedef names, dependency-ordered struct emission, and recursive deep registration of tuple types.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 296
-> - **Passed:** 296
+> - **Total Test Cases Executed:** 311
+> - **Passed:** 311
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -50,7 +52,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (48/48 Passed)
+### 1. Integration Fixtures (49/49 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -100,10 +102,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `array_builtins.hmx` | **[NEW]** Growable Arrays | `push`/`pop`/`sort`/`slice`/`concat`/`index_of`/`contains` on int and text arrays; `push`/`pop` of whole rows on `[[int]]` | **PASS** |
 | `text_ops.hmx` | **[NEW]** Text Ops | `text[i]` indexing, char-of-text chains (`names[1][0]`), `ord`/`chr`, `split` with preserved empty pieces, `index_of` on split results | **PASS** |
 | `destructure_rest.hmx` | **[NEW]** Destructure `...rest` | Array `(x, y, ...rest)`, text `(c1, c2, ...cs)`, extra elements ignored, nested `[[int]]` rows, rest from `split` and `grid[i]`, single-element rest-is-empty | **PASS** |
+| `destructure_nested.hmx` | **[NEW]** Nested Destructure | Deep tuple nesting, array of tuples with group+rest, rest inside a nested array group, nested patterns on text elements, nested multi-assign | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (167/167 Passed)
+### 2. Negative & Error Handling Suite (173/173 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -168,7 +171,13 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `tuple_return_count_mismatch` | **[NEW]** Return Arity Mismatch | 3 values vs 2-member tuple return | **PASS** |
 | `tuple_return_member_type_mismatch` | **[NEW]** Return Member Mismatch | `return 1, "x"` for `-> (int, int)` | **PASS** |
 | `tuple_return_single_whole_scalar` | **[NEW]** Scalar Return vs Tuple | `return 5` for `-> (int, int)` | **PASS** |
-| `tuple_nested` | **[NEW]** Nested Tuple Type | `-> ((int, int), int)` | **PASS** |
+| `tuple_nested_pattern_on_char` | **[NEW]** Nested Pattern on Char | Nested slot inside a text destructure | `cannot destructure a character into a nested pattern` | **PASS** |
+| `tuple_nested_pattern_on_scalar_elem` | **[NEW]** Nested Pattern on Scalar | `((x, y), z) = a` where `a: [int]` | `cannot destructure a value of type int into a nested pattern` | **PASS** |
+| `tuple_nested_count_mismatch` | **[NEW]** Nested Count Mismatch | inner `(a, b)` vs `(int, int, int)` member | `cannot destructure tuple of 3 members into 2 variables` | **PASS** |
+| `tuple_nested_rest_in_group` | **[NEW]** Rest Inside Tuple Group | `((a, ...r), b) = f()` | `cannot use '...rest' when destructuring a tuple` | **PASS** |
+| `destruct_rest_not_last_array` | **[NEW]** Rest Not Last | `(...r, x) = a` on `[int]` | `cannot use '...rest' before another destructuring target` | **PASS** |
+| `destruct_rest_not_last_text` | **[NEW]** Rest Not Last | `(...r, x) = "hello"` | `cannot use '...rest' before another destructuring target` | **PASS** |
+| `tuple_nested_multiassign_undefined` | **[NEW]** Nested Multi-Assign Undefined | `((one, two), three) = ...` with undeclared `two` | `undefined variable 'two'` | **PASS** |
 | `tuple_annotated_mismatch` | **[NEW]** Annotated Tuple Var | `(int, int)` var initialized with `(int, text)` | **PASS** |
 | `tuple_length` | **[NEW]** `length()` on Tuple | `length(t)` where `t` is a tuple | **PASS** |
 | `tuple_bare_return` | **[NEW]** Bare Return in Tuple Fn | `return` with no value in `-> (int, int)` | **PASS** |
@@ -264,7 +273,7 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (81/81 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (89/89 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -347,6 +356,14 @@ These tests verify exact runtime output matching and process exit code propagati
 | `destructure_text_rest` | **[NEW]** Text `...rest` Output | text destructure, `[[int]]` rows, `grid[i]` rest | `h\ne\nllo\n3 l l\n3 3\n4\n2 5 6` | **PASS** |
 | `destructure_array_oob` | **[NEW]** Runtime Error | too few array elements aborts | Exit Code: `1` | **PASS** |
 | `destructure_text_oob` | **[NEW]** Runtime Error | too few text characters aborts | Exit Code: `1` | **PASS** |
+| `destructure_nested_tuple_deep` | **[NEW]** Nested Tuple Output | `(((a,b),c),d)` deep destructure | `1 10 2 4` | **PASS** |
+| `destructure_nested_array_group_rest` | **[NEW]** Nested Group Rest Output | rest inside nested array group + row capture | `1 2\n1 3\n2 4 5` | **PASS** |
+| `destructure_array_of_tuples_rest` | **[NEW]** Array-of-Tuples Output | `((p,q), r, ...tail)` on `[(int,int)]` | `1 10\n2 20\n1 3 30` | **PASS** |
+| `destructure_nested_text_elem` | **[NEW]** Text-Element Group Output | nested pattern on a text element | `hi\no k` | **PASS** |
+| `destructure_nested_multi_assign` | **[NEW]** Nested Multi-Assign | assign into existing vars via nested pattern | `1 10 2` | **PASS** |
+| `destructure_nested_array_oob` | **[NEW]** Runtime Error | nested group over a short row aborts | Exit Code: `1` | **PASS** |
+| `destructure_array_of_tuples_oob` | **[NEW]** Runtime Error | too few array-of-tuple elements aborts | Exit Code: `1` | **PASS** |
+| `destructure_nested_text_member` | **[NEW]** Runtime Error | text member too short for nested pattern aborts | Exit Code: `1` | **PASS** |
 
 ---
 
@@ -431,3 +448,15 @@ cd build && cmake .. && make && cd ..
 > rejects `...rest`. The `sd_array_slice` runtime helper backs array rest;
 > `sd_substring` backs text rest; rest copies are independent of the source.
 > Suites rerun at 48/167/81 = **296**.
+>
+> **0.A5 addition:** destructuring patterns now nest. Any slot may be a
+> parenthesized list, so deep tuple nesting (`(((a,b),c),d)`), arrays of tuples
+> (`[(int,int)]` with `((p,q), second)` patterns), rest inside a nested array
+> group (`((x, y, ...zs), row)`), and nested patterns over text elements
+> (`(w0, (c1, c2))`) all work, in both `let` and multi-assign forms. Nested
+> tuple types and arrays of tuples were lifted from "not supported" end to end
+> (annotations, literals, returns). Codegen orders tuple struct emission
+> topologically and mangles tuple names structurally so nested shapes don't
+> collide. A nested slot's value must be a tuple, array, or text (scalars are a
+> compile error, as is `...rest` before another target). Suites rerun at
+> 49/173/89 = **311**.

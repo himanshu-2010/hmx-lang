@@ -328,6 +328,9 @@ std::vector<TypeDesc> TypeResolver::expr_tuple_members(Expression* expr) {
             call->fn_type.fn_info->ret.type == TypeKind::Tuple)
             return call->fn_type.fn_info->ret.tuple_members;
     }
+    if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
+        if (idx->resolved_type == TypeKind::Tuple) return idx->elem.tuple_members;
+    }
     return {};
 }
 
@@ -351,6 +354,123 @@ bool TypeResolver::types_match(const TypeDesc& a, const TypeDesc& b) const {
     if (a.type == TypeKind::Array) return a.element() == b.element();
     if (a.type == TypeKind::Tuple) return a.tuple_members == b.tuple_members;
     return true;
+}
+
+void TypeResolver::bind_destruct_slot(const DestructPattern& slot,
+                                      const TypeDesc& vd, int line,
+                                      bool declare, bool is_mutable) {
+    if (declare) {
+        if (vd.type == TypeKind::Tuple) {
+            define(slot.name, TypeKind::Tuple, is_mutable, {},
+                   vd.tuple_members);
+        } else {
+            define(slot.name, vd.type, is_mutable, vd.element(), {},
+                   vd.type == TypeKind::Function ? vd : TypeDesc{});
+        }
+        return;
+    }
+    const Symbol* sym = find_symbol(slot.name);
+    if (!sym) {
+        throw err(line, "undefined variable '" + slot.name + "'");
+    }
+    if (!sym->is_mutable) {
+        throw err(line,
+            "cannot modify immutable variable '" + slot.name + "'");
+    }
+    TypeDesc have{sym->type,
+        std::make_shared<TypeDesc>(sym->elem), sym->tuple_members, {}};
+    if (!types_match(have, vd)) {
+        throw err(line,
+            "type mismatch: cannot assign " + type_desc_to_string(vd) +
+            " to " + type_desc_to_string(have));
+    }
+}
+
+void TypeResolver::apply_destruct_pattern(std::vector<DestructPattern>& slots,
+                                          const TypeDesc& val, int line,
+                                          bool declare, bool is_mutable) {
+    if (val.type == TypeKind::Tuple) {
+        for (const auto& p : slots) {
+            if (p.is_rest) {
+                throw err(line,
+                    "cannot use '...rest' when destructuring a tuple");
+            }
+        }
+        if (val.tuple_members.size() != slots.size()) {
+            throw err(line,
+                "cannot destructure tuple of " +
+                std::to_string(val.tuple_members.size()) + " members into " +
+                std::to_string(slots.size()) + " variables");
+        }
+        for (size_t i = 0; i < slots.size(); i++) {
+            DestructPattern& slot = slots[i];
+            const TypeDesc& member = val.tuple_members[i];
+            slot.vdesc = member;
+            if (slot.nested) {
+                apply_destruct_pattern(slot.items, member, line, declare,
+                                       is_mutable);
+            } else {
+                bind_destruct_slot(slot, member, line, declare, is_mutable);
+            }
+        }
+        return;
+    }
+    if (val.type == TypeKind::Array) {
+        const TypeDesc& elem = val.element();
+        bool seen_rest = false;
+        for (const auto& p : slots) {
+            if (p.is_rest) {
+                seen_rest = true;
+            } else if (seen_rest) {
+                throw err(line,
+                    "cannot use '...rest' before another destructuring target");
+            }
+        }
+        for (auto& p : slots) {
+            if (p.is_rest) {
+                TypeDesc rest = TypeDesc::array_of(elem);
+                p.vdesc = rest;
+                bind_destruct_slot(p, rest, line, declare, is_mutable);
+            } else if (p.nested) {
+                p.vdesc = elem;
+                apply_destruct_pattern(p.items, elem, line, declare,
+                                       is_mutable);
+            } else {
+                p.vdesc = elem;
+                bind_destruct_slot(p, elem, line, declare, is_mutable);
+            }
+        }
+        return;
+    }
+    if (val.type == TypeKind::Text) {
+        TypeDesc char_desc{TypeKind::Char, {}, {}, {}};
+        bool seen_rest = false;
+        for (const auto& p : slots) {
+            if (p.is_rest) {
+                seen_rest = true;
+            } else if (seen_rest) {
+                throw err(line,
+                    "cannot use '...rest' before another destructuring target");
+            }
+        }
+        for (auto& p : slots) {
+            if (p.is_rest) {
+                TypeDesc t{TypeKind::Text, {}, {}, {}};
+                p.vdesc = t;
+                bind_destruct_slot(p, t, line, declare, is_mutable);
+            } else if (p.nested) {
+                throw err(line,
+                    "cannot destructure a character into a nested pattern");
+            } else {
+                p.vdesc = char_desc;
+                bind_destruct_slot(p, char_desc, line, declare, is_mutable);
+            }
+        }
+        return;
+    }
+    throw err(line,
+        "cannot destructure a value of type " + type_to_string(val.type) +
+        " into a nested pattern");
 }
 
 TypeKind TypeResolver::infer_from_literal(Expression* expr) {
@@ -766,9 +886,6 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             TypeDesc first = expr_desc(arr->elements[0].get());
             if (first.type == TypeKind::Unknown) {
                 throw err(line(), "cannot infer array element type");
-            }
-            if (first.type == TypeKind::Tuple) {
-                throw err(line(), "arrays of tuples are not supported");
             }
             if (first.type == TypeKind::Array && !desc_fully_known(first)) {
                 throw err(line(), "cannot infer nested array element type");
@@ -1257,23 +1374,12 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         allow_void_call_ = saved;
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
         TypeKind src_type = resolve_expr(td->rhs.get());
+        TypeDesc val;
         if (src_type == TypeKind::Tuple) {
-            if (!td->rest_name.empty()) {
-                throw err(stmt->line,
-                    "cannot use '...rest' when destructuring a tuple");
-            }
             td->destruct_type = TypeKind::Tuple;
             td->tuple_members = expr_tuple_members(td->rhs.get());
-            if (td->tuple_members.size() != td->names.size()) {
-                throw err(stmt->line,
-                    "cannot destructure tuple of " +
-                    std::to_string(td->tuple_members.size()) + " members into " +
-                    std::to_string(td->names.size()) + " variables");
-            }
-            for (size_t i = 0; i < td->names.size(); i++) {
-                const TypeDesc& m = td->tuple_members[i];
-                define(td->names[i], m.type, td->is_mutable, m.element());
-            }
+            val.type = TypeKind::Tuple;
+            val.tuple_members = td->tuple_members;
         } else if (src_type == TypeKind::Array) {
             TypeDesc ed = expr_element_desc(td->rhs.get());
             if (!desc_fully_known(ed)) {
@@ -1282,60 +1388,26 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             }
             td->destruct_type = TypeKind::Array;
             td->destruct_elem = ed;
-            for (const std::string& n : td->names) {
-                define(n, ed.type, td->is_mutable, ed.element());
-            }
-            if (!td->rest_name.empty()) {
-                define(td->rest_name, TypeKind::Array, td->is_mutable, ed);
-            }
+            val.type = TypeKind::Array;
+            val.elem = std::make_shared<TypeDesc>(ed);
         } else if (src_type == TypeKind::Text) {
             td->destruct_type = TypeKind::Text;
-            for (const std::string& n : td->names) {
-                define(n, TypeKind::Char, td->is_mutable);
-            }
-            if (!td->rest_name.empty()) {
-                define(td->rest_name, TypeKind::Text, td->is_mutable);
-            }
+            val.type = TypeKind::Text;
         } else {
             throw err(stmt->line,
                 "right side of destructuring must be a tuple, array, or text, got " +
                 type_to_string(src_type));
         }
+        apply_destruct_pattern(td->patterns, val, stmt->line, /*declare=*/true,
+                               td->is_mutable);
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
         TypeKind src_type = resolve_expr(ma->rhs.get());
-        auto check_target = [&](const std::string& n, const TypeDesc& need) {
-            const Symbol* sym = find_symbol(n);
-            if (!sym) {
-                throw err(stmt->line, "undefined variable '" + n + "'");
-            }
-            if (!sym->is_mutable) {
-                throw err(stmt->line,
-                    "cannot modify immutable variable '" + n + "'");
-            }
-            TypeDesc have{sym->type,
-                std::make_shared<TypeDesc>(sym->elem), sym->tuple_members, {}};
-            if (!types_match(have, need)) {
-                throw err(stmt->line,
-                    "type mismatch: cannot assign " + type_desc_to_string(need) +
-                    " to " + type_desc_to_string(have));
-            }
-        };
+        TypeDesc val;
         if (src_type == TypeKind::Tuple) {
-            if (!ma->rest_name.empty()) {
-                throw err(stmt->line,
-                    "cannot use '...rest' when destructuring a tuple");
-            }
             ma->destruct_type = TypeKind::Tuple;
             ma->tuple_members = expr_tuple_members(ma->rhs.get());
-            if (ma->tuple_members.size() != ma->names.size()) {
-                throw err(stmt->line,
-                    "cannot destructure tuple of " +
-                    std::to_string(ma->tuple_members.size()) + " members into " +
-                    std::to_string(ma->names.size()) + " variables");
-            }
-            for (size_t i = 0; i < ma->names.size(); i++) {
-                check_target(ma->names[i], ma->tuple_members[i]);
-            }
+            val.type = TypeKind::Tuple;
+            val.tuple_members = ma->tuple_members;
         } else if (src_type == TypeKind::Array) {
             TypeDesc ed = expr_element_desc(ma->rhs.get());
             if (!desc_fully_known(ed)) {
@@ -1344,25 +1416,18 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             }
             ma->destruct_type = TypeKind::Array;
             ma->destruct_elem = ed;
-            for (const std::string& n : ma->names) {
-                check_target(n, ed);
-            }
-            if (!ma->rest_name.empty()) {
-                check_target(ma->rest_name, TypeDesc::array_of(ed));
-            }
+            val.type = TypeKind::Array;
+            val.elem = std::make_shared<TypeDesc>(ed);
         } else if (src_type == TypeKind::Text) {
             ma->destruct_type = TypeKind::Text;
-            for (const std::string& n : ma->names) {
-                check_target(n, TypeDesc{TypeKind::Char, {}, {}, {}});
-            }
-            if (!ma->rest_name.empty()) {
-                check_target(ma->rest_name, TypeDesc{TypeKind::Text, {}, {}, {}});
-            }
+            val.type = TypeKind::Text;
         } else {
             throw err(stmt->line,
                 "right side of destructuring must be a tuple, array, or text, got " +
                 type_to_string(src_type));
         }
+        apply_destruct_pattern(ma->patterns, val, stmt->line, /*declare=*/false,
+                               /*is_mutable=*/false);
     } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
         TypeKind ct = resolve_expr(loop->count.get());
         if (ct != TypeKind::Int) {

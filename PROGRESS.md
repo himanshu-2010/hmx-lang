@@ -500,6 +500,56 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   §7.2 cross-reference, statement table row updated; this entry.
 - Full regression: 48/48 integration, 167/167 negative, 81/81 stress/output = **296**.
 
+### 0.A5 — Nested destructuring patterns — DONE
+- Syntax: any destructuring slot of `let (…) = e` / `(…) = e` may itself be a
+  parenthesized list. `IdList{names, rest}` became `IdList{items}` of
+  `DestructPattern{name, items, nested, is_rest, vdesc}`; the new `pattern_item`
+  nonterminal accepts `IDENTIFIER`, `... IDENTIFIER`, or `( id_list )`. Every
+  list keeps the ≥2-item rule. `...rest` may appear at any nesting level
+  (arrays/text) but only as the last slot of its list.
+- Types: lifted the three parser restrictions that blocked nested values —
+  "nested tuple types are not supported" (×2 in `tuple_elem_list`) and "arrays
+  of tuples are not supported" (`[ param_type ]`); also removed the identical
+  array-of-tuples rejection in the resolver's `ArrayLiteral` branch. Nested
+  tuples (`((int,int), int)`), arrays of tuples (`[(int,int)]`), and array
+  literals of tuples now type-check end to end. `expr_tuple_members` gained an
+  `ArrayIndexExpr` case so `pairs[i][j]` and `tail[0][0]` resolve tuple-member
+  types.
+- Resolver: `bind_destruct_slot` + recursive `apply_destruct_pattern`. A leaf
+  defines/checks a slot with its value type (tuples record `tuple_members`);
+  a nested group recurses when its value is a tuple, array, or text and errors
+  otherwise ("cannot destructure a value of type X into a nested pattern",
+  "cannot destructure a character into a nested pattern"). Tuple groups keep the
+  exact member-count match and reject `...rest` at any depth; array/text groups
+  require `...rest` to be last ("cannot use '...rest' before another
+  destructuring target"). Every slot records its resolved `vdesc` for codegen.
+- Codegen: recursive `emit_destruct_level`/`emit_binding`. Tuple sources slice
+  fields inline (`.fN` chains); array sources emit a `length < N` check and
+  element reads `((T*)src->data)[i]`, recursing with the member expression as
+  the sub-source (no temp needed — array/text element expressions are
+  side-effect-free); text sources emit a `strlen` check and `sd_substring`
+  rests. Tuple typedef emission was made dependency-ordered
+  (`emit_pending_tuple_types`) so nested struct types are defined before the
+  outer structs that embed them, and `register_tuple_types_deep` pre-registers
+  every reachable tuple type (patterns, VarDecl/FunctionDecl/ReturnStmt
+  annotations). `mangle_type_name` is now structural for tuples
+  (`tup_int_text_…`), fixing a name collision where differently-shaped nested
+  tuples all mangled to `sd_tuple_tuple_int`.
+- Tests: `destructure_nested.hmx` fixture (deep tuple nesting, array of tuples
+  with group+rest, rest inside a nested array group, nested patterns on text
+  elements, nested multi-assign); 8 net-new negative tests (nested pattern on a
+  scalar element, nested count mismatch, rest inside a tuple group, rest before
+  another target in array/text, nested multi-assign undefined target, nested
+  pattern on a char — the old `tuple_nested` test, which asserted nested tuples
+  were rejected, was replaced); 9 new stress cases (5 exact-output, 4 exit-code
+  for nested length errors).
+- Docs: SYNTAX.md §5.2 (array elements may be tuples), §5.4 tuple-member rules
+  (nested tuples + arrays of tuples now supported), §7.1 grammar
+  (`id_list`/`pattern_item`), §7.5 nested-pattern example + rules, statement
+  table row; this entry.
+- Full regression: 49/49 integration, 173/173 negative, 89/89 stress/output =
+  **311**; bison conflicts unchanged at 6; zero compiler warnings.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

@@ -270,8 +270,9 @@ let names: [text] = ["alice", "bob"]
 let empty: [int] = []
 ```
 
-Element types may be any type including nested arrays: `int`, `decimal`,
-`text`, `bool`, `char`, `byte`, or another array type. Nested arrays
+Element types may be any type including nested arrays or tuples: `int`,
+`decimal`, `text`, `bool`, `char`, `byte`, another array type, or a tuple type
+(`[(int, int)]`). Nested arrays
 (`[[int]]`) are supported: element type descriptors are recursive, so
 multi-dimensional arrays can be annotated, inferred from nested literals
 (`let m = [[1, 2], [3, 4]]`), indexed (`m[i][j]`), assigned (`m[i][j] = v`),
@@ -316,9 +317,9 @@ fn main() {
 Rules:
 
 - A tuple must have at least two members.
-- Members may be `int`, `decimal`, `text`, `bool`, `char`, `byte`, or an array
-  (`[int]`, etc.). Nested tuples (`((int, int), int)`) and arrays of tuples are
-  **not** supported.
+- Members may be `int`, `decimal`, `text`, `bool`, `char`, `byte`, an array
+  (`[int]`, etc.), or another tuple — nested tuples (`((int, int), int)`) and
+  arrays of tuples (`[(int, int)]`) are supported.
 - Tuples are value types. Passing a tuple to a function or returning one copies it.
 - A tuple index must be an integer constant in range; `t[i]` with a variable `i` is
   rejected at compile time.
@@ -402,6 +403,8 @@ var_decl  : "let" IDENTIFIER (":" param_type)? "=" expression
 param_type : TYPE | "[" param_type "]" | "(" elem_list ")"
            | "fn" "(" fn_type_params? ")" "->" param_type
 elem_list : param_type ("," param_type)+
+id_list   : pattern_item ("," pattern_item)+
+pattern_item : IDENTIFIER | "..." IDENTIFIER | "(" id_list ")"
 ```
 
 ```hmx
@@ -501,6 +504,32 @@ print(a, b)              // 1 2
 let (x, y) = [9]         // Error: cannot destructure array of length 1 into 2 targets
 ```
 
+Patterns nest: any slot of a parenthesized list may itself be a parenthesized
+list. A nested slot takes its value from that position (the corresponding tuple
+member, array element, or text character) and destructures it the same way —
+so nested tuples, arrays of tuples, arrays of arrays, and text-array elements
+all compose. `...rest` may appear at any nesting level.
+
+```hmx
+fn mk_pair(x: int) -> (int, int) { return x, x * 10 }
+fn mk_nested() -> ((int, int), int) { return mk_pair(1), 2 }
+fn mk_deep() -> (((int, int), int), int) { return mk_nested(), 4 }
+fn main() {
+    let (((a, b), c), d) = mk_deep()      // deep nesting
+    let pairs: [(int, int)] = [mk_pair(5), mk_pair(6)]
+    let ((p, q), second) = pairs          // tuple inside an array element
+    let grid: [[int]] = [[1, 2, 3], [4, 5]]
+    let ((x, y, ...row_rest), row1) = grid // ...rest inside a nested group
+    let words: [text] = ["hi", "ok"]
+    let (w0, (c1, c2)) = words            // nested pattern on a text element
+    ((p, q), second) = mk_nested()        // nested multi-assignment
+}
+```
+
+A nested slot's value must itself be a tuple, array, or text — destructuring a
+scalar (`int`, `decimal`, `char`, …) into a nested pattern is a compile error.
+`...rest` must be the last slot of its list.
+
 Rules:
 
 - Tuple destructuring requires an exact member-count match and rejects `...rest`.
@@ -513,6 +542,9 @@ Rules:
   targets must be arrays of the source's element type, or `text`).
 - The whole thing applies to any array- or text-valued expression:
   `(first, ...tail) = split("a,b", ",")` and `(head, ...rest) = grid[i]` work.
+- Slots nest: a slot's value (tuple member, array element, or text character)
+  may itself be destructured if it is a tuple, array, or text; each nested list
+  follows these same rules, including its own optional trailing `...rest`.
 - Destructuring on any other type is a compile error, as is using `...rest`
   when destructuring a tuple.
 
@@ -693,7 +725,7 @@ A statement is one of the following. Statements execute in sequence.
 |---|---|
 | Variable declaration | `let ...` |
 | Assignment | `name = expr` / `name op= expr` / `name++` / `name--` |
-| Destructuring (tuple / array / text) | `let (name, ...name) = expr` / `(name, ...name) = expr` |
+| Destructuring (tuple / array / text, nestable) | `let ((a, b), ...name) = expr` / `((a, b), ...name) = expr` |
 | Array element assignment | `name[index] = expr` |
 | Function call | `name(args...)` |
 | Output | `print(...)` |

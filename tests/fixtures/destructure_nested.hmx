@@ -1,0 +1,37 @@
+fn mk_pair(x: int) -> (int, int) {
+    return x, x * 10
+}
+fn mk_nested() -> ((int, int), int) {
+    return mk_pair(1), 2
+}
+fn mk_deep() -> (((int, int), int), int) {
+    return mk_nested(), 4
+}
+fn main() {
+    // deep nested tuple pattern
+    let (((a, b), c), d) = mk_deep()
+    print(a, b, c, d)
+    // array of tuples: nested group plus rest
+    let pairs: [(int, int)] = [mk_pair(1), mk_pair(2), mk_pair(3)]
+    let ((p, q), r, ...tail) = pairs
+    print(p, q)
+    print(r[0], r[1])
+    print(length(tail), tail[0][0], tail[0][1])
+    // nested arrays: rest inside a group
+    let grid: [[int]] = [[1, 2, 3], [4, 5]]
+    let ((x, y, ...zs), row1) = grid
+    print(x, y)
+    print(length(zs), zs[0])
+    print(length(row1), row1[0], row1[1])
+    // text elements bound by nested patterns
+    let words: [text] = ["hi", "ok"]
+    let (w0, (c1, c2)) = words
+    print(w0)
+    print(c1, c2)
+    // nested multi-assign
+    let one = 0
+    let two = 0
+    let three = 0
+    ((one, two), three) = mk_nested()
+    print(one, two, three)
+}

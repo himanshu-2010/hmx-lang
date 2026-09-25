@@ -195,14 +195,22 @@ struct AssignStmt : Statement {
     ExprPtr rhs;         // null for "++" / "--"
 };
 
+// One slot of a destructuring pattern: either a binding name (leaf, possibly a
+// '...rest' capture) or a nested '( ... )' group.
+struct DestructPattern {
+    std::string name;                    // leaf binding name
+    std::vector<DestructPattern> items;  // slots when nested == true
+    bool nested = false;                 // true -> group with items
+    bool is_rest = false;                // '...name'
+    TypeDesc vdesc;                      // filled by resolver: this slot's value type
+};
+
 struct IdList {
-    std::vector<std::string> names;
-    std::string rest;          // name after '...' , empty when absent
+    std::vector<DestructPattern> items;
 };
 
 struct MultiAssignStmt : Statement {
-    std::vector<std::string> names;
-    std::string rest_name;              // empty when no '...rest'
+    std::vector<DestructPattern> patterns; // top-level pattern slots
     ExprPtr rhs;
     std::vector<TypeDesc> tuple_members;   // filled by resolver for Tuple
     TypeKind destruct_type = TypeKind::Unknown;  // Tuple / Array / Text after resolution
@@ -210,8 +218,7 @@ struct MultiAssignStmt : Statement {
 };
 
 struct DestructDecl : Statement {
-    std::vector<std::string> names;
-    std::string rest_name;              // empty when no '...rest'
+    std::vector<DestructPattern> patterns; // top-level pattern slots
     ExprPtr rhs;
     bool is_mutable = true;
     std::vector<TypeDesc> tuple_members;   // filled by resolver for Tuple

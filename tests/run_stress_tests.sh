@@ -522,6 +522,97 @@ test_exit_code "destructure_array_oob" \
     }' \
     1
 
+test_output "destructure_nested_tuple_deep" \
+    'fn mk_pair(x: int) -> (int, int) {
+        return x, x * 10
+    }
+    fn mk_nested() -> ((int, int), int) {
+        return mk_pair(1), 2
+    }
+    fn mk_deep() -> (((int, int), int), int) {
+        return mk_nested(), 4
+    }
+    fn main() {
+        let (((a, b), c), d) = mk_deep()
+        print(a, b, c, d)
+    }' \
+    "1 10 2 4"
+
+test_output "destructure_nested_array_group_rest" \
+    'fn main() {
+        let grid: [[int]] = [[1, 2, 3], [4, 5]]
+        let ((x, y, ...zs), row1) = grid
+        print(x, y)
+        print(length(zs), zs[0])
+        print(length(row1), row1[0], row1[1])
+    }' \
+    "$(printf '1 2\n1 3\n2 4 5')"
+
+test_output "destructure_array_of_tuples_rest" \
+    'fn mk_pair(x: int) -> (int, int) {
+        return x, x * 10
+    }
+    fn main() {
+        let pairs: [(int, int)] = [mk_pair(1), mk_pair(2), mk_pair(3)]
+        let ((p, q), r, ...tail) = pairs
+        print(p, q)
+        print(r[0], r[1])
+        print(length(tail), tail[0][0], tail[0][1])
+    }' \
+    "$(printf '1 10\n2 20\n1 3 30')"
+
+test_output "destructure_nested_text_elem" \
+    'fn main() {
+        let words: [text] = ["hi", "ok"]
+        let (w0, (c1, c2)) = words
+        print(w0)
+        print(c1, c2)
+    }' \
+    "$(printf 'hi\no k')"
+
+test_output "destructure_nested_multi_assign" \
+    'fn mk_pair(x: int) -> (int, int) {
+        return x, x * 10
+    }
+    fn mk_nested() -> ((int, int), int) {
+        return mk_pair(1), 2
+    }
+    fn main() {
+        let one = 0
+        let two = 0
+        let three = 0
+        ((one, two), three) = mk_nested()
+        print(one, two, three)
+    }' \
+    "1 10 2"
+
+test_exit_code "destructure_nested_array_oob" \
+    'fn main() {
+        let grid: [[int]] = [[1], [2, 3]]
+        let ((a, b), r) = grid
+    }' \
+    1
+
+test_exit_code "destructure_array_of_tuples_oob" \
+    'fn mk_pair(x: int) -> (int, int) {
+        return x, x * 10
+    }
+    fn main() {
+        let pairs: [(int, int)] = [mk_pair(1)]
+        let (a, b) = pairs
+    }' \
+    1
+
+test_exit_code "destructure_nested_text_member" \
+    'fn f() -> (int, text) {
+        return 1, "x"
+    }
+    fn main() {
+        let (a, (b, c)) = f()
+        print(a, b, c)
+    }' \
+    1
+
 test_exit_code "destructure_text_oob" \
     'fn main() {
         let s = "h"

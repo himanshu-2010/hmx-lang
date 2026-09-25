@@ -33,9 +33,16 @@ private:
     void collect_function_decls(Statement* stmt);
     std::string c_type_for_desc(const TypeDesc& d);
     void register_desc_types(const TypeDesc& d);
+    void register_tuple_types_deep(const TypeDesc& d);
     bool is_capture(const FunctionDecl* fn, const std::string& name) const;
     void emit_identifier_value(const std::string& name);
     void emit_env_arg(const FunctionDecl* callee);
     void emit_env_heap_arg(const FunctionDecl* callee);
+    void emit_destruct_level(const std::vector<DestructPattern>& slots,
+                             const std::string& src, const TypeDesc& val,
+                             bool declare);
+    void emit_binding(const DestructPattern& slot, const std::string& rhs,
+                      const TypeDesc& vd, bool declare);
+    void emit_pending_tuple_types();
     FunctionDecl* current_fn_ = nullptr;
 };

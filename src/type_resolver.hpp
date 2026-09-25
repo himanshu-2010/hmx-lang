@@ -88,6 +88,11 @@ private:
     std::vector<TypeDesc> expr_tuple_members(Expression* expr);
     TypeDesc expr_function_type(Expression* expr);
     bool types_match(const TypeDesc& a, const TypeDesc& b) const;
+    void apply_destruct_pattern(std::vector<DestructPattern>& slots,
+                                const TypeDesc& val, int line, bool declare,
+                                bool is_mutable);
+    void bind_destruct_slot(const DestructPattern& slot, const TypeDesc& vd,
+                            int line, bool declare, bool is_mutable);
 
     TypeKind resolve_expr(Expression* expr);
     bool resolve_stmt(Statement* stmt);

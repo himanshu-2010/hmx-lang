@@ -35,6 +35,7 @@ Program* g_program = nullptr;
     std::vector<TypeDesc>* tlist;
     std::vector<std::string>* strlist;
     IdList* idlist;
+    DestructPattern* dpat;
     TypeDesc* tdesc;
 }
 
@@ -63,6 +64,7 @@ Program* g_program = nullptr;
 %type <cases> case_list
 %type <tlist> tuple_elem_list
 %type <idlist> id_list
+%type <dpat> pattern_item
 %type <tdesc> param_type
 %type <tlist> fn_type_params
 %type <program> program
@@ -437,8 +439,7 @@ var_decl
     | LET '(' id_list ')' '=' expression
         {
             auto* d = new DestructDecl();
-            d->names = std::move($3->names);
-            d->rest_name = std::move($3->rest);
+            d->patterns = std::move($3->items);
             delete $3;
             d->rhs = ExprPtr($6);
             d->is_mutable = true;
@@ -549,8 +550,7 @@ assign_stmt
     | '(' id_list ')' '=' expression
         {
             auto* m = new MultiAssignStmt();
-            m->names = std::move($2->names);
-            m->rest_name = std::move($2->rest);
+            m->patterns = std::move($2->items);
             delete $2;
             m->rhs = ExprPtr($5);
             m->line = yylineno;
@@ -814,9 +814,6 @@ param_type
     | TYPE_BYTE    { $$ = new TypeDesc{TypeKind::Byte, {}, {}, {}}; }
     | '[' param_type ']'
         {
-            if ($2->type == TypeKind::Tuple) {
-                yyerror("arrays of tuples are not supported");
-            }
             $$ = new TypeDesc(TypeDesc::array_of(*$2));
             delete $2;
         }
@@ -868,18 +865,12 @@ fn_type_params
 tuple_elem_list
     : tuple_elem_list ',' param_type
         {
-            if ($3->type == TypeKind::Tuple) {
-                yyerror("nested tuple types are not supported");
-            }
             $1->push_back(*$3);
             delete $3;
             $$ = $1;
         }
     | param_type ',' param_type
         {
-            if ($1->type == TypeKind::Tuple || $3->type == TypeKind::Tuple) {
-                yyerror("nested tuple types are not supported");
-            }
             auto* v = new std::vector<TypeDesc>();
             v->push_back(*$1);
             v->push_back(*$3);
@@ -890,35 +881,46 @@ tuple_elem_list
     ;
 
 id_list
-    : id_list ',' IDENTIFIER
+    : id_list ',' pattern_item
         {
-            $1->names.push_back(std::string($3));
-            free($3);
+            $1->items.push_back(std::move(*$3));
+            delete $3;
             $$ = $1;
         }
-    | id_list ',' ELLIPSIS IDENTIFIER
-        {
-            $1->rest = std::string($4);
-            free($4);
-            $$ = $1;
-        }
-    | IDENTIFIER ',' IDENTIFIER
+    | pattern_item ',' pattern_item
         {
             auto* v = new IdList();
-            v->names.push_back(std::string($1));
-            v->names.push_back(std::string($3));
-            free($1);
-            free($3);
+            v->items.push_back(std::move(*$1));
+            v->items.push_back(std::move(*$3));
+            delete $1;
+            delete $3;
             $$ = v;
         }
-    | IDENTIFIER ',' ELLIPSIS IDENTIFIER
+    ;
+
+pattern_item
+    : IDENTIFIER
         {
-            auto* v = new IdList();
-            v->names.push_back(std::string($1));
-            v->rest = std::string($4);
+            auto* p = new DestructPattern();
+            p->name = std::string($1);
             free($1);
-            free($4);
-            $$ = v;
+            $$ = p;
+        }
+    | ELLIPSIS IDENTIFIER
+        {
+            auto* p = new DestructPattern();
+            p->name = std::string($2);
+            p->is_rest = true;
+            free($2);
+            $$ = p;
+        }
+    | '(' id_list ')'
+        {
+            auto* p = new DestructPattern();
+            p->items = std::move($2->items);
+            p->nested = true;
+            delete $2;
+            $$ = p;
         }
     ;
 

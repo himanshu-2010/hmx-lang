@@ -818,14 +818,77 @@ test_error "tuple_return_single_whole_scalar" \
     }' \
     "type mismatch: return int but function returns"
 
-test_error "tuple_nested" \
-    'fn f() -> ((int, int), int) {
+test_error "tuple_nested_pattern_on_char" \
+    'fn main() {
+        let s: text = "hi"
+        let (a, (b, c)) = s
+        print(a, b, c)
+    }' \
+    "cannot destructure a character into a nested pattern"
+
+test_error "tuple_nested_pattern_on_scalar_elem" \
+    'fn main() {
+        let a: [int] = [1, 2, 3]
+        let ((x, y), z) = a
+        print(x)
+    }' \
+    "cannot destructure a value of type int into a nested pattern"
+
+test_error "tuple_nested_count_mismatch" \
+    'fn mk3() -> (int, int, int) {
         return 1, 2, 3
     }
+    fn mk() -> ((int, int, int), int) {
+        return mk3(), 4
+    }
     fn main() {
-        print(0)
+        let ((a, b), c) = mk()
+        print(a)
     }' \
-    "nested tuple types are not supported"
+    "cannot destructure tuple of 3 members into 2 variables"
+
+test_error "tuple_nested_rest_in_group" \
+    'fn mk() -> (int, int) {
+        return 1, 2
+    }
+    fn f() -> ((int, int), int) {
+        return mk(), 3
+    }
+    fn main() {
+        let ((a, ...r), b) = f()
+        print(a)
+    }' \
+    "cannot use '...rest' when destructuring a tuple"
+
+test_error "destruct_rest_not_last_array" \
+    'fn main() {
+        let a: [int] = [1, 2, 3]
+        let (...r, x) = a
+        print(x)
+    }' \
+    "cannot use '...rest' before another destructuring target"
+
+test_error "destruct_rest_not_last_text" \
+    'fn main() {
+        let s = "hello"
+        let (...r, x) = s
+        print(x)
+    }' \
+    "cannot use '...rest' before another destructuring target"
+
+test_error "tuple_nested_multiassign_undefined" \
+    'fn mk_pair(x: int) -> (int, int) {
+        return x, x * 10
+    }
+    fn mk_nested() -> ((int, int), int) {
+        return mk_pair(1), 2
+    }
+    fn main() {
+        let one = 0
+        ((one, two), three) = mk_nested()
+        print(one)
+    }' \
+    "undefined variable 'two'"
 
 test_error "tuple_annotated_mismatch" \
     'fn f() -> (int, text) {
