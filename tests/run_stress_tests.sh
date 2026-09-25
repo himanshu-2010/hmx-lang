@@ -1481,6 +1481,104 @@ test_exit_code "curry_exit_chain" \
     }' \
     42
 
+test_output "tuple_literal_basic" \
+    'fn main() {
+        let t = (1, 2)
+        print(t[0], t[1])
+    }' \
+    "1 2"
+
+test_output "tuple_literal_nested" \
+    'fn main() {
+        let n = (4, (5, 6))
+        print(n[0], n[1][0], n[1][1])
+    }' \
+    "4 5 6"
+
+test_output "tuple_literal_as_arg" \
+    'fn swap(t: (int, int)) -> (int, int) {
+        return (t[1], t[0])
+    }
+    fn main() {
+        let s = swap((3, 4))
+        print(s[0], s[1])
+    }' \
+    "4 3"
+
+test_output "tuple_literal_fn_value_ret" \
+    'fn main() {
+        let mk = lambda(b: int) -> (int, int) {
+            return (b, b + 1)
+        }
+        let r = mk(41)
+        print(r[0], r[1])
+    }' \
+    "41 42"
+
+test_output "tuple_literal_heterogeneous" \
+    'fn main() {
+        let mix = (42, "hi", true)
+        print(mix[0], mix[1], mix[2])
+    }' \
+    "42 hi 1"
+
+test_output "tuple_literal_array_of" \
+    'fn main() {
+        let grid = [(3, 4), (5, 6)]
+        print(grid[0][0], grid[0][1], grid[1][1])
+    }' \
+    "3 4 6"
+
+test_output "tuple_literal_foreach" \
+    'fn main() {
+        let pts = [(2, 3), (7, 8)]
+        foreach (pt in pts) {
+            print(pt[0] + pt[1])
+        }
+    }' \
+    "$(printf '5\n15')"
+
+test_output "tuple_literal_const" \
+    'const ORIGIN = (0, 0)
+    fn main() {
+        let p = ORIGIN
+        print(p[0] + p[1])
+    }' \
+    "0"
+
+test_output "tuple_literal_destructure" \
+    'fn main() {
+        let (a, b) = (10, 20)
+        print(a, b)
+    }' \
+    "10 20"
+
+test_output "tuple_literal_single_value_return" \
+    'fn pair() -> (int, int) {
+        return (7, 9)
+    }
+    fn main() {
+        let p = pair()
+        print(p[0], p[1])
+    }' \
+    "7 9"
+
+test_output "grouping_precedence" \
+    'fn main() {
+        print((2 + 3) * 4)
+        print(2 * (3 + 4))
+        print(10 - (3 + 4) * 2)
+        print(1 + 2 * 3)
+    }' \
+    "$(printf '20\n14\n-4\n7')"
+
+test_output "tuple_literal_of_arrays" \
+    'fn main() {
+        let duo = ([1, 2], [3, 4])
+        print(duo[0][1], duo[1][0])
+    }' \
+    "2 3"
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

@@ -40,6 +40,7 @@ The current compiler supports:
   - Growable arrays with `push`, `pop`, `sort`, `slice`, `concat`, `index_of`, and `contains`
   - Reference semantics: array copies share backing storage, so mutations through any alias are visible
 - Multiple return values via tuples with destructuring
+  - Bare tuple literal expressions: `let t = (1, 2)`, nested `(4, (5, 6))`, heterogeneous `(42, "hi", true)`, arrays of literals `[(2, 3), (7, 8)]` — direct arguments, returns, `const`s, and destructuring sources (`let (a, b) = (10, 20)`); a single-element `(v)` is still just grouping
   - Dynamic tuple indexing: `t[i]` with a runtime `int` index (bounds-checked) when all members share a type; constant `t[0]` always works
   - Destructuring also works on arrays and text, with an optional `...rest` to capture the remainder
   - Destructuring patterns nest: `((a, b), ...rest) = e` over nested tuples, arrays of tuples, nested arrays, and text elements
@@ -513,10 +514,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying | 51/51 passed |
-| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse | 182/182 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying | 104/104 passed |
-| Total | 337 test cases | 337/337 passed |
+| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals | 52/52 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors | 190/190 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence | 116/116 passed |
+| Total | 358 test cases | 358/358 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

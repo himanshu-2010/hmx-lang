@@ -650,6 +650,54 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - Full regression: 51/51 integration, 182/182 negative, 104/104 stress/output =
   **337**; bison conflicts unchanged at 6; zero compiler warnings.
 
+### 0.A8 — Bare tuple literals — DONE
+- **Design (locked):** a comma-separated `(v0, v1, ...)` with 2+ elements is a
+  tuple literal expression usable everywhere a tuple value is legal — `let`/
+  `const` binding, function argument, `return (a, b)`, tuple member, array
+  element, destructure RHS. A single-element `(v)` stays plain grouping
+  (passthrough, type of `v`), so `(1, 2)` is a tuple but `(3)` is `int`.
+  Member types are inferred from the element expressions and checked against an
+  optional annotation. Reuses the existing tuple machinery end to end:
+  `expr_tuple_members` on the literal gives the member descs, tuple struct
+  typedefs carry it through codegen, and indexing/destructuring/multi-assign
+  work unchanged.
+- **Parser:** the `factor` `'(' expression ')'` rule is replaced by
+  `'(' args ')'` (single element → the element itself; 2+ → `TupleLiteral`).
+  The 6 bison shift/reduce conflicts are unchanged, across the exact same 5
+  states. Latent-bug fix in all four return-type productions (fn_decl 0-arg
+  `$6`, fn_decl arg `$7`, lambda 0-arg `$5`, lambda arg `$6`): copy
+  `return_desc = *$N` **before** `std::move($N->tuple_members)` — the move was
+  emptying the tuple members, so tuple-returning function values
+  (`let mk = lambda(b: int) -> (int, int) { return (b, b + 1) }; mk(41)`)
+  failed tuple typing at the call site.
+- **AST:** `TupleLiteral` (children vector, line) after `ArrayLiteral`.
+- **Resolver:** `resolve_expr` TupleLiteral case (resolve each child, build the
+  tuple desc) and `expr_tuple_members` case (recurses into children). Existing
+  tuple-returning fn-value call and ArrayIndex paths now also cover literals.
+  Pre-existing bug fix: `foreach` over an array of tuples
+  (`for (pt in pts)` where `pts` is `[(int, int)]`) now passes the element's
+  `tuple_members` when defining the loop variable, so `pt[0]`/`pt[1]` resolve.
+- **Codegen:** `collect_lambdas_expr` TupleLiteral case registers the member
+  typedefs; `emit_expr` emits the aggregate struct literal
+  `(sd_tuple_<mangle>){ v0, v1, ... }`. Pre-existing bug fix: `emit_expr` for a
+  `BinaryExpr` now parenthesizes child `BinaryExpr` nodes — previously
+  `(2 + 3) * 4` emitted C `2 + 3 * 4` (= 14), and `2 * (3 + 4)` emitted
+  `2 * 3 + 4` (= 10); the paren groups silently vanished in the generated C.
+  SYNTAX.md §8.1 documented `(2 + 3) * 4 // 20` but no test exercised mixed
+  precedence through parens, so it had never been caught.
+- **Tests:** `tuple_literals.hmx` fixture (basic/nested/heterogeneous literals,
+  literal as arg, literal returns incl. fn-value, array-of-tuples +
+  `foreach`, tuple-of-arrays, direct destructure, `const`, grouping
+  precedence); 8 new negatives (print, annotated mismatch, arity mismatch,
+  single-element-not-tuple, index out of range, `+` on tuples, ternary, `length`);
+  12 new stress (literal members/nested/arg, heterogeneous, fn-value return,
+  array-of + foreach, const, destructure, single-value return, tuple-of-arrays,
+  grouping precedence `20/14/-4/7`).
+- Docs: SYNTAX.md §5.4 (tuple literals, single-element = grouping) + §8.1 note;
+  this entry.
+- Full regression: 52/52 integration, 190/190 negative, 116/116 stress/output =
+  **358**; bison conflicts unchanged at 6; zero compiler warnings.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.
@@ -661,11 +709,14 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - `else if` chains are implemented and covered by `else_if.hmx`.
 - Ternary expressions, explicit numeric casts, and immutable `const` bindings are implemented.
 - Closures: calling an immediately-returned function value (`make()(x)`) is not parseable —
-  use `let g = make(); g(x)`. Bare tuple literals (`let t = (1, 2)`) are not in the grammar;
-  get tuples from function returns. Direct forward calls to capturing functions defined later
+  use `let g = make(); g(x)`. Direct forward calls to capturing functions defined later
   are not capture-validated (works when the captured var is in scope at the call site;
   otherwise a gcc-stage error is accepted). Capturing functions can't be recursive refs
   through fn-value types (identical closure types only); recursion works via direct calls.
+- Tuple element assignment (`t[0] = x`) is not supported (per SYNTAX.md §5.4).
+- Parenthesized arithmetic grouping is fixed (0.A8); empty block bodies `{}` remain
+  unparseable — `stmt_list` requires ≥ 1 statement, and the empty production was
+  rejected after it inflated bison conflicts 6 → 342 (documented limitation).
 
 ## Relevant files
 - `src/lexer.l`, `src/parser.y`, `src/ast.hpp/cpp`, `src/type_resolver.hpp/cpp`, `src/codegen.hpp/cpp`, `src/main.cpp`

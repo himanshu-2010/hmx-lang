@@ -1560,6 +1560,57 @@ test_error "use_reserved_keyword" \
     }' \
     "Parse error"
 
+test_error "tuple_literal_print" \
+    'fn main() {
+        print((1, 2))
+    }' \
+    "cannot print a tuple"
+
+test_error "tuple_literal_annotated_mismatch" \
+    'fn main() {
+        let t: (int, int) = (1, "x")
+    }' \
+    "declared as \(int, int\) but initialized with \(int, text\)"
+
+test_error "tuple_literal_arity_mismatch" \
+    'fn main() {
+        let t: (int, int) = (1, 2, 3)
+    }' \
+    "declared as \(int, int\) but initialized with \(int, int, int\)"
+
+test_error "tuple_literal_single_elem_not_tuple" \
+    'fn main() {
+        let t: (int, int) = (5)
+    }' \
+    "declared as tuple but initialized with int"
+
+test_error "tuple_literal_index_out_of_range" \
+    'fn main() {
+        let t = (1, 2)
+        print(t[2])
+    }' \
+    "tuple index 2 out of range"
+
+test_error "tuple_literal_binary_op" \
+    'fn main() {
+        let t = (1, 2) + (3, 4)
+    }' \
+    "not defined for type tuple"
+
+test_error "tuple_literal_ternary" \
+    'fn main() {
+        let c = true
+        let t = c ? (1, 2) : (3, 4)
+    }' \
+    "ternary branches cannot be tuples"
+
+test_error "tuple_literal_length" \
+    'fn main() {
+        let t = (1, 2)
+        print(length(t))
+    }' \
+    "builtin 'length' expects text or array, got tuple"
+
 echo "Negative Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"
 [ $FAIL -eq 0 ]

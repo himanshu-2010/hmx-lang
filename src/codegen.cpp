@@ -414,6 +414,12 @@ void CodeGen::collect_lambdas_expr(Expression* expr) {
         for (auto& a : call->args) collect_lambdas_expr(a.get());
     } else if (auto* arr = dynamic_cast<ArrayLiteral*>(expr)) {
         for (auto& e : arr->elements) collect_lambdas_expr(e.get());
+    } else if (auto* tup = dynamic_cast<TupleLiteral*>(expr)) {
+        TypeDesc d;
+        d.type = TypeKind::Tuple;
+        d.tuple_members = tup->resolved_members;
+        register_tuple_types_deep(d);
+        for (auto& v : tup->values) collect_lambdas_expr(v.get());
     } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->base) collect_lambdas_expr(idx->base.get());
         collect_lambdas_expr(idx->index.get());
@@ -975,6 +981,13 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                  << arr->elements.size() << ", " << arr->elements.size() << ", sizeof("
                  << c_type_for_desc(arr->elem) << "))";
         }
+    } else if (auto* tup = dynamic_cast<TupleLiteral*>(expr)) {
+        out_ << "(" << tuple_name(tup->resolved_members) << "){ ";
+        for (size_t i = 0; i < tup->values.size(); i++) {
+            if (i > 0) out_ << ", ";
+            emit_expr(tup->values[i].get());
+        }
+        out_ << " }";
     } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->base) {
             if (idx->is_tuple) {
@@ -1066,9 +1079,15 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
             out_ << ")";
         } else {
             if (parenthesize) out_ << "(";
+            bool pl = dynamic_cast<BinaryExpr*>(bin->left.get()) != nullptr;
+            bool pr = dynamic_cast<BinaryExpr*>(bin->right.get()) != nullptr;
+            if (pl) out_ << "(";
             emit_expr(bin->left.get());
+            if (pl) out_ << ")";
             out_ << " " << bin->op << " ";
+            if (pr) out_ << "(";
             emit_expr(bin->right.get());
+            if (pr) out_ << ")";
             if (parenthesize) out_ << ")";
         }
     }

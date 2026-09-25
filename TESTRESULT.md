@@ -519,3 +519,19 @@ cd build && cmake .. && make && cd ..
 > latent `expr_function_type` bug (full function-value calls returning the callee's
 > type instead of the call result) was fixed as part of this work. Suites rerun at
 > 51/182/104 = **337**.
+>
+> **0.A8 addition:** bare **tuple literal** expressions — `(1, 2)`, nested
+> `(4, (5, 6))`, heterogeneous `(42, "hi", true)`, `([1, 2], [3, 4])`, arrays of
+> literals `[(2, 3), (7, 8)]` — are now first-class in the grammar (the
+> `factor` paren rule now accepts an `args` list; single-element `(v)` remains
+> plain grouping). They work in every tuple position: `let`/`const` binding,
+> direct function arguments (`swap((3, 4))`), `return (a, b)`, destructuring
+> `let (a, b) = (10, 20)`, and as function-value tuple returns. The pre-existing
+> codegen bug where paren groups silently vanished in generated C is fixed —
+> `(2 + 3) * 4` now emits `(2 + 3) * 4` (= 20, previously `2 + 3 * 4` = 14) and
+> `2 * (3 + 4)` similarly. Two more pre-existing latent bugs fixed en route:
+> tuple-returning function-value calls lost their tuple members due to a
+> copy-after-move in the four return-type parser productions, and `foreach` over
+> an array of tuples now binds the loop variable's member types. Tuples remain
+> immutable values — element assignment (`t[0] = x`) is still unsupported.
+> Suites rerun at 52/190/116 = **358**, conflicts still exactly 6.

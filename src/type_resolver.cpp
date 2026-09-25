@@ -328,6 +328,9 @@ std::vector<TypeDesc> TypeResolver::expr_tuple_members(Expression* expr) {
             call->fn_type.fn_info->ret.type == TypeKind::Tuple)
             return call->fn_type.fn_info->ret.tuple_members;
     }
+    if (auto* tup = dynamic_cast<TupleLiteral*>(expr)) {
+        return tup->resolved_members;
+    }
     if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->resolved_type == TypeKind::Tuple) return idx->elem.tuple_members;
     }
@@ -1010,6 +1013,18 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             arr->elem = first;
             result = TypeKind::Array;
         }
+    } else if (auto* tup = dynamic_cast<TupleLiteral*>(expr)) {
+        tup->resolved_members.clear();
+        tup->resolved_members.reserve(tup->values.size());
+        for (size_t i = 0; i < tup->values.size(); i++) {
+            resolve_expr(tup->values[i].get());
+            TypeDesc m = expr_desc(tup->values[i].get());
+            if (m.type == TypeKind::Unknown) {
+                throw err(line(), "cannot infer tuple member type");
+            }
+            tup->resolved_members.push_back(m);
+        }
+        result = TypeKind::Tuple;
     } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->base) {
             TypeKind bt = resolve_expr(idx->base.get());
@@ -1528,7 +1543,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                     "foreach cannot infer element type for this array");
             }
             fe->elem = ed;
-            define(fe->value_name, ed.type, true, ed.element());
+            define(fe->value_name, ed.type, true, ed.element(), ed.tuple_members);
         } else {
             fe->elem = TypeDesc{TypeKind::Char, {}, {}, {}};
             define(fe->value_name, TypeKind::Char);

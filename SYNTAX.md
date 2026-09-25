@@ -291,8 +291,8 @@ growable built-ins are described in §13.4.
 ### 5.4 Tuple Types **[Implemented]**
 
 A tuple is an ordered, fixed-size group of 2+ values of possibly different types.
-Tuples exist only as first-class values produced by functions — there is no tuple
-literal expression.
+Tuples are first-class values: they can be produced by functions and by bare
+tuple literal expressions.
 
 ```hmx
 fn divmod(a: int, b: int) -> (int, int) {
@@ -303,10 +303,21 @@ fn make_pair() -> (int, text) {
     return 7, "hi"
 }
 
+fn swap(t: (int, int)) -> (int, int) {
+    return (t[1], t[0])
+}
+
 fn main() {
     let (q, r) = divmod(17, 5)   // destructuring let
     let pair = divmod(10, 3)     // whole-tuple variable
     let annotated: (int, int) = divmod(5, 2)
+
+    let lit = (1, 2)             // bare tuple literal
+    let nested = (4, (5, 6))     // nested literal
+    let mix = (42, "hi", true)   // heterogeneous literal
+    let swapped = swap((3, 4))   // literal passed directly as an argument
+    let grid = [(2, 3), (7, 8)]  // array of tuple literals
+    let (a, b) = (10, 20)        // destructuring straight from a literal
 
     print(pair[0])               // constant index access
     print(pair[1])
@@ -314,6 +325,14 @@ fn main() {
     (q, r) = divmod(20, 7)       // multi-assignment
 }
 ```
+
+A comma-separated pair or larger `(v0, v1, ...)` is a tuple literal expression.
+A single-element parenthesized expression `(v)` is still just grouping and has
+the type of `v` — it is never a one-member tuple. The same parenthesized form is
+used everywhere a tuple is expected: `return (a, b)`, a function argument, a
+whole-tuple `let`/`const`, a tuple member, or the right side of a destructure.
+The member types are inferred from the element expressions; an annotation
+(`let t: (int, int) = ...`) is checked against the inferred member types.
 
 Rules:
 

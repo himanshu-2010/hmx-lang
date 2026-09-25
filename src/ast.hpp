@@ -160,6 +160,12 @@ struct ArrayLiteral : Expression {
     explicit ArrayLiteral(std::vector<ExprPtr> e) : elements(std::move(e)) {}
 };
 
+struct TupleLiteral : Expression {
+    std::vector<ExprPtr> values;
+    std::vector<TypeDesc> resolved_members;   // member descriptors after resolution
+    explicit TupleLiteral(std::vector<ExprPtr> v) : values(std::move(v)) {}
+};
+
 struct ArrayIndexExpr : Expression {
     std::string name;                       // valid when base == null (direct indentifier)
     ExprPtr base;                           // non-null for chained indexing (a[0][1])

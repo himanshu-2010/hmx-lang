@@ -1010,8 +1010,8 @@ fn_decl
             f->has_return_type = true;
             f->return_type = $6->type;
             f->return_elem = $6->elem ? *$6->elem : TypeDesc{};
-            if (f->return_type == TypeKind::Tuple) f->return_tuple_members = std::move($6->tuple_members);
             f->return_desc = *$6;
+            if (f->return_type == TypeKind::Tuple) f->return_tuple_members = std::move($6->tuple_members);
             delete $6;
             for (auto& s : *$8) {
                 f->body.push_back(std::move(s));
@@ -1045,8 +1045,8 @@ fn_decl
             f->has_return_type = true;
             f->return_type = $7->type;
             f->return_elem = $7->elem ? *$7->elem : TypeDesc{};
-            if (f->return_type == TypeKind::Tuple) f->return_tuple_members = std::move($7->tuple_members);
             f->return_desc = *$7;
+            if (f->return_type == TypeKind::Tuple) f->return_tuple_members = std::move($7->tuple_members);
             delete $7;
             for (auto& s : *$9) {
                 f->body.push_back(std::move(s));
@@ -1247,8 +1247,8 @@ factor
             lam->has_return_type = true;
             lam->return_type = $5->type;
             lam->return_elem = $5->elem ? *$5->elem : TypeDesc{};
-            if (lam->return_type == TypeKind::Tuple) lam->return_tuple_members = std::move($5->tuple_members);
             lam->return_desc = *$5;
+            if (lam->return_type == TypeKind::Tuple) lam->return_tuple_members = std::move($5->tuple_members);
             delete $5;
             for (auto& s : *$7) {
                 lam->body.push_back(std::move(s));
@@ -1278,8 +1278,8 @@ factor
             lam->has_return_type = true;
             lam->return_type = $6->type;
             lam->return_elem = $6->elem ? *$6->elem : TypeDesc{};
-            if (lam->return_type == TypeKind::Tuple) lam->return_tuple_members = std::move($6->tuple_members);
             lam->return_desc = *$6;
+            if (lam->return_type == TypeKind::Tuple) lam->return_tuple_members = std::move($6->tuple_members);
             delete $6;
             for (auto& s : *$8) {
                 lam->body.push_back(std::move(s));
@@ -1310,9 +1310,14 @@ factor
         {
             $$ = new CastExpr(TypeKind::Decimal, ExprPtr($1));
         }
-    | '(' expression ')'
+    | '(' args ')'
         {
-            $$ = $2;
+            if ($2->size() == 1) {
+                $$ = (*$2)[0].release();
+            } else {
+                $$ = new TupleLiteral(std::move(*$2));
+            }
+            delete $2;
         }
     ;
 

@@ -1,0 +1,83 @@
+const ORIGIN = (0, 0)
+
+fn swap(t: (int, int)) -> (int, int) {
+    return (t[1], t[0])
+}
+
+fn pair() -> (int, int) {
+    return (7, 9)
+}
+
+fn main() {
+    // basic literal bound to a variable
+    let t = (1, 2)
+    print(t[0], t[1])
+
+    // nested tuple literal
+    let n = (4, (5, 6))
+    print(n[0], n[1][0], n[1][1])
+
+    // tuple literal passed directly as an argument
+    let s = swap((3, 4))
+    print(s[0], s[1])
+
+    // tuple literal from a function return
+    let p = pair()
+    print(p[0], p[1])
+
+    // annotated tuple var with a literal
+    let a: (int, int) = (10, 20)
+    print(a[0] + a[1])
+
+    // tuple literal as a single-value return
+    let id = pair()
+    print(id[0], id[1])
+
+    // function stored as a value, returning a tuple literal
+    let mk = lambda(b: int) -> (int, int) {
+        return (b, b + 1)
+    }
+    let r = mk(41)
+    print(r[0], r[1])
+
+    // array of tuples built from literals
+    let grid = [(3, 4), (5, 6)]
+    print(grid[0][0], grid[0][1], grid[1][1])
+
+    // heterogeneous tuple literal
+    let mix = (42, "hello", true)
+    print(mix[0], mix[1], mix[2])
+
+    // tuple of arrays from literals
+    let duo = ([1, 2], [3, 4])
+    print(duo[0][1], duo[1][0])
+
+    // foreach over an array of tuples built from literals
+    let pts = [(2, 3), (7, 8)]
+    foreach (pt in pts) {
+        print(pt[0] + pt[1])
+    }
+
+    // destructuring directly from a literal
+    let (a1, b1) = (10, 20)
+    print(a1, b1)
+
+    // const holding a tuple literal
+    print(ORIGIN[0] + ORIGIN[1])
+
+    // tuple literal feeding a function-typed partial application result
+    let apply = lambda(f: fn(int) -> int, x: int) -> int {
+        return f(x)
+    }
+    let dbl = lambda(n: int) -> int { return n * 2 }
+    let gt = (10, apply(dbl, 21))
+    print(gt[1])
+
+    // tuple literal member inside a nested tuple
+    let deep = (1, (2, (3, 4)))
+    print(deep[0], deep[1][0], deep[1][1][1])
+
+    // group arithmetic through a parenthesized literal-shaped expression
+    let total = (2 + 3) * 4
+    print(total)
+}
