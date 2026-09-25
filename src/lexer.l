@@ -48,6 +48,7 @@
 "or"              { return OR; }
 "not"             { return NOT; }
 "as"              { return AS; }
+"use"             { return USE; }
 
 "int"             { return TYPE_INT; }
 "decimal"         { return TYPE_DECIMAL; }
@@ -69,7 +70,7 @@
 
 \'[^\'\\]\'        { yylval.sval = strdup(yytext + 1); yylval.sval[1] = '\0'; return CHAR; }
 
-[a-zA-Z_][a-zA-Z0-9_]* { yylval.sval = strdup(yytext); return IDENTIFIER; }
+([a-zA-Z_]|[^\x00-\x7F])([a-zA-Z0-9_]|[^\x00-\x7F])* { yylval.sval = strdup(yytext); return IDENTIFIER; }
 
 "{"               { return '{'; }
 "}"               { return '}'; }

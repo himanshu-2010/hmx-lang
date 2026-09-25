@@ -9,9 +9,13 @@
 
 struct CompileError : std::runtime_error {
     int line;
+    std::string file;
     CompileError(int line, const std::string& msg)
         : std::runtime_error("Error [line " + std::to_string(line) + "]: " + msg),
           line(line) {}
+    CompileError(int line, const std::string& msg, const std::string& file)
+        : std::runtime_error("Error [" + file + ":" + std::to_string(line) + "]: " + msg),
+          line(line), file(file) {}
 };
 
 struct FunctionSig {
@@ -59,6 +63,8 @@ private:
     bool in_function_ = false;
     bool allow_void_call_ = false;
     int current_line_ = 0;
+    std::string entry_file_;               // entry source path (file-tagged diagnostics compare against this)
+    std::string current_file_;             // file of the function currently being resolved
     int loop_depth_ = 0;
     std::vector<int> switch_entry_loop_depths_;
     std::vector<Statement*> lex_loop_stack_;       // loops whose bodies lexically enclose the current stmt
@@ -95,4 +101,7 @@ private:
     bool is_loop_stmt(const Statement* stmt) const;
     void require_nonlocal_call(const std::string& fname, const FunctionDecl* cdecl, int line);
     TypeKind infer_from_literal(Expression* expr);
+
+    CompileError err(int line, const std::string& msg);                    // tags current_file_ (entry-aware)
+    CompileError err(int line, const std::string& msg, const std::string& file); // explicit file (entry-aware)
 };

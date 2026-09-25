@@ -1,0 +1,12 @@
+// Unicode identifiers: any non-ASCII (UTF-8) byte is a valid identifier char.
+fn añadir(a: int, b: int) -> int {
+    return a + b
+}
+fn 日本語(x: int) -> int {
+    return x + 1000
+}
+fn main() {
+    let número = 5
+    let çàñ = "unicode"
+    print(número, añadir(número, 2), çàñ, length(çàñ), 日本語(1))
+}

@@ -259,6 +259,7 @@ struct CapturedVar {
 
 struct FunctionDecl : Statement {
     std::string name;
+    std::string file;                            // source .hmx file (filled by module loader)
     struct Param {
         std::string name;
         TypeKind type;
@@ -301,4 +302,6 @@ struct ExprStmt : Statement {
 
 struct Program : ASTNode {
     std::vector<StmtPtr> statements;
+    std::vector<std::string> use_files;           // `use "path.hmx"` at top of file
+    std::string source_file;                      // entry .hmx path (set by driver)
 };

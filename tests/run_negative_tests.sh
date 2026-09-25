@@ -37,6 +37,40 @@ test_error() {
 
 echo "=== Running Negative / Error Handling Tests ==="
 
+# Name, entry path (relative to temp dir), then repeated "path|content" pairs.
+# The entry is compiled and the combined output must match expected_pattern.
+test_error_module() {
+    local test_name="$1"
+    local entry="$2"
+    local expected_pattern="$3"
+    shift 3
+    local d="$TMPDIR/_mod/${test_name}"
+    rm -rf "$d"
+    while [ $# -gt 0 ]; do
+        local rel="$1"
+        local content="$2"
+        shift 2
+        mkdir -p "$d/$(dirname "$rel")"
+        printf '%s\n' "$content" > "$d/$rel"
+    done
+    local file="$d/$entry"
+    local output
+    set +e
+    output=$("$BIN" run "$file" 2>&1)
+    local exit_code=$?
+    set -e
+    if [ $exit_code -ne 0 ] && echo "$output" | grep -qiE "$expected_pattern"; then
+        echo "PASS (Negative): $test_name"
+        PASS=$((PASS+1))
+    else
+        echo "FAIL (Negative): $test_name"
+        echo "   Expected pattern: $expected_pattern"
+        echo "   Got exit code $exit_code with output:"
+        echo "$output" | sed 's/^/   /'
+        FAIL=$((FAIL+1))
+    fi
+}
+
 test_error "decl_type_mismatch" \
     'fn main() {
         let x: int = "text"
@@ -1106,6 +1140,91 @@ test_error "variadic_wrong_type" \
     "type mismatch: variadic argument 2 of 'f' expects int, got text"
 
 echo ""
+test_error_module "use_missing_file" "main.hmx" "cannot open module" \
+    "main.hmx" 'use "lib/nope.hmx"
+    fn main() {
+        print(0)
+    }'
+
+test_error_module "use_non_hmx" "main.hmx" "must be a .hmx file" \
+    "lib/math.txt" 'fn sum(a: int, b: int) -> int {
+        return a + b
+    }' \
+    "main.hmx" 'use "lib/math.txt"
+    fn main() {
+        print(0)
+    }'
+
+test_error_module "use_cycle" "main.hmx" "circular module dependency" \
+    "lib/c2.hmx" 'use "c1.hmx"
+    fn fc2() {
+        print(2)
+    }' \
+    "lib/c1.hmx" 'use "c2.hmx"
+    fn fc1() {
+        print(1)
+    }' \
+    "main.hmx" 'use "lib/c1.hmx"
+    fn main() {
+        fc1()
+    }'
+
+test_error_module "use_cycle_to_entry" "main.hmx" "circular module dependency" \
+    "lib/up.hmx" 'use "../main.hmx"
+    fn up() {
+        print(1)
+    }' \
+    "main.hmx" 'use "lib/up.hmx"
+    fn main() {
+        up()
+    }'
+
+test_error_module "use_not_at_top" "main.hmx" "Parse error" \
+    "lib/math.hmx" 'fn sum(a: int, b: int) -> int {
+        return a + b
+    }' \
+    "main.hmx" 'fn main() {
+        print(1)
+    }
+    use "lib/math.hmx"'
+
+test_error_module "use_dup_function" "main.hmx" "duplicate declaration of function" \
+    "lib/a.hmx" 'fn fa(x: int) -> int {
+        return x + 5
+    }' \
+    "lib/b.hmx" 'fn fa(x: int) -> int {
+        return x + 1
+    }' \
+    "main.hmx" 'use "lib/a.hmx"
+    use "lib/b.hmx"
+    fn main() {
+        print(fa(3))
+    }'
+
+test_error_module "use_module_type_error" "main.hmx" "Error \[.*err\.hmx:4\]" \
+    "lib/err.hmx" 'fn bad() {
+        let x = "a"
+        x = 5
+    }' \
+    "main.hmx" 'use "lib/err.hmx"
+    fn main() {
+        bad()
+    }'
+
+test_error_module "use_module_parse_error" "main.hmx" "parsing failed in module" \
+    "lib/syn.hmx" 'fn broken( {' \
+    "main.hmx" 'use "lib/syn.hmx"
+    fn main() {
+        print(0)
+    }'
+
+test_error "use_reserved_keyword" \
+    'fn main() {
+        let use = 5
+        print(use)
+    }' \
+    "Parse error"
+
 echo "Negative Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"
 [ $FAIL -eq 0 ]

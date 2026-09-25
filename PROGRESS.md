@@ -1,6 +1,6 @@
 # HMX Compiler — Progress Log
 
-Last updated: 2026-09-17
+Last updated: 2026-09-25
 ## Objective
 Implement the HMX transpiler's 8-phase plan (from `PLAN.md`) so users can write full hello-world-capable programs. Multi-stage pipeline: lexer → parser → type resolution → codegen → gcc.
 
@@ -322,6 +322,47 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - Docs: SYNTAX.md §12.6 (non-local exit semantics + restrictions + lowering),
   §12 hoisting bullets updated; README.md features/nested-fn section/tests;
   TESTRESULT.md.
+
+### Milestone (post-plan) — Modules (`use`) + Unicode identifiers — DONE
+- **Design (locked via Q&A):** modules imported with `use "path.hmx"`, allowed only
+  at the very top of a file before any declarations; paths resolve relative to the
+  importing file's directory; `.hmx` extension enforced; imports deduplicate by
+  canonical path (diamond graphs compile each file once); cycles (including a module
+  that `use`s the entry file) are a compile error; top-level functions merge into one
+  program-wide namespace (the existing duplicate-function check applies across files;
+  `main` must come from the entry). Unicode identifiers are opaque UTF-8 — any byte
+  ≥ 0x80 is an identifier character, no normalization — emitted verbatim into the
+  generated C (gcc accepts UTF-8 identifiers).
+- **Lexer:** `"use"` → `USE` keyword; identifier rule widened to
+  `([a-zA-Z_]|[^\x00-\x7F])([a-zA-Z0-9_]|[^\x00-\x7F])*`.
+- **Parser:** `%token USE`; `program : use_list stmt_list` / `use_list` / `use_stmt`
+  (`USE STRING`); conflicts remain exactly 6; `yyerror` no longer exits so module
+  parse failures can be wrapped (`yyparse` return value checked).
+- **AST:** `FunctionDecl::file`; `Program::use_files`; `Program::source_file`.
+- **Loader (main.cpp):** `parse_file` (resets `g_program` + `yylineno`, `fopen`s and
+  parses one file), `assign_file` (stamps each top-level function's subtree with its
+  source file), `load_module_uses` (recursive DFS via a visiting stack: resolves
+  relative paths, canonicalizes, validates `.hmx`, errors on missing file, detects
+  cycles, dedupes, then merges modules into the entry program). Entry open-failure
+  still reports `Error: cannot open file '<path>'`.
+- **Resolver:** `CompileError` gained a file overload formatting
+  `Error [<file>:<line>]: ...`; `err(line, msg)` (plain `Error [line N]` when no file,
+  i.e. entry) and `err(line, msg, file)`; `entry_file_`/`current_file_` tracked in
+  `resolve()`, and per-function in `resolve_stmt` (saved/restored around each
+  FunctionDecl); all 137 `throw CompileError(` sites routed through `err()`; the
+  parity of all 131 pre-existing negative messages is preserved.
+- **Codegen:** per-function `#line` file via `line_file_` + `fn_file(fn)` (module path
+  for imported functions, entry path otherwise), so `gcc` stage errors and recompiles
+  map back to the correct `.hmx`.
+- **Tests:** `test_module` helper + 5 module fixtures in integration; `test_error_module`
+  helper + 9 module/`use` negatives (missing module, non-`.hmx`, cycle, cycle-to-entry,
+  `use` not at top, duplicate fn across modules, module type error with file tag,
+  module parse error, `use` as reserved keyword); `unicode_identifiers.hmx` fixture;
+  `test_module_output`/`test_module_exit_code` helpers + 4 module stress cases and
+  1 unicode stress case.
+- Full regression: 44/44 integration, 140/140 negative, 69/69 stress/output = **253**.
+- Docs: SYNTAX.md §1.6 Modules, §2 keyword table, §3 identifier grammar (unicode),
+  §15 roadmap emptied; README.md features/tests/Remaining Features; TESTRESULT.md.
 
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).

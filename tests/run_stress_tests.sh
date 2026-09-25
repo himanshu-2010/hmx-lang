@@ -9,6 +9,40 @@ mkdir -p "$TMPDIR"
 PASS=0
 FAIL=0
 
+# Name, entry path (relative to temp dir), expected output, then "path|content" pairs.
+test_module_output() {
+    local test_name="$1"
+    local entry="$2"
+    local expected_output="$3"
+    shift 3
+    local d="$TMPDIR/_mod/${test_name}"
+    rm -rf "$d"
+    while [ $# -gt 0 ]; do
+        local rel="$1"
+        local content="$2"
+        shift 2
+        mkdir -p "$d/$(dirname "$rel")"
+        printf '%s\n' "$content" > "$d/$rel"
+    done
+    local file="$d/$entry"
+    local actual_output
+    set +e
+    actual_output=$("$BIN" run "$file" 2>&1)
+    local exit_code=$?
+    set -e
+    if [ $exit_code -eq 0 ] && [ "$actual_output" = "$expected_output" ]; then
+        echo "PASS (Output): $test_name"
+        PASS=$((PASS+1))
+    else
+        echo "FAIL (Output): $test_name"
+        echo "   Expected output:"
+        echo "$expected_output" | sed 's/^/   /'
+        echo "   Got exit code $exit_code with output:"
+        echo "$actual_output" | sed 's/^/   /'
+        FAIL=$((FAIL+1))
+    fi
+}
+
 test_output() {
     local test_name="$1"
     local code="$2"
@@ -43,6 +77,38 @@ test_exit_code() {
 
     local file="$TMPDIR/${test_name}.hmx"
     printf '%s\n' "$code" > "$file"
+
+    set +e
+    "$BIN" run "$file" > /dev/null 2>&1
+    local exit_code=$?
+    set -e
+
+    if [ $exit_code -eq $expected_code ]; then
+        echo "PASS (Exit Code $expected_code): $test_name"
+        PASS=$((PASS+1))
+    else
+        echo "FAIL (Exit Code): $test_name"
+        echo "   Expected exit code: $expected_code"
+        echo "   Got exit code: $exit_code"
+        FAIL=$((FAIL+1))
+    fi
+}
+
+test_module_exit_code() {
+    local test_name="$1"
+    local entry="$2"
+    local expected_code="$3"
+    shift 3
+    local d="$TMPDIR/_mod/${test_name}"
+    rm -rf "$d"
+    while [ $# -gt 0 ]; do
+        local rel="$1"
+        local content="$2"
+        shift 2
+        mkdir -p "$d/$(dirname "$rel")"
+        printf '%s\n' "$content" > "$d/$rel"
+    done
+    local file="$d/$entry"
 
     set +e
     "$BIN" run "$file" > /dev/null 2>&1
@@ -946,6 +1012,59 @@ test_output "nonlocal_non_main_owner" \
         outer()
     }' \
     "$(printf 'iter\nafter')"
+
+test_output "unicode_identifiers" \
+    'fn añadir(a: int, b: int) -> int {
+        return a + b
+    }
+    fn main() {
+        let número = 4
+        print(añadir(número, 6), "ñ", número)
+    }' \
+    '10 ñ 4'
+
+test_module_output "mod_output_basic" "main.hmx" \
+    '3
+42' \
+    "lib/math.hmx" 'fn sum(a: int, b: int) -> int {
+        return a + b
+    }
+    fn twice(x: int) -> int {
+        return x * 2
+    }' \
+    "main.hmx" 'use "lib/math.hmx"
+    fn main() {
+        print(sum(1, 2))
+        print(twice(21))
+    }'
+
+test_module_output "mod_diamond_dedupe" "main.hmx" \
+    '10 18' \
+    "lib/d.hmx" 'fn dvalue() -> int {
+        return 9
+    }' \
+    "lib/e1.hmx" 'use "d.hmx"
+    fn e1() -> int {
+        return dvalue() + 1
+    }' \
+    "lib/e2.hmx" 'use "d.hmx"
+    fn e2() -> int {
+        return dvalue() * 2
+    }' \
+    "main.hmx" 'use "lib/e1.hmx"
+    use "lib/e2.hmx"
+    fn main() {
+        print(e1(), e2())
+    }'
+
+test_module_exit_code "mod_exit_code" "main.hmx" 42 \
+    "lib/code.hmx" 'fn pick() -> int {
+        return 42
+    }' \
+    "main.hmx" 'use "lib/code.hmx"
+    fn main() -> int {
+        return pick()
+    }'
 
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"

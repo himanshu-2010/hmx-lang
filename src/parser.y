@@ -15,7 +15,6 @@ extern char* yytext;
 
 void yyerror(const char* s) {
     fprintf(stderr, "Parse error [line %d]: %s near '%s'\n", yylineno, s, yytext);
-    exit(1);
 }
 
 Program* g_program = nullptr;
@@ -49,6 +48,7 @@ Program* g_program = nullptr;
 %token ARROW
 %token ELLIPSIS
 %token AS
+%token USE
 
 %type <ival> NUMBER
 %type <fval> DECIMAL
@@ -66,19 +66,44 @@ Program* g_program = nullptr;
 %type <tlist> fn_type_params
 %type <program> program
 %type <stmts> stmt_list
+%type <idlist> use_list
+%type <sval> use_stmt
 
 %%
 
 program
-    : stmt_list
+    : use_list stmt_list
         {
             $$ = new Program();
-            for (auto& s : *$1) {
+            if ($1) {
+                $$->use_files = std::move(*$1);
+                delete $1;
+            }
+            for (auto& s : *$2) {
                 $$->statements.push_back(std::move(s));
             }
-            delete $1;
+            delete $2;
             g_program = $$;
         }
+    ;
+
+use_list
+    : /* empty */
+        {
+            $$ = nullptr;
+        }
+    | use_list use_stmt
+        {
+            if ($1 == nullptr) {
+                $1 = new std::vector<std::string>();
+            }
+            $1->push_back($2);
+            $$ = $1;
+        }
+    ;
+
+use_stmt
+    : USE STRING         { $$ = $2; }
     ;
 
 stmt_list

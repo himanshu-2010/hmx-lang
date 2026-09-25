@@ -37,6 +37,8 @@ The current compiler supports:
 - Compile-time type checking with line-numbered diagnostics
 - Duplicate declaration detection and definite-return checking
 - Native executables and propagated `main` exit codes
+- Cross-file modules via `use "file.hmx"`, with cycle detection and file-tagged errors
+- Unicode (UTF-8) identifiers throughout
 
 The compiler is functional, but this is still a small language project rather than a
 production compiler. See [SYNTAX.md](SYNTAX.md) for the authoritative reference and
@@ -472,10 +474,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | 38 `.hmx` fixtures | 38/38 passed |
-| Negative | Type, syntax, and resolver errors | 131/131 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params | 65/65 passed |
-| Total | 234 test cases | 234/234 passed |
+| Integration | `.hmx` fixtures incl. tuples, closures, non-local exit, unicode identifiers & modules | 44/44 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures | 140/140 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules & unicode | 69/69 passed |
+| Total | 253 test cases | 253/253 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is
@@ -527,11 +529,8 @@ TESTRESULT.md           Detailed regression report
 
 ## Remaining Features
 
-The compiler's core milestone is complete. The following language features are listed
-as planned and are not implemented yet:
-
-- Namespaces and modules across multiple `.hmx` files
-- Unicode identifiers
+The compiler's core milestone is complete, including cross-file modules (`use`)
+and Unicode identifiers. The roadmap contains no unimplemented language features.
 
 Engineering work still needed around the language includes better source locations,
 more complete expressions, improved portability, a standard library, and a reproducible

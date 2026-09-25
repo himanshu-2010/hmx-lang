@@ -11,6 +11,7 @@ static TypeDesc codegen_param_desc(const FunctionDecl::Param& p) {
 
 std::string CodeGen::generate(Program& program, const std::string& source_file) {
     source_file_ = source_file;
+    line_file_ = source_file;
     TypeResolver resolver;
     resolver.resolve(program);
 
@@ -199,10 +200,12 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     }
     if (main_fn) {
         current_fn_ = main_fn;
+        line_file_ = fn_file(main_fn);
         for (auto& body_stmt : main_fn->body) {
             emit_stmt(body_stmt.get());
         }
         current_fn_ = nullptr;
+        line_file_ = source_file_;
     }
 
     if (!main_fn || !main_fn->has_return_type) {
@@ -213,6 +216,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     for (auto* fn : all_functions_) {
         if (fn->name != "main") {
             current_fn_ = fn;
+            line_file_ = fn_file(fn);
             out_ << emit_function_signature(fn) << " {\n";
             for (auto& body_stmt : fn->body) {
                 emit_stmt(body_stmt.get());
@@ -221,6 +225,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
         }
     }
     current_fn_ = nullptr;
+    line_file_ = source_file_;
     return out_.str();
 }
 
@@ -604,7 +609,7 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
 
 void CodeGen::emit_stmt(Statement* stmt) {
     if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
-        emit_line_directive(var->line, source_file_);
+        emit_line_directive(var->line, line_file_);
         out_ << "    " << (var->is_mutable ? "" : "const ");
         if (var->annotation == TypeKind::Tuple) {
             out_ << tuple_name(var->tuple_members);
@@ -615,7 +620,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         emit_expr(var->initializer.get());
         out_ << ";\n";
     } else if (auto* assign = dynamic_cast<AssignStmt*>(stmt)) {
-        emit_line_directive(assign->line, source_file_);
+        emit_line_directive(assign->line, line_file_);
         out_ << "    " << assign->name;
         if (assign->op == "++" || assign->op == "--") {
             out_ << assign->op << ";\n";
@@ -625,7 +630,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << ";\n";
         }
     } else if (auto* aa = dynamic_cast<ArrayAssignStmt*>(stmt)) {
-        emit_line_directive(aa->line, source_file_);
+        emit_line_directive(aa->line, line_file_);
         TypeKind elem_type = get_expr_type(aa->rhs.get());
         out_ << "    ((" << type_to_c(elem_type) << "*)" << aa->name << ".data)";
         out_ << "[sd_check_index(" << aa->name << ".length, ";
@@ -634,7 +639,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         emit_expr(aa->rhs.get());
         out_ << ";\n";
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
-        emit_line_directive(td->line, source_file_);
+        emit_line_directive(td->line, line_file_);
         std::string tname = tuple_name(td->tuple_members);
         std::string tmp = "__sd_d" + std::to_string(temp_counter_++);
         out_ << "    " << tname << " " << tmp << " = ";
@@ -645,7 +650,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
                  << " = " << tmp << ".f" << i << ";\n";
         }
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
-        emit_line_directive(ma->line, source_file_);
+        emit_line_directive(ma->line, line_file_);
         std::string tname = tuple_name(ma->tuple_members);
         std::string tmp = "__sd_m" + std::to_string(temp_counter_++);
         out_ << "    " << tname << " " << tmp << " = ";
@@ -655,7 +660,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << "    " << ma->names[i] << " = " << tmp << ".f" << i << ";\n";
         }
     } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
-        emit_line_directive(print->line, source_file_);
+        emit_line_directive(print->line, line_file_);
         out_ << "    printf(\"";
         for (size_t i = 0; i < print->args.size(); i++) {
             if (i > 0) out_ << " ";
@@ -669,12 +674,12 @@ void CodeGen::emit_stmt(Statement* stmt) {
         }
         out_ << ");\n";
     } else if (auto* expr_stmt = dynamic_cast<ExprStmt*>(stmt)) {
-        emit_line_directive(expr_stmt->line, source_file_);
+        emit_line_directive(expr_stmt->line, line_file_);
         out_ << "    ";
         emit_expr(expr_stmt->expr.get());
         out_ << ";\n";
     } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
-        emit_line_directive(loop->line, source_file_);
+        emit_line_directive(loop->line, line_file_);
         if (loop->nl_target) {
             out_ << "    jmp_buf _sd_nl_buf" << loop->nl_id << ";\n";
         }
@@ -694,7 +699,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         }
         out_ << "    }\n";
     } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
-        emit_line_directive(fe->line, source_file_);
+        emit_line_directive(fe->line, line_file_);
         TypeKind itype = get_expr_type(fe->iterable.get());
         std::string idx = fe->index_name.empty() ? "_fe" : fe->index_name;
         if (fe->nl_target) {
@@ -738,7 +743,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << "    }\n";
         }
     } else if (auto* while_stmt = dynamic_cast<WhileStmt*>(stmt)) {
-        emit_line_directive(while_stmt->line, source_file_);
+        emit_line_directive(while_stmt->line, line_file_);
         if (while_stmt->nl_target) {
             out_ << "    jmp_buf _sd_nl_buf" << while_stmt->nl_id << ";\n";
         }
@@ -758,7 +763,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         }
         out_ << "    }\n";
     } else if (auto* for_stmt = dynamic_cast<ForStmt*>(stmt)) {
-        emit_line_directive(for_stmt->line, source_file_);
+        emit_line_directive(for_stmt->line, line_file_);
         if (for_stmt->nl_target) {
             out_ << "    jmp_buf _sd_nl_buf" << for_stmt->nl_id << ";\n";
         }
@@ -782,7 +787,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         }
         out_ << "    }\n";
     } else if (auto* do_while = dynamic_cast<DoWhileStmt*>(stmt)) {
-        emit_line_directive(do_while->line, source_file_);
+        emit_line_directive(do_while->line, line_file_);
         if (do_while->nl_target) {
             out_ << "    jmp_buf _sd_nl_buf" << do_while->nl_id << ";\n";
         }
@@ -802,7 +807,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         emit_expr(do_while->condition.get());
         out_ << ");\n";
     } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
-        emit_line_directive(ret->line, source_file_);
+        emit_line_directive(ret->line, line_file_);
         if (ret->values.size() > 1) {
             out_ << "    return (" << tuple_name(ret->return_tuple_members) << "){ ";
             for (size_t i = 0; i < ret->values.size(); i++) {
@@ -818,7 +823,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << "    return;\n";
         }
     } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
-        emit_line_directive(ifs->line, source_file_);
+        emit_line_directive(ifs->line, line_file_);
         out_ << "    if (";
         emit_expr(ifs->condition.get());
         out_ << ") {\n";
@@ -835,7 +840,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         }
         out_ << "\n";
     } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
-        emit_line_directive(sw->line, source_file_);
+        emit_line_directive(sw->line, line_file_);
         out_ << "    switch (";
         emit_expr(sw->value.get());
         out_ << ") {\n";
@@ -855,14 +860,14 @@ void CodeGen::emit_stmt(Statement* stmt) {
         }
         out_ << "    }\n";
     } else if (auto* brk = dynamic_cast<BreakStmt*>(stmt)) {
-        emit_line_directive(brk->line, source_file_);
+        emit_line_directive(brk->line, line_file_);
         if (brk->nonlocal) {
             out_ << "    longjmp(*(jmp_buf*)_sd_nl, 1);\n";
         } else {
             out_ << "    break;\n";
         }
     } else if (auto* cont = dynamic_cast<ContinueStmt*>(stmt)) {
-        emit_line_directive(cont->line, source_file_);
+        emit_line_directive(cont->line, line_file_);
         if (cont->nonlocal) {
             out_ << "    longjmp(*(jmp_buf*)_sd_nl, 2);\n";
         } else {

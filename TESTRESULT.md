@@ -1,14 +1,14 @@
 # HMX Transpiler — Test Execution Report
 
-**Date:** 2026-09-17  
+**Date:** 2026-09-25  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (234 / 234)
+**Status:** ALL TESTS PASSED (253 / 253)
 
 ---
 
 ## Executive Summary
 
-A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **function types, higher-order calls, closures, and non-local exit**:
+A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **function types, higher-order calls, closures, non-local exit, cross-file modules, and Unicode identifiers**:
 1. **`foreach`**: `foreach (x in coll)` and `foreach (i, x in coll)` over arrays and text, value-copy loop variables, with `break`/`continue` support.
 2. **`input()`**: reads a stdin line as `text` (empty string at end of input).
 3. **Conversions**: `tostr`, `parse_int`, `parse_decimal` (runtime error + exit code 1 on malformed input).
@@ -21,11 +21,13 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 10. **Higher-order calls**: calling a variable of function type triggers arity + type checking.
 11. **Closures**: nested functions capture enclosing locals by-value snapshot; heap-allocated env survives enclosing scope; captured variables are read-only.
 12. **Non-local exit**: `break` / `continue` inside a nested function break/continue the nearest loop of the enclosing function (restricted to direct calls from the loop's owner inside the loop).
+13. **Modules**: `use "file.hmx"` at the top of a file imports top-level functions from other `.hmx` files (relative paths, cycle detection, dedupe by canonical path, file-tagged diagnostics for imported-module errors).
+14. **Unicode identifiers**: any non-ASCII UTF-8 byte is a valid identifier character, emitted verbatim into the generated C.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 234
-> - **Passed:** 234
+> - **Total Test Cases Executed:** 253
+> - **Passed:** 253
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -44,7 +46,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (38/38 Passed)
+### 1. Integration Fixtures (44/44 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -84,10 +86,16 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `variadic_defaults.hmx` | **[NEW]** Tier 2 Defaults + Variadic | Default padding, default recursion, variadic `foreach` sum, empty + multi-arg tails | **PASS** |
 | `closures.hmx` | **[NEW]** Closures + HOF | Capture, nested capture, forwarding through fn-value params, recursive closures, shared-array capture, two-closure independence | **PASS** |
 | `nonlocal_exit.hmx` | **[NEW]** Non-local Exit | `break` from nested fn in `loop`, `while`, and `do-while`; `continue` from nested fn in `foreach` and `for` | **PASS** |
+| `unicode_identifiers.hmx` | **[NEW]** Unicode Identifiers | Unicode fn names/params/locals (`añadir`, `日本語`, `número`, `çàñ`) lex, resolve, and emit verbatim | **PASS** |
+| `mod_basic` | **[NEW]** Modules | Entry `use`s `lib/math.hmx`; calls imported `sum`/`twice` cross-file | **PASS** |
+| `mod_chain` | **[NEW]** Module Chain | `a.hmx` itself `use`s `b.hmx`; entry `use`s `a.hmx` (transitive load) | **PASS** |
+| `mod_closures` | **[NEW]** Module Closures | Imported fn returns a closure (`make_adder`) called from entry | **PASS** |
+| `mod_nonlocal` | **[NEW]** Module Non-local | Imported fn uses non-local `break` from a nested fn | **PASS** |
+| `mod_unicode` | **[NEW]** Module Unicode | Unicode identifiers (`ö`, `saludar`) inside an imported module | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (131/131 Passed)
+### 2. Negative & Error Handling Suite (140/140 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -209,10 +217,19 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `closures_return_fn_mismatch` | **[NEW]** Return Function Type | `return h` where `h` has wrong function type | `but function returns` | **PASS** |
 | `closures_return_mismatch` | **[NEW]** Return Kind Mismatch | `return 5` in fn returning function type | `but function returns function` | **PASS** |
 | `closures_call_arity` | **[NEW]** HOF Arity | `f(1, 2)` where `f: fn(int) -> int` | `expects 1 arguments, got 2` | **PASS** |
+| `use_missing_file` | **[NEW]** Module Missing | `use "lib/nope.hmx"` (nonexistent) | `cannot open module` | **PASS** |
+| `use_non_hmx` | **[NEW]** Non-`.hmx` Module | `use "lib/math.txt"` | `must be a .hmx file` | **PASS** |
+| `use_cycle` | **[NEW]** Module Cycle | `c1.hmx` ↔ `c2.hmx` mutual `use` | `circular module dependency` | **PASS** |
+| `use_cycle_to_entry` | **[NEW]** Module→Entry Cycle | module `use`s the entry file | `circular module dependency` | **PASS** |
+| `use_not_at_top` | **[NEW]** Late `use` | `use` statement after declarations | `Parse error` | **PASS** |
+| `use_dup_function` | **[NEW]** Cross-Module Dup | two modules both declare `fa` | `duplicate declaration of function` | **PASS** |
+| `use_module_type_error` | **[NEW]** Module Type Error | type error inside imported `err.hmx` | `Error \[.*err\.hmx:4\]` | **PASS** |
+| `use_module_parse_error` | **[NEW]** Module Parse Error | syntactically broken module | `parsing failed in module` | **PASS** |
+| `use_reserved_keyword` | **[NEW]** Reserved `use` | `let use = 5` | `Parse error` | **PASS** |
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (65/65 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (69/69 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -279,6 +296,10 @@ These tests verify exact runtime output matching and process exit code propagati
 | `nonlocal_break_dowhile` | **[NEW]** Non-local Exit | nested-fn `break` ends a `do-while` at 4 | `4` | **PASS** |
 | `nonlocal_nested_targets` | **[NEW]** Non-local Exit | inner-fn `continue` + outer-fn `break` in one function | `inner 100\ninner 100\nafter 2` | **PASS** |
 | `nonlocal_non_main_owner` | **[NEW]** Non-local Exit | breaker owned by a non-main function | `iter\nafter` | **PASS** |
+| `unicode_identifiers` | **[NEW]** Unicode Identifiers | Unicode fn name + locals with exact Latin-1 output (`ñ`) | `10 ñ 4` | **PASS** |
+| `mod_output_basic` | **[NEW]** Module Output | imported `sum`/`twice` called from entry | `3\n42` | **PASS** |
+| `mod_diamond_dedupe` | **[NEW]** Module Diamond | `e1`/`e2` both `use` `d.hmx` — loaded once, correct results | `10 18` | **PASS** |
+| `mod_exit_code` | **[NEW]** Module Exit Code | `main` returns a value from an imported fn | Exit Code: `42` | **PASS** |
 
 ---
 
@@ -316,8 +337,10 @@ cd build && cmake .. && make && cd ..
 ---
 
 > [!TIP]
-> **Conclusion:** Tier 1 and Tier 2 work, plus function types, higher-order calls, closures, and
-> non-local exit, now lands end-to-end without regressions: unary minus/plus, int-only modulo
+> **Conclusion:** Tier 1 and Tier 2 work, plus function types, higher-order calls, closures,
+> non-local exit, cross-file modules (`use "file.hmx"` with cycle detection and file-tagged
+> diagnostics), and Unicode (UTF-8) identifiers, now lands end-to-end without regressions:
+> unary minus/plus, int-only modulo
 > (incl. compound `%=`), `break`/`continue` loop control, `foreach`, `input()`, `tostr`/`parse_int`/
 > `parse_decimal`, variadic `print`, nested functions, default parameter values, variadic
 > `...type` parameters, `fn(...) -> ...` type annotations, function values as first-class

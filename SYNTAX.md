@@ -38,7 +38,8 @@ standard C reference documentation, but uses HMX's own syntax, types, and conven
 ### 1.1 Program Structure
 
 A HMX program is a sequence of statements and function declarations in a `.hmx` file.
-Execution begins in the `main` function.
+`use` statements at the very top of the file pull in top-level functions from other
+`.hmx` modules (§1.6). Execution begins in the `main` function.
 
 ```hmx
 fn main() {
@@ -78,6 +79,53 @@ different tokens; only `loop` is a keyword.
 HMX prefers type inference. Variables infer their type from their initializer.
 Explicit annotations are optional and additive.
 
+### 1.6 Modules **[Implemented]**
+
+A program can span multiple `.hmx` files. The entry file (the file passed to the
+compiler) is compiled together with every file it imports, transitively.
+
+**Syntax:**
+
+```
+use "<relative or absolute path>"
+```
+
+**Rules:**
+- `use` statements must appear at the very top of a file, before any declarations.
+- Module paths are relative to the directory of the importing file; `.hmx` extension
+  is required.
+- Each file is loaded at most once per program (imports are deduplicated by canonical
+  path), so a diamond `a → b,c → d` layout compiles `d` once.
+- Import cycles (including a module `use`-ing the entry file) are a compile error.
+- Top-level functions from all modules join the same namespace as the entry file; the
+  existing duplicate-function check applies across modules, and `main` must come from
+  the entry file.
+- Diagnostics from imported modules are tagged with the module's path and line, e.g.
+  `Error [lib/math.hmx:12]: ...`. Errors in the entry file use the plain
+  `Error [line 12]: ...` form.
+- Imported modules may themselves use other modules, define closures, capture state,
+  and use non-local `break`/`continue`, with no restrictions.
+
+```hmx
+// main.hmx
+use "lib/math.hmx"
+
+fn main() {
+    print(area_of_circle(2.0))
+}
+```
+
+```hmx
+// lib/math.hmx
+fn area_of_circle(r: decimal) -> decimal {
+    return 3.14159 * r * r
+}
+```
+
+When the entry file fails to parse, the compiler reports `Error: parsing failed`;
+when an imported module fails to parse, it reports
+`Error: parsing failed in module '<path>'`.
+
 ---
 
 ## 2. Keywords
@@ -106,6 +154,7 @@ The following words are reserved and cannot be used as identifiers:
 | `char` / `byte` | Integer-like types |
 | `switch` / `case` / `default` | Multi-way branch |
 | `as` | Explicit numeric cast |
+| `use` | Import a module (§1.6) |
 
 ---
 
@@ -115,23 +164,28 @@ Identifiers name variables and functions.
 
 **Syntax:**
 ```
-identifier  : [a-zA-Z_][a-zA-Z0-9_]*
+identifier  : [a-zA-Z_][a-zA-Z0-9_]*            (ASCII identifiers)
+            : any sequence of non-ASCII (UTF-8) bytes  (Unicode identifiers)
 ```
 
 **Rules:**
-- Must start with a letter or underscore.
-- May contain letters, digits, and underscores.
+- An identifier starts with a letter or underscore, or is a sequence of non-ASCII
+  (UTF-8) bytes.
+- May contain ASCII letters, digits, and underscores; Unicode identifiers may contain
+  any non-ASCII byte.
+- Unicode identifiers are treated as opaque UTF-8: no normalization or case folding.
+  They are emitted verbatim into the generated C (gcc accepts them verbatim too).
 - Cannot be a reserved keyword (§2).
 
 ```hmx
 let count = 5
 let _private = 10
+let número = 7
+let 日本語 = "text"
 fn addNumbers() {
     print(1)
 }
 ```
-
-**Out of scope:** unicode/identifiers with non-ASCII characters.
 
 ---
 
@@ -1374,7 +1428,6 @@ are **not** part of the current core spec or compiler. None of them are usable y
 
 | Feature | Notes |
 |---|---|
-| Namespaces / modules | Splitting a program across `.hmx` files. |
 
 > **Note:** as features are confirmed and added, they will be moved from this roadmap
 > into their proper section above and, where relevant, implemented in the compiler.

@@ -13,6 +13,10 @@ public:
 private:
     std::ostringstream out_;
     std::string source_file_;
+    std::string line_file_;    // file for #line directives in the current function
+    std::string fn_file(const FunctionDecl* fn) const {
+        return (fn && !fn->file.empty()) ? fn->file : source_file_;
+    }
     std::map<std::vector<TypeDesc>, std::string> tuple_types_;
     std::vector<FunctionDecl*> all_functions_;
     std::map<std::string, FunctionDecl*> functions_by_name_;
