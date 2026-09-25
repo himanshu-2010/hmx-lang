@@ -1405,6 +1405,82 @@ test_module_exit_code "mod_exit_code" "main.hmx" 42 \
         return pick()
     }'
 
+test_output "curry_partial_named" \
+    'fn add(a: int, b: int, c: int) -> int {
+        return a + b + c
+    }
+    fn main() {
+        let f = add(1)
+        print(f(2, 39))
+    }' \
+    "42"
+
+test_output "curry_partial_value" \
+    'fn twice(a: int, b: int) -> int {
+        return a * b
+    }
+    fn main() {
+        let f = twice
+        let ten = f(10)
+        print(ten(4))
+    }' \
+    "40"
+
+test_output "curry_lambda_capture" \
+    'fn scale(c: int) -> fn(int) -> int {
+        return lambda(x: int) -> int {
+            return x * c
+        }
+    }
+    fn main() {
+        let by3 = scale(3)
+        print(by3(14))
+    }' \
+    "42"
+
+test_output "curry_nested_lambda" \
+    'fn main() {
+        let outer = lambda(a: int) -> fn(int) -> int {
+            return lambda(b: int) -> int {
+                return a - b
+            }
+        }
+        let sub10 = outer(20)
+        print(sub10(1))
+    }' \
+    "19"
+
+test_output "curry_void_lambda_statement" \
+    'fn main() {
+        let tick = lambda() {
+            print(9)
+        }
+        tick()
+    }' \
+    "9"
+
+test_output "curry_hof_partial" \
+    'fn apply(f: fn(int) -> int, x: int) -> int {
+        return f(x)
+    }
+    fn add(a: int, b: int) -> int {
+        return a + b
+    }
+    fn main() {
+        print(apply(add(40), 2))
+    }' \
+    "42"
+
+test_exit_code "curry_exit_chain" \
+    'fn add(a: int, b: int) -> int {
+        return a + b
+    }
+    fn main() -> int {
+        let inc = add(1)
+        return inc(41)
+    }' \
+    42
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

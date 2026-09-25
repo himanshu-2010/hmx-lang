@@ -341,8 +341,13 @@ TypeDesc TypeResolver::expr_function_type(Expression* expr) {
         if (!s) s = find_outer_symbol(id->name);
         if (s && s->type == TypeKind::Function) return s->desc;
     }
+    if (auto* lam = dynamic_cast<LambdaExpr*>(expr)) {
+        return lam->lambda_type;
+    }
     if (auto* call = dynamic_cast<CallExpr*>(expr)) {
-        if (call->is_function_value_call && call->fn_type.fn_info) return call->fn_type;
+        if (call->is_partial) return call->partial_ftype;
+        if (call->is_function_value_call && call->fn_type.fn_info)
+            return call->fn_type.fn_info->ret;
         const FunctionSig* sig = get_function(call->name);
         if (sig && sig->return_type == TypeKind::Function) return sig->return_desc;
     }
@@ -530,6 +535,34 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         result = TypeKind::Bool;
     else if (dynamic_cast<CharLiteral*>(expr))
         result = TypeKind::Char;
+    else if (auto* lam = dynamic_cast<LambdaExpr*>(expr)) {
+        auto synth = std::make_unique<FunctionDecl>();
+        synth->name = "__lam_" + std::to_string(lambda_counter_++);
+        while (functions_.count(synth->name) || fn_decls_.count(synth->name)) {
+            synth->name = "__lam_" + std::to_string(lambda_counter_++);
+        }
+        synth->params = std::move(lam->params);
+        synth->body = std::move(lam->body);
+        synth->has_return_type = lam->has_return_type;
+        synth->return_type = lam->return_type;
+        synth->return_elem = lam->return_elem;
+        synth->return_tuple_members = std::move(lam->return_tuple_members);
+        synth->return_desc = lam->return_desc;
+        synth->line = lam->line;
+        synth->file = current_file_;
+        synth->is_lambda = true;
+        lam->resolved = synth.get();
+        resolve_function_decl(synth.get());
+        TypeDesc ftd;
+        ftd.type = TypeKind::Function;
+        auto res = std::make_shared<FunctionTypeInfo>();
+        for (auto& p : synth->params) res->params.push_back(param_type_desc(p));
+        res->ret = synth->has_return_type ? synth->return_desc : TypeDesc{};
+        ftd.fn_info = res;
+        lam->lambda_type = ftd;
+        lambda_fns_.push_back(std::move(synth));
+        result = TypeKind::Function;
+    }
     else if (auto* id = dynamic_cast<Identifier*>(expr)) {
         const Symbol* sym = find_symbol(id->name);
         if (!sym) {
@@ -760,7 +793,23 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                 const FunctionTypeInfo& info = *lsym->desc.fn_info;
                 call->is_function_value_call = true;
                 call->fn_type = lsym->desc;
-                if (call->args.size() != info.params.size()) {
+                bool partial = !call->args.empty() &&
+                               call->args.size() < info.params.size();
+                if (partial) {
+                    call->is_partial = true;
+                    call->partial_applied = (int)call->args.size();
+                    call->partial_full_params = info.params;
+                    call->partial_params = std::vector<TypeDesc>(
+                        info.params.begin() + call->args.size(), info.params.end());
+                    call->partial_ret = info.ret;
+                    TypeDesc ftd;
+                    ftd.type = TypeKind::Function;
+                    auto res = std::make_shared<FunctionTypeInfo>();
+                    res->params = call->partial_params;
+                    res->ret = call->partial_ret;
+                    ftd.fn_info = res;
+                    call->partial_ftype = ftd;
+                } else if (call->args.size() != info.params.size()) {
                     throw err(line(),
                         "function '" + call->name + "' expects " +
                         std::to_string(info.params.size()) + " arguments, got " +
@@ -806,7 +855,9 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                         }
                     }
                 }
-                if (info.ret.type == TypeKind::Unknown) {
+                if (call->is_partial) {
+                    result = TypeKind::Function;
+                } else if (info.ret.type == TypeKind::Unknown) {
                     if (!allow_void_call_) {
                         throw err(line(),
                             "function '" + call->name + "' returns nothing and cannot be used as a value");
@@ -829,7 +880,23 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         bool has_default = false;
         for (bool d : sig->param_has_default) if (d) { has_default = true; break; }
         if (!has_default && !sig->variadic) {
-            if (call->args.size() != sig->param_types.size()) {
+            bool partial = !call->args.empty() &&
+                           call->args.size() < sig->param_types.size();
+            if (partial) {
+                call->is_partial = true;
+                call->partial_applied = (int)call->args.size();
+                call->partial_full_params = sig->param_descs;
+                call->partial_params = std::vector<TypeDesc>(
+                    sig->param_descs.begin() + call->args.size(), sig->param_descs.end());
+                call->partial_ret = sig->return_desc;
+                TypeDesc ftd;
+                ftd.type = TypeKind::Function;
+                auto res = std::make_shared<FunctionTypeInfo>();
+                res->params = call->partial_params;
+                res->ret = call->partial_ret;
+                ftd.fn_info = res;
+                call->partial_ftype = ftd;
+            } else if (call->args.size() != sig->param_types.size()) {
                 throw err(line(),
                     "function '" + call->name + "' expects " +
                     std::to_string(sig->param_types.size()) + " arguments, got " +
@@ -904,6 +971,11 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                         type_to_string(at));
                 }
             }
+        }
+        if (call->is_partial) {
+            result = TypeKind::Function;
+            expr->resolved_type = result;
+            return result;
         }
         if (sig->has_return) {
             result = sig->return_type;
@@ -1679,80 +1751,85 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             }
         }
     } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
-        std::vector<std::unordered_map<std::string, Symbol>> saved_scopes = std::move(scopes_);
-        scopes_.clear();
-        push_scope();
-        std::vector<std::vector<std::unordered_map<std::string, Symbol>>> saved_outer =
-            std::move(outer_scope_stack_);
-        outer_scope_stack_ = saved_outer;
-        outer_scope_stack_.push_back(saved_scopes);
-        FunctionDecl* saved_fn = current_fn_;
-        std::string saved_file = current_file_;
-        current_fn_ = fn;
-        if (!fn->file.empty()) current_file_ = fn->file;
-        fn->captures.clear();
-        for (auto& p : fn->params) {
-            define(p.name, p.type, true, p.elem_desc, p.tuple_members,
-                   param_type_desc(p));
-            if (p.default_value) {
-                TypeKind dt = infer_from_literal(p.default_value.get());
-                TypeKind expect = (p.type == TypeKind::Byte) ? TypeKind::Int : p.type;
-                if (p.type == TypeKind::Function || dt == TypeKind::Unknown || dt != expect) {
-                    throw err(fn->line,
-                        "default value for parameter '" + p.name + "' of function '" +
-                        fn->name + "' must be a literal of type " +
-                        ((p.type == TypeKind::Byte) ? "byte" : type_to_string(p.type)),
-                        fn->file);
-                }
-                if (p.type == TypeKind::Byte) {
-                    auto* n = dynamic_cast<NumberLiteral*>(p.default_value.get());
-                    if (n && (n->value < 0 || n->value > 255)) {
-                        throw err(fn->line,
-                            "default value for byte parameter '" + p.name +
-                            "' must be between 0 and 255",
-                            fn->file);
-                    }
-                }
-            }
-        }
-        TypeKind saved_ret = current_return_;
-        TypeDesc saved_ret_elem = current_return_elem_;
-        TypeDesc saved_ret_desc = current_return_desc_;
-        std::vector<TypeDesc> saved_ret_tuple = current_return_tuple_;
-        bool saved_in_fn = in_function_;
-        int saved_loop_depth = loop_depth_;
-        std::vector<int> saved_switch_depths = std::move(switch_entry_loop_depths_);
-        loop_depth_ = 0;
-        switch_entry_loop_depths_.clear();
-        current_return_ = fn->has_return_type ? fn->return_type : TypeKind::Unknown;
-        current_return_elem_ = fn->has_return_type ? fn->return_elem : TypeDesc{};
-        current_return_desc_ = fn->has_return_type ? fn->return_desc : TypeDesc{};
-        current_return_tuple_ = fn->has_return_type ? fn->return_tuple_members : std::vector<TypeDesc>{};
-        in_function_ = true;
-        bool function_returns = resolve_block(fn->body);
-        if (fn->has_return_type && !function_returns) {
-            throw err(fn->line,
-                "function '" + fn->name + "' may exit without returning " +
-                type_desc_to_string(fn->return_desc),
-                fn->file);
-        }
-        in_function_ = saved_in_fn;
-        current_return_ = saved_ret;
-        current_return_elem_ = saved_ret_elem;
-        current_return_desc_ = saved_ret_desc;
-        current_return_tuple_ = saved_ret_tuple;
-        loop_depth_ = saved_loop_depth;
-        switch_entry_loop_depths_ = std::move(saved_switch_depths);
-        current_fn_ = saved_fn;
-        current_file_ = saved_file;
-        outer_scope_stack_ = std::move(saved_outer);
-        resolved_functions_.insert(fn->name);
-        pop_scope();
-        scopes_ = std::move(saved_scopes);
+        resolve_function_decl(fn);
         always_returns = false;
     }
     if (dynamic_cast<ReturnStmt*>(stmt)) always_returns = true;
     return always_returns;
+}
+
+void TypeResolver::resolve_function_decl(FunctionDecl* fn) {
+    std::string subject = fn->is_lambda ? "lambda" : "function '" + fn->name + "'";
+    std::vector<std::unordered_map<std::string, Symbol>> saved_scopes = std::move(scopes_);
+    scopes_.clear();
+    push_scope();
+    std::vector<std::vector<std::unordered_map<std::string, Symbol>>> saved_outer =
+        std::move(outer_scope_stack_);
+    outer_scope_stack_ = saved_outer;
+    outer_scope_stack_.push_back(saved_scopes);
+    FunctionDecl* saved_fn = current_fn_;
+    std::string saved_file = current_file_;
+    current_fn_ = fn;
+    if (!fn->file.empty()) current_file_ = fn->file;
+    fn->captures.clear();
+    for (auto& p : fn->params) {
+        define(p.name, p.type, true, p.elem_desc, p.tuple_members,
+               param_type_desc(p));
+        if (p.default_value) {
+            TypeKind dt = infer_from_literal(p.default_value.get());
+            TypeKind expect = (p.type == TypeKind::Byte) ? TypeKind::Int : p.type;
+            if (p.type == TypeKind::Function || dt == TypeKind::Unknown || dt != expect) {
+                throw err(fn->line,
+                    "default value for parameter '" + p.name + "' of " + subject +
+                    " must be a literal of type " +
+                    ((p.type == TypeKind::Byte) ? "byte" : type_to_string(p.type)),
+                    fn->file);
+            }
+            if (p.type == TypeKind::Byte) {
+                auto* n = dynamic_cast<NumberLiteral*>(p.default_value.get());
+                if (n && (n->value < 0 || n->value > 255)) {
+                    throw err(fn->line,
+                        "default value for byte parameter '" + p.name +
+                        "' must be between 0 and 255",
+                        fn->file);
+                }
+            }
+        }
+    }
+    TypeKind saved_ret = current_return_;
+    TypeDesc saved_ret_elem = current_return_elem_;
+    TypeDesc saved_ret_desc = current_return_desc_;
+    std::vector<TypeDesc> saved_ret_tuple = current_return_tuple_;
+    bool saved_in_fn = in_function_;
+    int saved_loop_depth = loop_depth_;
+    std::vector<int> saved_switch_depths = std::move(switch_entry_loop_depths_);
+    loop_depth_ = 0;
+    switch_entry_loop_depths_.clear();
+    current_return_ = fn->has_return_type ? fn->return_type : TypeKind::Unknown;
+    current_return_elem_ = fn->has_return_type ? fn->return_elem : TypeDesc{};
+    current_return_desc_ = fn->has_return_type ? fn->return_desc : TypeDesc{};
+    current_return_tuple_ = fn->has_return_type ? fn->return_tuple_members : std::vector<TypeDesc>{};
+    in_function_ = true;
+    bool function_returns = resolve_block(fn->body);
+    if (fn->has_return_type && !function_returns) {
+        throw err(fn->line,
+            subject + " may exit without returning " +
+            type_desc_to_string(fn->return_desc),
+            fn->file);
+    }
+    in_function_ = saved_in_fn;
+    current_return_ = saved_ret;
+    current_return_elem_ = saved_ret_elem;
+    current_return_desc_ = saved_ret_desc;
+    current_return_tuple_ = saved_ret_tuple;
+    loop_depth_ = saved_loop_depth;
+    switch_entry_loop_depths_ = std::move(saved_switch_depths);
+    current_fn_ = saved_fn;
+    current_file_ = saved_file;
+    outer_scope_stack_ = std::move(saved_outer);
+    resolved_functions_.insert(fn->name);
+    pop_scope();
+    scopes_ = std::move(saved_scopes);
 }
 
 bool TypeResolver::resolve_block(const std::vector<StmtPtr>& statements) {
@@ -1875,6 +1952,10 @@ void TypeResolver::resolve(Program& program) {
         resolve_stmt(stmt.get());
     }
     pop_scope();
+    for (auto& f : lambda_fns_) {
+        program.statements.push_back(std::move(f));
+    }
+    lambda_fns_.clear();
 }
 
 CompileError TypeResolver::err(int line, const std::string& msg) {

@@ -48,6 +48,7 @@ Program* g_program = nullptr;
 %token AND OR NOT
 %token PLUS_EQ MINUS_EQ STAR_EQ SLASH_EQ MOD_EQ INCR DECR
 %token ARROW
+%token LAMBDA
 %token ELLIPSIS
 %token AS
 %token USE
@@ -1228,6 +1229,64 @@ factor
             auto* call = new CallExpr(std::string($1), {});
             free($1);
             $$ = call;
+        }
+    | LAMBDA '(' ')' '{' stmt_list '}'
+        {
+            auto* lam = new LambdaExpr();
+            lam->has_return_type = false;
+            for (auto& s : *$5) {
+                lam->body.push_back(std::move(s));
+            }
+            delete $5;
+            lam->line = yylineno;
+            $$ = lam;
+        }
+    | LAMBDA '(' ')' ARROW param_type '{' stmt_list '}'
+        {
+            auto* lam = new LambdaExpr();
+            lam->has_return_type = true;
+            lam->return_type = $5->type;
+            lam->return_elem = $5->elem ? *$5->elem : TypeDesc{};
+            if (lam->return_type == TypeKind::Tuple) lam->return_tuple_members = std::move($5->tuple_members);
+            lam->return_desc = *$5;
+            delete $5;
+            for (auto& s : *$7) {
+                lam->body.push_back(std::move(s));
+            }
+            delete $7;
+            lam->line = yylineno;
+            $$ = lam;
+        }
+    | LAMBDA '(' param_list ')' '{' stmt_list '}'
+        {
+            auto* lam = new LambdaExpr();
+            lam->params = std::move(*$3);
+            delete $3;
+            lam->has_return_type = false;
+            for (auto& s : *$6) {
+                lam->body.push_back(std::move(s));
+            }
+            delete $6;
+            lam->line = yylineno;
+            $$ = lam;
+        }
+    | LAMBDA '(' param_list ')' ARROW param_type '{' stmt_list '}'
+        {
+            auto* lam = new LambdaExpr();
+            lam->params = std::move(*$3);
+            delete $3;
+            lam->has_return_type = true;
+            lam->return_type = $6->type;
+            lam->return_elem = $6->elem ? *$6->elem : TypeDesc{};
+            if (lam->return_type == TypeKind::Tuple) lam->return_tuple_members = std::move($6->tuple_members);
+            lam->return_desc = *$6;
+            delete $6;
+            for (auto& s : *$8) {
+                lam->body.push_back(std::move(s));
+            }
+            delete $8;
+            lam->line = yylineno;
+            $$ = lam;
         }
     | postfix_index
         {

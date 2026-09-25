@@ -34,6 +34,7 @@ The current compiler supports:
  - Function calls, forward calls, recursion, and nested function declarations
  - First-class function types (`fn(int) -> int`) with higher-order calls and closures
  - Non-local `break` / `continue` from nested functions targeting an enclosing loop
+ - Anonymous `lambda` expressions and currying via partial application (`add(1)` returns a closure)
 - Arrays with typed elements, indexing, element assignment, and `length()`
   - Nested arrays (`[[int]]`) with chained indexing (`a[i][j]`) and assignment
   - Growable arrays with `push`, `pop`, `sort`, `slice`, `concat`, `index_of`, and `contains`
@@ -152,7 +153,7 @@ These words are reserved and cannot be used as variable or function names:
 
 | Category | Keywords |
 | --- | --- |
-| Declarations | `let`, `const`, `fn` |
+| Declarations | `let`, `const`, `fn`, `lambda` |
 | Control flow | `if`, `else`, `loop`, `foreach`, `while`, `for`, `do`, `break`, `continue` |
 | Functions and output | `return`, `print`, `in` |
 | Boolean values | `true`, `false` |
@@ -384,6 +385,35 @@ parameters, return values, and `let` bindings. A function name (except `main`)
 is itself a value: it can be passed, returned, stored, and called through a
 variable.
 
+Anonymous functions are written with the `lambda` keyword (the full `fn`
+parameter syntax applies — defaults and variadics included; omit `-> <type>`
+for a void lambda):
+
+```hmx
+let dbl = lambda(x: int) -> int {
+    return x * 2
+}
+print(dbl(21))          // 42
+```
+
+Calling a function or function value with **fewer arguments than its arity**
+performs **partial application**: the result is a closure over the arguments
+given so far that waits for the rest. This applies only to functions with no
+defaults and no variadic:
+
+```hmx
+fn add(a: int, b: int, c: int) -> int {
+    return a + b + c
+}
+
+let add_one = add(1)       // waits for b and c
+let add_three = add_one(2) // waits for c
+print(add_three(39))       // 42
+```
+
+Chained-call syntax like `add(1)(2, 39)` is not parseable yet — bind the
+intermediate closure to a name first (`let f = add(1); print(f(2, 39))`).
+
 A nested function with no loop of its own may also issue a **non-local exit**:
 `break` / `continue` inside it breaks/continues the nearest loop of the enclosing
 function (breaking a loop, or skipping to the next iteration) when the enclosing
@@ -483,10 +513,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing | 50/50 passed |
-| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse | 175/175 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing | 97/97 passed |
-| Total | 322 test cases | 322/322 passed |
+| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying | 51/51 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse | 182/182 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying | 104/104 passed |
+| Total | 337 test cases | 337/337 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is
@@ -529,6 +559,7 @@ benchmark exists, avoid treating the test-suite pass count as a speed measuremen
 ```text
 src/                    Lexer, parser, AST, resolver, and code generator
 examples/hello.hmx      Example HMX program
+examples/curry_smoke.hmx  Currying showcase (lambdas + partial application)
 tests/fixtures/         Integration fixture programs
 tests/*.sh              Integration, negative, and stress test runners
 SYNTAX.md               Full language syntax reference

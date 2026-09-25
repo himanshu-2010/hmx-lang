@@ -368,9 +368,73 @@ test_error "call_arg_count_mismatch" \
         return a + b
     }
     fn main() {
-        add(1)
+        add(1, 2, 3)
     }' \
-    "expects 2 arguments, got 1"
+    "expects 2 arguments, got 3"
+
+test_error "curry_prefix_arg_mismatch" \
+    'fn add(a: int, b: int) -> int {
+        return a + b
+    }
+    fn main() {
+        let inc = add("one")
+    }' \
+    "type mismatch: argument 1 of 'add' expects int, got text"
+
+test_error "curry_zero_args_value" \
+    'fn add(a: int, b: int) -> int {
+        return a + b
+    }
+    fn main() {
+        let f = add
+        f()
+    }' \
+    "expects 2 arguments, got 0"
+
+test_error "curry_too_many_remaining" \
+    'fn add(a: int, b: int, c: int) -> int {
+        return a + b + c
+    }
+    fn main() {
+        let f = add(1)
+        print(f(2, 3, 4))
+    }' \
+    "expects 2 arguments, got 3"
+
+test_error "curry_multi_partial_chain_type" \
+    'fn add(a: int, b: int, c: int) -> int {
+        return a + b + c
+    }
+    fn main() {
+        let f = add(1)
+        let g: fn(int) -> int = f
+    }' \
+    "declared as fn\(int\) -> int but initialized with fn\(int, int\) -> int"
+
+test_error "lambda_void_value_position" \
+    'fn main() {
+        let v = lambda() {
+            print(1)
+        }
+        print(v())
+    }' \
+    "returns nothing and cannot be used as a value"
+
+test_error "lambda_missing_return" \
+    'fn main() {
+        let bad = lambda(x: int) -> int {
+            print(x)
+        }
+    }' \
+    "lambda may exit without returning int"
+
+test_error "lambda_default_value_type" \
+    'fn main() {
+        let bad = lambda(x: int = "nope") -> int {
+            return x
+        }
+    }' \
+    "default value for parameter 'x' of lambda must be a literal of type int"
 
 test_error "call_arg_type_mismatch" \
     'fn add(a: int, b: int) -> int {

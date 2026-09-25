@@ -228,6 +228,19 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
         }
     }
 
+    for (auto* s : top_level) collect_lambdas_stmt(s);
+    for (size_t fi = 0; fi < all_functions_.size(); fi++) {
+        collect_lambdas_stmt(all_functions_[fi]);
+    }
+    // Lambdas live inside expressions, so they were collected a second time
+    // (they also appear as hoisted FunctionDecl statements). Dedupe by pointer.
+    std::vector<FunctionDecl*> unique_fns;
+    std::set<FunctionDecl*> seen_fns;
+    for (auto* f : all_functions_) {
+        if (seen_fns.insert(f).second) unique_fns.push_back(f);
+    }
+    all_functions_ = std::move(unique_fns);
+
     for (auto* fn : all_functions_) {
         for (auto& p : fn->params) register_desc_types(p.desc);
         register_desc_types(fn->return_desc);
@@ -235,6 +248,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     }
 
     emit_pending_tuple_types();
+    emit_papp_helpers();
 
     for (auto* fn : all_functions_) {
         if (fn->name != "main" && !fn->captures.empty()) {
@@ -316,6 +330,174 @@ void CodeGen::collect_function_decls(Statement* stmt) {
         recurse(f->body);
     } else if (auto* dw = dynamic_cast<DoWhileStmt*>(stmt)) {
         recurse(dw->body);
+    }
+}
+
+void CodeGen::collect_lambdas_stmt(Statement* stmt) {
+    auto recurse = [this](const std::vector<StmtPtr>& list) {
+        for (auto& s : list) collect_lambdas_stmt(s.get());
+    };
+    if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
+        recurse(fn->body);
+    } else if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
+        if (var->initializer) collect_lambdas_expr(var->initializer.get());
+    } else if (auto* assign = dynamic_cast<AssignStmt*>(stmt)) {
+        if (assign->rhs) collect_lambdas_expr(assign->rhs.get());
+    } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
+        if (ma->rhs) collect_lambdas_expr(ma->rhs.get());
+    } else if (auto* dd = dynamic_cast<DestructDecl*>(stmt)) {
+        if (dd->rhs) collect_lambdas_expr(dd->rhs.get());
+    } else if (auto* aa = dynamic_cast<ArrayAssignStmt*>(stmt)) {
+        if (aa->index) collect_lambdas_expr(aa->index.get());
+        if (aa->rhs) collect_lambdas_expr(aa->rhs.get());
+    } else if (auto* ea = dynamic_cast<ElementAssignStmt*>(stmt)) {
+        if (ea->target) collect_lambdas_expr(ea->target.get());
+        if (ea->rhs) collect_lambdas_expr(ea->rhs.get());
+    } else if (auto* es = dynamic_cast<ExprStmt*>(stmt)) {
+        collect_lambdas_expr(es->expr.get());
+    } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
+        for (auto& v : ret->values) collect_lambdas_expr(v.get());
+    } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
+        for (auto& a : print->args) collect_lambdas_expr(a.get());
+    } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
+        collect_lambdas_expr(ifs->condition.get());
+        recurse(ifs->then_body);
+        recurse(ifs->else_body);
+    } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
+        collect_lambdas_expr(sw->value.get());
+        for (auto& c : sw->cases) {
+            if (c.value) collect_lambdas_expr(c.value.get());
+            recurse(c.body);
+        }
+    } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
+        collect_lambdas_expr(loop->count.get());
+        recurse(loop->body);
+    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
+        collect_lambdas_expr(fe->iterable.get());
+        recurse(fe->body);
+    } else if (auto* w = dynamic_cast<WhileStmt*>(stmt)) {
+        collect_lambdas_expr(w->condition.get());
+        recurse(w->body);
+    } else if (auto* f = dynamic_cast<ForStmt*>(stmt)) {
+        if (f->init) collect_lambdas_stmt(f->init.get());
+        if (f->condition) collect_lambdas_expr(f->condition.get());
+        if (f->update) collect_lambdas_stmt(f->update.get());
+        recurse(f->body);
+    } else if (auto* dw = dynamic_cast<DoWhileStmt*>(stmt)) {
+        recurse(dw->body);
+        collect_lambdas_expr(dw->condition.get());
+    }
+}
+
+void CodeGen::collect_lambdas_expr(Expression* expr) {
+    if (auto* lam = dynamic_cast<LambdaExpr*>(expr)) {
+        if (!lam->resolved) {
+            throw std::runtime_error("internal error: unresolved lambda expression");
+        }
+        if (walked_lambdas_.insert(lam->resolved).second) {
+            collect_lambdas_stmt(lam->resolved);   // body may hold nested lambdas / declarations
+            all_functions_.push_back(lam->resolved);
+        }
+        return;
+    }
+    if (auto* call = dynamic_cast<CallExpr*>(expr)) {
+        if (call->is_partial) {
+            std::string m = papp_mangle(call->partial_applied, call->partial_full_params,
+                                        call->partial_ret);
+            if (!papp_sigs_.count(m)) {
+                papp_sigs_[m] = PartialSig{call->partial_full_params, call->partial_applied,
+                                           call->partial_ret};
+                for (auto& p : call->partial_full_params) register_desc_types(p);
+                register_desc_types(call->partial_ret);
+            }
+        }
+        for (auto& a : call->args) collect_lambdas_expr(a.get());
+    } else if (auto* arr = dynamic_cast<ArrayLiteral*>(expr)) {
+        for (auto& e : arr->elements) collect_lambdas_expr(e.get());
+    } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
+        if (idx->base) collect_lambdas_expr(idx->base.get());
+        collect_lambdas_expr(idx->index.get());
+    } else if (auto* bin = dynamic_cast<BinaryExpr*>(expr)) {
+        collect_lambdas_expr(bin->left.get());
+        collect_lambdas_expr(bin->right.get());
+    } else if (auto* n = dynamic_cast<NotExpr*>(expr)) {
+        collect_lambdas_expr(n->operand.get());
+    } else if (auto* n = dynamic_cast<NegExpr*>(expr)) {
+        collect_lambdas_expr(n->operand.get());
+    } else if (auto* c = dynamic_cast<ConditionalExpr*>(expr)) {
+        collect_lambdas_expr(c->condition.get());
+        collect_lambdas_expr(c->then_expr.get());
+        collect_lambdas_expr(c->else_expr.get());
+    } else if (auto* c = dynamic_cast<CastExpr*>(expr)) {
+        collect_lambdas_expr(c->operand.get());
+    }
+}
+
+std::string CodeGen::papp_mangle_type(const TypeDesc& d) {
+    if (d.type == TypeKind::Array) return "arr_of_" + papp_mangle_type(d.element());
+    if (d.type == TypeKind::Tuple) {
+        std::string s = "tup";
+        for (auto& m : d.tuple_members) s += "_" + papp_mangle_type(m);
+        return s;
+    }
+    if (d.type == TypeKind::Function) {
+        std::string s = "fn";
+        if (d.fn_info) {
+            for (auto& p : d.fn_info->params) s += "_" + papp_mangle_type(p);
+            s += "_r_" + papp_mangle_type(d.fn_info->ret);
+        }
+        return s;
+    }
+    return type_to_string(d.type);
+}
+
+std::string CodeGen::papp_mangle(int applied, const std::vector<TypeDesc>& full,
+                                 const TypeDesc& ret) const {
+    std::string s = "sd_papp";
+    for (auto& p : full) s += "_" + papp_mangle_type(p);
+    s += "_to_" + papp_mangle_type(ret) + "_k" + std::to_string(applied);
+    return s;
+}
+
+void CodeGen::emit_papp_helpers() {
+    for (auto& [mangle, ps] : papp_sigs_) {
+        std::string env_name = mangle + "_e";
+        out_ << "typedef struct " << env_name << " {\n";
+        out_ << "    sd_closure orig;\n";
+        for (int i = 0; i < ps.applied; i++) {
+            out_ << "    " << c_type_for_desc(ps.full[i]) << " a" << i << ";\n";
+        }
+        out_ << "} " << env_name << ";\n\n";
+        out_ << "static " << c_type_for_desc(ps.ret) << " " << mangle << "(void* e";
+        for (size_t i = (size_t)ps.applied; i < ps.full.size(); i++) {
+            out_ << ", " << c_type_for_desc(ps.full[i]) << " p" << i;
+        }
+        out_ << ") {\n";
+        out_ << "    " << env_name << "* _sd_p = (" << env_name << "*)e;\n";
+        if (ps.ret.type == TypeKind::Unknown) {
+            out_ << "    ((void (*)(void*";
+            for (size_t i = 0; i < ps.full.size(); i++) {
+                out_ << ", " << c_type_for_desc(ps.full[i]);
+            }
+            out_ << "))_sd_p->orig.fn)(_sd_p->orig.env";
+        } else {
+            out_ << "    return ((" << c_type_for_desc(ps.ret) << " (*)(void*";
+            for (size_t i = 0; i < ps.full.size(); i++) {
+                out_ << ", " << c_type_for_desc(ps.full[i]);
+            }
+            out_ << "))_sd_p->orig.fn)(_sd_p->orig.env";
+        }
+        for (int i = 0; i < ps.applied; i++) {
+            out_ << ", _sd_p->a" << i;
+        }
+        for (size_t i = (size_t)ps.applied; i < ps.full.size(); i++) {
+            out_ << ", p" << i;
+        }
+        out_ << ");\n";
+        if (ps.ret.type == TypeKind::Unknown) {
+            out_ << "    return;\n";
+        }
+        out_ << "}\n\n";
     }
 }
 
@@ -547,6 +729,13 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         } else {
             emit_identifier_value(id->name);
         }
+    } else if (auto* lam = dynamic_cast<LambdaExpr*>(expr)) {
+        if (!lam->resolved) {
+            throw std::runtime_error("internal error: unresolved lambda expression");
+        }
+        out_ << "sd_make_closure((void*)" << lam->resolved->name << ", ";
+        emit_env_heap_arg(lam->resolved);
+        out_ << ")";
     } else if (auto* call = dynamic_cast<CallExpr*>(expr)) {
         if (call->name == "length") {
             if (get_expr_type(call->args[0].get()) == TypeKind::Array) {
@@ -672,6 +861,32 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
             out_ << "sd_parse_decimal(";
             emit_expr(call->args[0].get());
             out_ << ")";
+        } else if (call->is_partial) {
+            std::string mangle = papp_mangle(call->partial_applied, call->partial_full_params,
+                                             call->partial_ret);
+            if (!papp_sigs_.count(mangle)) {
+                throw std::runtime_error("internal error: partial application signature not registered");
+            }
+            std::string env_name = mangle + "_e";
+            out_ << "({ sd_closure _sd_b = (";
+            if (call->is_function_value_call) {
+                emit_identifier_value(call->name);
+            } else {
+                auto it = functions_by_name_.find(call->name);
+                if (it == functions_by_name_.end()) {
+                    throw std::runtime_error("internal error: unknown function '" + call->name + "'");
+                }
+                out_ << "sd_make_closure((void*)" << call->name << ", ";
+                emit_env_heap_arg(it->second);
+                out_ << ")";
+            }
+            out_ << "); " << env_name << " _sd_pa = { _sd_b";
+            for (size_t i = 0; i < call->args.size(); i++) {
+                out_ << ", ";
+                emit_expr(call->args[i].get());
+            }
+            out_ << " }; sd_make_closure((void*)" << mangle
+                 << ", sd_copy_env(&_sd_pa, sizeof(" << env_name << "))); })";
         } else if (call->is_function_value_call) {
             const FunctionTypeInfo& info = *call->fn_type.fn_info;
             out_ << "((" << c_type_for_desc(info.ret) << " (*)(void*";

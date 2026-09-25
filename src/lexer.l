@@ -49,6 +49,7 @@
 "not"             { return NOT; }
 "as"              { return AS; }
 "use"             { return USE; }
+"lambda"          { return LAMBDA; }
 
 "int"             { return TYPE_INT; }
 "decimal"         { return TYPE_DECIMAL; }

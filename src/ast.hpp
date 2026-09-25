@@ -143,6 +143,13 @@ struct CallExpr : Expression {
     bool is_function_value_call = false;   // set by resolver: name is a function-typed value
     TypeDesc fn_type;                      // function type of the value when is_function_value_call
     TypeDesc array_aux;                    // element desc of arg0 for array builtins (resolver-set)
+    // partial application (currying), set by resolver when args < arity:
+    bool is_partial = false;
+    int partial_applied = 0;                                  // number of prefix args applied
+    std::vector<TypeDesc> partial_full_params;                // original parameter list
+    std::vector<TypeDesc> partial_params;                     // remaining params (full[applied:])
+    TypeDesc partial_ret;                                     // result function's return type
+    TypeDesc partial_ftype;                                   // function type produced (params = partial_params)
     CallExpr(std::string n, std::vector<ExprPtr> a)
         : name(std::move(n)), args(std::move(a)) {}
 };
@@ -300,6 +307,7 @@ struct CapturedVar {
 struct FunctionDecl : Statement {
     std::string name;
     std::string file;                            // source .hmx file (filled by module loader)
+    bool is_lambda = false;                      // synthesized from a lambda expression (resolver)
     struct Param {
         std::string name;
         TypeKind type;
@@ -326,6 +334,21 @@ struct FunctionDecl : Statement {
 struct ReturnStmt : Statement {
     std::vector<ExprPtr> values;                  // empty for bare return
     std::vector<TypeDesc> return_tuple_members;   // filled by resolver for tuple returns
+};
+
+struct LambdaExpr : Expression {
+    std::vector<FunctionDecl::Param> params;
+    TypeKind return_type = TypeKind::Unknown;
+    TypeDesc return_elem;                                     // element descriptor when return_type == Array
+    std::vector<TypeDesc> return_tuple_members;              // valid when return_type == Tuple
+    TypeDesc return_desc;                                    // full descriptor (Function etc.)
+    bool has_return_type = false;
+    std::vector<StmtPtr> body;
+    int line = 0;                                            // source line (from parser)
+    // filled by resolver:
+    struct FunctionDecl* resolved = nullptr;   // synthetic hoisted function implementing this lambda
+    TypeDesc lambda_type;                      // function type of this lambda
+    LambdaExpr() = default;
 };
 
 struct BreakStmt : Statement {

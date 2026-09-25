@@ -1,0 +1,28 @@
+// Currying showcase: partial application + lambda expressions (0.A7)
+fn add(a: int, b: int) -> int {
+    return a + b
+}
+
+fn apply(f: fn(int) -> int, x: int) -> int {
+    return f(x)
+}
+
+fn scale(c: int) -> fn(int) -> int {
+    return lambda(x: int) -> int {
+        return x * c
+    }
+}
+
+fn main() {
+    // Partial application: add(1) is a closure waiting for b.
+    // (Chained calls like add(1)(41) are not parseable yet — bind to a name.)
+    let inc = add(1)
+    print(inc(41))
+
+    // A lambda expression capturing c from scale's scope.
+    print(apply(scale(6), 7))
+
+    // Partial application of a named function used as a value.
+    let add5 = add(5)
+    print(apply(add5, 3))
+}

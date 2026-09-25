@@ -155,6 +155,7 @@ The following words are reserved and cannot be used as identifiers:
 | `switch` / `case` / `default` | Multi-way branch |
 | `as` | Explicit numeric cast |
 | `use` | Import a module (§1.6) |
+| `lambda` | Anonymous function expression (§12.5) |
 
 ---
 
@@ -1208,12 +1209,37 @@ fn main() {
 - Calling a variable of function type performs a **higher-order call**:
   `f(x)` where `f: fn(int) -> int` invokes the stored function. Argument count
   and exact function types are checked at compile time.
-- There are no anonymous function literals; a function value is always a named
-  function declared with `fn`.
 - A function must be **declared before it is used as a value** (bare-name
   references and higher-order calls); ordinary by-name calls to later functions
   remain allowed.
 - `print` and `?:` (ternary) reject function values.
+
+**Anonymous functions (lambdas)** are written with the `lambda` keyword,
+picking up where `fn` declarations leave off:
+
+```hmx
+fn main() {
+    let dbl = lambda(x: int) -> int {
+        return x * 2
+    }
+    print(dbl(21))          // 42
+
+    let announce = lambda() {     // void lambda (no return type)
+        print(0)
+    }
+    announce()
+}
+```
+
+- A lambda keeps the full `fn` parameter syntax: `lambda(a: int, b: int = 2)`,
+  tuples, arrays, function types, and a trailing `rest: ...int` variadic all
+  work. The return type (`-> <type>`) is optional; without it the lambda is
+  void.
+- A lambda compiles to an ordinary function with an internal name and obeys all
+  closure rules below: it may capture variables from any enclosing function
+  (snapshots, read-only, arrays share storage) — but, like all nested
+  functions, **not from `main`**.
+- `lambda` is a reserved keyword, so it cannot be used as an identifier.
 
 A **closure** is a nested function that references a variable of its enclosing
 function's scope. The referenced variables are *captured*:
@@ -1283,7 +1309,45 @@ Nested functions are otherwise **hoisted to program scope**:
   target an enclosing function's nearest loop when the nested function has no
   loop of its own enclosing it (see §12.6).
 
-**Out of scope (roadmap):** currying, multiple return values from function-type
+**Partial application** works by calling a function (or function value) with
+*fewer* arguments than its arity. The result is a new closure that captures the
+arguments given so far and waits for the rest:
+
+```hmx
+fn add(a: int, b: int, c: int) -> int {
+    return a + b + c
+}
+
+fn main() {
+    let add_one = add(1)          // captures 1, waits for b and c
+    let add_three = add_one(2)    // captures 2 more, waits for c
+    print(add_three(39))          // 42
+    print(add(1, 2, 39))          // full call is unchanged: 42
+}
+```
+
+- Partial application applies to named functions **and** function values — both
+  work identically:
+  ```hmx
+  let f = add     // named function as a value
+  let g = f(1)    // partial of the value
+  print(g(2, 39)) // 42
+  ```
+- Provided arguments must match the *prefix* of the parameter list; a partial
+  call returning a function can be passed around like any other function value
+  (e.g. as a higher-order argument).
+- Calling with **zero** arguments is still an arity error, and calling with
+  **more** arguments than the arity is still an arity error. Only `1 <= given <
+  arity` produces a partial application.
+- Partial application only kicks in for functions with **no defaults and no
+  variadic**. A function with defaulted parameters or a trailing variadic
+  already accepts fewer arguments natively (defaults / empty rest), so calling
+  it with fewer arguments is *not* a partial application.
+- **Parser limitation:** chained-call syntax like `add(1)(2, 39)` is not
+  parseable; bind the intermediate closure to a name first
+  (`let f = add(1); print(f(2, 39))`).
+
+**Out of scope (roadmap):** multiple return values from function-type
 params, closures over captured-array-resizing writes.
 
 ---

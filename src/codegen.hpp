@@ -5,12 +5,19 @@
 #include <string>
 #include <sstream>
 #include <map>
+#include <set>
 
 class CodeGen {
 public:
     std::string generate(Program& program, const std::string& source_file);
 
 private:
+    struct PartialSig {
+        std::vector<TypeDesc> full;   // original parameter list
+        int applied = 0;              // prefix args applied at the call
+        TypeDesc ret;                 // return type of the original function
+    };
+
     std::ostringstream out_;
     std::string source_file_;
     std::string line_file_;    // file for #line directives in the current function
@@ -20,6 +27,8 @@ private:
     std::map<std::vector<TypeDesc>, std::string> tuple_types_;
     std::vector<FunctionDecl*> all_functions_;
     std::map<std::string, FunctionDecl*> functions_by_name_;
+    std::map<std::string, PartialSig> papp_sigs_;   // mangle -> partial-application signature
+    std::set<FunctionDecl*> walked_lambdas_;
     int temp_counter_ = 0;
 
     void emit_line_directive(int line, const std::string& file);
@@ -44,5 +53,11 @@ private:
     void emit_binding(const DestructPattern& slot, const std::string& rhs,
                       const TypeDesc& vd, bool declare);
     void emit_pending_tuple_types();
+    void collect_lambdas_stmt(Statement* stmt);
+    void collect_lambdas_expr(Expression* expr);
+    void emit_papp_helpers();
+    static std::string papp_mangle_type(const TypeDesc& d);
+    std::string papp_mangle(int applied, const std::vector<TypeDesc>& full,
+                            const TypeDesc& ret) const;
     FunctionDecl* current_fn_ = nullptr;
 };

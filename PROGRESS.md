@@ -588,6 +588,68 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - Full regression: 50/50 integration, 175/175 negative, 97/97 stress/output =
   **322**; bison conflicts unchanged at 6; zero compiler warnings.
 
+### 0.A7 — Currying: lambda expressions + partial application — DONE
+- **Design (locked):** anonymous functions use the reserved `lambda` keyword
+  (`lambda(x: int) -> int { ... }`, plus zero-arg and void variants). A
+  dedicated keyword (not `fn`) keeps the bison conflict count at exactly 6:
+  `fn` also starts the `fn_decl` statement, so `lambda` in expression position
+  is unambiguous against a following bare `return`. Partial application —
+  calling a named function or function value with `1 <= args < arity` (no
+  defaults, no variadic) — returns a closure over the prefix arguments.
+  Chained-call syntax `add(1)(2)` remains unparseable; bind the intermediate
+  closure to a name.
+- **Parser:** `LAMBDA` token; four `factor` productions
+  (`lambda(')' '{' ...` / 0-arg vs param_list × void vs `-> param_type`),
+  reusing `param_list` (defaults, variadic, complex types all supported) and
+  `stmt_list` (≥ 1 statement, matching `fn_decl`). Conflicts stay at 6 across
+  the same 5 states.
+- **AST:** `LambdaExpr` (params, return fields, body, line) with resolver-set
+  `resolved` (the hoisted `FunctionDecl`) and `lambda_type`; placed after
+  `FunctionDecl` for the `Param`/`StmtPtr` dependency. `CallExpr` gains
+  `is_partial`, `partial_applied`, `partial_full_params`, `partial_params`,
+  `partial_ret`, `partial_ftype`. `FunctionDecl` gains `is_lambda`.
+- **Resolver:** `resolve_function_decl(FunctionDecl*)` extracted from the
+  `resolve_stmt` nested-fn branch (identical semantics: fresh scope,
+  `outer_scope_stack_` chain, captures, return tracking, scope restore). The
+  `LambdaExpr` branch synthesizes `__lam_<n>` (collision-safe vs.
+  `functions_`/`fn_decls_`; named `<n>` also avoids user fns), moves params +
+  body in, resolves via the shared helper, builds the fn type desc, and owns it
+  in `lambda_fns_`; `resolve()` appends those to `program.statements` after the
+  main loop (post-loop so no iterator invalidation, no double resolution) so
+  codegen picks them up like any function. Lambda error messages say `lambda`
+  not `__lam_0`. Partial calls in both the named and function-value branches:
+  `1 <= args < arity` sets the partial fields (prefix validated like a normal
+  call) and resolves to `Function`; empty calls stay "expects N arguments, got
+  0"; excess args stay errors; defaults/variadic paths unchanged. Bug fix:
+  `expr_function_type` on a full function-value call now returns
+  `fn_info->ret` (the call result) instead of the callee's whole type —
+  previously `let g = hof(1)` on a function-returning function value typed
+  wrong.
+- **Codegen:** `emit_expr` builds partial calls as a GNU statement-expression:
+  base closure (named fn → `sd_make_closure((void*)name, heapEnv)`; value →
+  the stored `sd_closure`), then `sd_papp_env_<m>` struct literal + heap copy +
+  `sd_make_closure((void*)sd_papp_<m>, ...)`. Per unique signature the pre-scan
+  (`collect_lambdas_stmt`/`_expr` walkers over statements' expressions) pushes
+  lambdas into `all_functions_` (deduped by pointer) and registers papp
+  typedefs + `static` trampolines (emitted after tuple typedefs), which forward
+  by re-calling `orig.fn` with `orig.env` + applied args + new args. Name
+  mangling recurses into fn-typed params so `compose(square)` vs.
+  `compose(inc)` signatures can't collide. Lambdas emit as
+  `sd_make_closure((void*)__lam_N, heapEnv)` via the normal capture machinery.
+- **Tests:** `currying.hmx` fixture (named/value partials in HOFs, capture
+  across an enclosing fn, lambda-returning-lambda, direct lambda argument, void
+  lambda); 7 new negatives (too-many args at a partial-returning call, prefix
+  type mismatch, zero-arg on a fn value, remaining-arity overshoot, partial
+  result type mismatch, void lambda in value position, lambda may exit without
+  returning) + `call_arg_count_mismatch` rewritten to `add(1, 2, 3)` since
+  `add(1)` is now legal; 7 new stress (named/value partial, lambda capture,
+  nested lambda, void lambda, partial-as-HOF-arg, exit-code 42 via partial
+  chain).
+- Docs: SYNTAX.md §12.5 (lambda expressions + partial application, `lambda`
+  keyword reserved, parser-limitation note, roadmap trim); this entry.
+- Full regression: 51/51 integration, 182/182 negative, 104/104 stress/output =
+  **337**; bison conflicts unchanged at 6; zero compiler warnings.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

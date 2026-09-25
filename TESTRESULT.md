@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-25  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (322 / 322)
+**Status:** ALL TESTS PASSED (337 / 337)
 
 ---
 
@@ -30,11 +30,12 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 19. **Nested destructuring patterns**: any destructuring slot may itself be a parenthesized list — deep tuple nesting (`(((a,b),c),d)`), arrays of tuples (`[(int,int)]` with `((p,q), second)`), rest inside a nested array group (`((x, y, ...zs), row)`), and nested patterns over text elements (`(w0, (c1, c2))`) all type-check and lower correctly; nested tuple types and arrays of tuples were lifted from "not supported".
 20. **Nested tuple type support**: `((int, int), int)` annotations and `[(int, int)]` arrays now work via structural tuple typedef names, dependency-ordered struct emission, and recursive deep registration of tuple types.
 21. **Dynamic tuple indexing**: `t[i]` with a runtime `int` index works when every tuple member has the same type (the result has that type); the index is bounds-checked at runtime (`sd_check_tuple_index`, exit code 1 on out of range). Constant `t[0]` indexing is unchanged, heterogeneous tuples with a non-constant index are a compile error, and non-`int` indexes are rejected.
+22. **Currying**: anonymous **lambda expressions** (`lambda(x: int) -> int { ... }`, plus zero-arg and void variants, with the full `fn` parameter syntax incl. defaults/variadic) and **partial application** — calling a named function or function value with `1 <= args < arity` (no defaults, no variadic) returns a closure over the prefix arguments that waits for the rest. Both combine: lambdas capture enclosing scopes by snapshot, partials compose/chain via higher-order calls, and everything lower through the existing closure machinery.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 322
-> - **Passed:** 322
+> - **Total Test Cases Executed:** 337
+> - **Passed:** 337
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -53,7 +54,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (50/50 Passed)
+### 1. Integration Fixtures (51/51 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -105,10 +106,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `destructure_rest.hmx` | **[NEW]** Destructure `...rest` | Array `(x, y, ...rest)`, text `(c1, c2, ...cs)`, extra elements ignored, nested `[[int]]` rows, rest from `split` and `grid[i]`, single-element rest-is-empty | **PASS** |
 | `destructure_nested.hmx` | **[NEW]** Nested Destructure | Deep tuple nesting, array of tuples with group+rest, rest inside a nested array group, nested patterns on text elements, nested multi-assign | **PASS** |
 | `tuple_dynamic_index.hmx` | **[NEW]** Dynamic Tuple Index | Variable/expression indexes on homogeneous tuples, chained array-of-homogeneous-tuples, nested homogeneous tuples feeding destructuring, closure capture | **PASS** |
+| `currying.hmx` | **[NEW]** Currying | Named/value partials in HOFs, lambda capture across an enclosing fn, lambda-returning-lambda, direct lambda argument, void lambda | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (175/175 Passed)
+### 2. Negative & Error Handling Suite (182/182 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -138,7 +140,7 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `string_subtraction` | **[NEW]** `text` - `text` Op | `operator '-' not defined for type text` | **PASS** |
 | `undef_fn_call` | Call Non-Existent Fn | `undefined function` | **PASS** |
 | `call_main` | Direct Call to `main` | `cannot call function 'main'` | **PASS** |
-| `call_arg_count_mismatch` | Wrong Arg Count | `expects 2 arguments, got 1` | **PASS** |
+| `call_arg_count_mismatch` | Wrong Arg Count | `expects 2 arguments, got 3` | **PASS** |
 | `call_arg_type_mismatch` | Wrong Arg Type | `type mismatch: argument 2` | **PASS** |
 | `void_fn_as_value` | Void Call in Expr | `returns nothing and cannot be used as a value` | **PASS** |
 | `return_val_in_void_fn` | Return Val in Void Fn | `return value in void function` | **PASS** |
@@ -239,6 +241,13 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `closures_return_fn_mismatch` | **[NEW]** Return Function Type | `return h` where `h` has wrong function type | `but function returns` | **PASS** |
 | `closures_return_mismatch` | **[NEW]** Return Kind Mismatch | `return 5` in fn returning function type | `but function returns function` | **PASS** |
 | `closures_call_arity` | **[NEW]** HOF Arity | `f(1, 2)` where `f: fn(int) -> int` | `expects 1 arguments, got 2` | **PASS** |
+| `curry_prefix_arg_mismatch` | **[NEW]** Partial Prefix Type | `add("one")` for `add(a: int, b: int)` | `type mismatch: argument 1 of 'add' expects int, got text` | **PASS** |
+| `curry_zero_args_value` | **[NEW]** Zero Args on Fn Value | `f()` where `f` is a 2-arg fn value | `expects 2 arguments, got 0` | **PASS** |
+| `curry_too_many_remaining` | **[NEW]** Partial Remaining Overshoot | `f(2, 3, 4)` on `add(1)` of a 3-arg fn | `expects 2 arguments, got 3` | **PASS** |
+| `curry_multi_partial_chain_type` | **[NEW]** Partial Result Type | `fn(int) -> int = add(1)` where `add` takes 3 args | `declared as fn(int) -> int but initialized with fn(int, int) -> int` | **PASS** |
+| `lambda_void_value_position` | **[NEW]** Void Lambda as Value | `print(v())` where `v` is a void lambda | `returns nothing and cannot be used as a value` | **PASS** |
+| `lambda_missing_return` | **[NEW]** Lambda Missing Return | `lambda(x: int) -> int` body without `return` | `lambda may exit without returning int` | **PASS** |
+| `lambda_default_value_type` | **[NEW]** Bad Lambda Default | `lambda(x: int = "nope") -> int` | `default value for parameter 'x' of lambda must be a literal of type int` | **PASS** |
 | `use_missing_file` | **[NEW]** Module Missing | `use "lib/nope.hmx"` (nonexistent) | `cannot open module` | **PASS** |
 | `use_non_hmx` | **[NEW]** Non-`.hmx` Module | `use "lib/math.txt"` | `must be a .hmx file` | **PASS** |
 | `use_cycle` | **[NEW]** Module Cycle | `c1.hmx` ↔ `c2.hmx` mutual `use` | `circular module dependency` | **PASS** |
@@ -277,7 +286,7 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (97/97 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (104/104 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -376,6 +385,13 @@ These tests verify exact runtime output matching and process exit code propagati
 | `destructure_nested_array_oob` | **[NEW]** Runtime Error | nested group over a short row aborts | Exit Code: `1` | **PASS** |
 | `destructure_array_of_tuples_oob` | **[NEW]** Runtime Error | too few array-of-tuple elements aborts | Exit Code: `1` | **PASS** |
 | `destructure_nested_text_member` | **[NEW]** Runtime Error | text member too short for nested pattern aborts | Exit Code: `1` | **PASS** |
+| `curry_partial_named` | **[NEW]** Currying | `add(1)` partial on a 3-arg fn, then `f(2, 39)` | `42` | **PASS** |
+| `curry_partial_value` | **[NEW]** Currying | fn value `twice` partial-applied via `let ten = f(10)` | `40` | **PASS** |
+| `curry_lambda_capture` | **[NEW]** Currying | lambda capturing `c` from `scale(c)` returns a closure | `42` | **PASS** |
+| `curry_nested_lambda` | **[NEW]** Currying | lambda returning a lambda; `outer(20)` value call returns a closure | `19` | **PASS** |
+| `curry_void_lambda_statement` | **[NEW]** Currying | void lambda called as a statement | `9` | **PASS** |
+| `curry_hof_partial` | **[NEW]** Currying | partial application passed as a HOF argument | `42` | **PASS** |
+| `curry_exit_chain` | **[NEW]** Currying | exit code via a chained partial `inc(41)` | Exit Code: `42` | **PASS** |
 
 ---
 
@@ -486,3 +502,20 @@ cd build && cmake .. && make && cd ..
 > for captured (closure) tuples, chained `grid[i][j]` on arrays of homogeneous
 > tuples, nested homogeneous tuples (`t[i][j]`), and as a destructuring source.
 > Suites rerun at 50/175/97 = **322**.
+>
+> **0.A7 addition:** currying lands via two complementary features. Anonymous
+> **lambda expressions** use the reserved `lambda` keyword (`lambda(x: int) -> int
+> { ... }`, zero-arg and void variants supported) and reuse the full `fn` parameter
+> syntax — defaults, variadic, tuples, arrays, and function types all work, and
+> lambdas capture enclosing scopes by snapshot exactly like nested functions.
+> **Partial application** applies when a named function or function value is called
+> with `1 <= args < arity` and the callee has no defaults and no variadic: the call
+> returns a closure capturing the prefix arguments (lowered to a heap env plus a
+> generated static trampoline that re-calls the original with applied + remaining
+> args). Both named- and value-call paths participate, so partials compose, chain,
+> and flow through higher-order functions; `lambda` was chosen over reusing `fn`
+> to keep the bison conflict count at exactly 6 (5 states). Chained-call syntax
+> `add(1)(2)` is not yet parseable — bind the intermediate closure to a name. A
+> latent `expr_function_type` bug (full function-value calls returning the callee's
+> type instead of the call result) was fixed as part of this work. Suites rerun at
+> 51/182/104 = **337**.

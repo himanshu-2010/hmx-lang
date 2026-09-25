@@ -1,0 +1,55 @@
+fn add(a: int, b: int) -> int {
+    return a + b
+}
+
+fn sub(a: int, b: int) -> int {
+    return a - b
+}
+
+fn apply(f: fn(int) -> int, x: int) -> int {
+    return f(x)
+}
+
+fn counter(start: int) -> fn(int) -> int {
+    return lambda(step: int) -> int {
+        return start + step
+    }
+}
+
+fn main() {
+    // partial application of a named function
+    let inc = add(1)
+    print(inc(41))
+
+    // direct partial with all but one arg
+    print(add(2, 40))
+
+    // lambda with capture from an enclosing function
+    let base = 100
+    let add_base = lambda(x: int) -> int {
+        return x + base
+    }
+    print(add_base(5))
+
+    // a lambda that returns a lambda (closure of a closure)
+    let mk = counter(7)
+    print(mk(35))
+
+    // passing a partial application into a higher-order function
+    let add5 = add(5)
+    print(apply(add5, 3))
+
+    // partial application of a function value stored in a variable
+    let f = sub
+    let minus_ten = f(10)
+    print(minus_ten(30))
+
+    // lambda used as an argument directly
+    print(apply(lambda(y: int) -> int { return y * y }, 6))
+
+    // void lambda
+    let greet = lambda() {
+        print(0)
+    }
+    greet()
+}

@@ -69,6 +69,8 @@ private:
     std::vector<int> switch_entry_loop_depths_;
     std::vector<Statement*> lex_loop_stack_;       // loops whose bodies lexically enclose the current stmt
     int next_loop_id_ = 0;                         // unique loop ids for non-local exit bookkeeping
+    int lambda_counter_ = 0;                       // unique naming for hoisted lambda functions
+    std::vector<std::unique_ptr<FunctionDecl>> lambda_fns_;   // ownership of hoisted lambdas
 
     void push_scope();
     void pop_scope();
@@ -99,6 +101,7 @@ private:
     TypeKind resolve_expr(Expression* expr);
     bool resolve_stmt(Statement* stmt);
     bool resolve_block(const std::vector<StmtPtr>& statements);
+    void resolve_function_decl(FunctionDecl* fn);
     void collect_functions(Program& program);
     void collect_functions_stmt(Statement* stmt);
     void analyze_nonlocal_exits(Program& program);
