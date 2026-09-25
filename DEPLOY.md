@@ -21,8 +21,10 @@ If you want a domain you actually own (e.g. `hmx.dev`), that only works on
 
 ## Choose a name (domain)
 
-Your chosen name becomes the subdomain: `hmx.antideploy.com` /
-`hmx.vercel.app`. Keep it short, lowercase, no spaces.
+**Chosen: `hmx`** → `hmx.antideploy.com` / `hmx.vercel.app`.
+
+Your name becomes the subdomain; keep it short, lowercase, no spaces. Other
+options, if you ever retake the platform name:
 
 | Name | Reads as | Free on both? |
 |---|---|---|
