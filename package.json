@@ -8,7 +8,11 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "start": "node server.mjs",
     "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=20.19"
   },
   "dependencies": {
     "react": "^19.2.8",

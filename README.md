@@ -10,6 +10,13 @@ the boilerplate. Writing a compiler like this is also deliberately simple to fol
 the whole pipeline is a Flex lexer, a Bison parser, a C++ AST/type resolver/code
 generator, and a GCC-based backend, all compact and readable.
 
+There is also a **browser playground**: a Vite + React + TypeScript app in
+[`web-playground/`](web-playground) that runs HMX entirely client-side (the
+compiler ported to TypeScript, with a JavaScript backend replacing `gcc`; see
+[`web-playground.md`](web-playground.md)). The playground is wired to deploy
+straight from this repo's root to **Antideploy** or **Vercel** — see
+[`DEPLOY.md`](DEPLOY.md).
+
 ## Status
 
 The current compiler supports:
@@ -54,6 +61,26 @@ The current compiler supports:
 The compiler is functional, but this is still a small language project rather than a
 production compiler. See [SYNTAX.md](SYNTAX.md) for the authoritative reference and
 [PLAN.md](PLAN.md) for planned work.
+
+## Web Playground
+
+`npm install && npm run dev` opens the playground editor locally. The web
+compiler is a TypeScript port of the front half (lexer → LALR parser tables →
+resolver) plus a new JavaScript backend, and its gate is parity with the 358
+native test cases (work in progress across M2–M4):
+
+```bash
+npm install
+npm run dev        # local dev server
+npm test           # vitest — grows into the 358-case parity harness
+npm run build      # type-check + production build → dist/
+npm start          # serve the production build (Antideploy's Procfile command)
+npm run lint       # oxlint
+```
+
+To ship it: import this repository into Antideploy (preferred) or Vercel —
+both auto-detect it because `package.json`/`vercel.json`/`Procfile` sit at the
+repo root. Domain suggestions and step-by-step: [`DEPLOY.md`](DEPLOY.md).
 
 ## Quick Start
 
@@ -558,7 +585,8 @@ benchmark exists, avoid treating the test-suite pass count as a speed measuremen
 ## Project Layout
 
 ```text
-src/                    Lexer, parser, AST, resolver, and code generator
+web-playground/         Vite + React + TS browser playground (src/, tests/, public/)
+src/                    Lexer, parser, AST, resolver, and code generator (native)
 examples/hello.hmx      Example HMX program
 examples/curry_smoke.hmx  Currying showcase (lambdas + partial application)
 tests/fixtures/         Integration fixture programs
@@ -566,6 +594,12 @@ tests/*.sh              Integration, negative, and stress test runners
 SYNTAX.md               Full language syntax reference
 PLAN.md                 Implementation history and roadmap
 TESTRESULT.md           Detailed regression report
+package.json            Web playground scripts + deploy signals
+vite.config.ts          Vite config (app root = web-playground/)
+vercel.json             Vercel deploy config (framework/build/output)
+Procfile + server.mjs   Antideploy start command + static server
+DEPLOY.md               How to deploy the playground
+web-playground.md       Web compiler plan and architecture
 ```
 
 ## Remaining Features

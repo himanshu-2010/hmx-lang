@@ -107,7 +107,7 @@ Key decisions:
 
 6. **The parity harness is the deliverable's spine.** A vitest suite inside the
    web project (`web-playground/tests/parity.test.ts`) that:
-   - runs the 52 `tests/fixtures/*.hmx` programs and asserts exit 0,
+   - runs the 52 `hmx-lang/tests/fixtures/*.hmx` programs and asserts exit 0,
    - runs the 116 stress snippets asserting exact stdout,
    - runs the 190 negative snippets asserting exit ≠ 0 and the regex match,
    - runs the grouping-precedence stress (`20 14 -4 7`) and the 0.A8
@@ -135,10 +135,10 @@ Key decisions:
 ## 3. Project layout
 
 ```
-hmx-lang/web-playground/           ← Vite + React + TS app (its own package.json)
-  package.json  vite.config.ts  tsconfig.json  index.html
+repo root = the Vite + React + TS app (this repo's deployable)
+  package.json  vite.config.ts  tsconfig.json  index.html  vercel.json
   src/
-    main.tsx  App.tsx  app.css
+    main.tsx  App.tsx  index.css
     compiler/                  ← the ported core (no React imports; pure TS)
       lexer.ts
       lalr.ts
@@ -156,7 +156,9 @@ hmx-lang/web-playground/           ← Vite + React + TS app (its own package.js
     unit.test.ts               ← lexer/table/resolver units
   tools/
     extract_parser_table.py    ← bison parser.cpp → tables/*.json
-README.md                      ← how to run: `npm i && npm run dev; npm test`
+  README.md  DEPLOY.md          ← how to run and how to ship it
+  server.mjs  Procfile          ← Antideploy start command + static server
+hmx-lang/                       ← native compiler (not part of the deploy)
 ```
 
 Generated-table checkin: commit the JSON tables so `npm i && npm run dev` works
@@ -172,7 +174,7 @@ without a C toolchain; the extract script only runs when the grammar changes.
 | M4 | Backend | codegen_js.ts + runtime.ts + vm.ts | hello + arithmetic + closures run in-page |
 | M5 | Parity gate | parity.test.ts (vitest) green for all 358 cases | **358/358 in Node**, then in the browser via a DOM test |
 | M6 | Polish | examples menu, share URL, stdin box, exit-code line, mobile layout | demo-ready |
-| M7 | Ship | static deployment (GitHub Pages or Vercel) | `npm run build && npm run preview` |
+| M7 | Ship | static deployment (Antideploy or Vercel) | `npm run build`; repo-root app auto-detected by both platforms; see `DEPLOY.md` |
 
 ## 5. Risks and mitigations
 
