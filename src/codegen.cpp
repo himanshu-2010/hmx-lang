@@ -188,6 +188,14 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "    return index;\n";
     out_ << "}\n\n";
 
+    out_ << "static int sd_check_tuple_index(int length, int index) {\n";
+    out_ << "    if (index < 0 || index >= length) {\n";
+    out_ << "        fprintf(stderr, \"Error: tuple index out of bounds (index %d, length %d)\\n\", index, length);\n";
+    out_ << "        exit(1);\n";
+    out_ << "    }\n";
+    out_ << "    return index;\n";
+    out_ << "}\n\n";
+
     out_ << "typedef struct sd_closure {\n";
     out_ << "    void* fn;\n";
     out_ << "    void* env;\n";
@@ -755,8 +763,16 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
     } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->base) {
             if (idx->is_tuple) {
-                emit_expr(idx->base.get());
-                out_ << ".f" << idx->member_index;
+                if (idx->tuple_dynamic) {
+                    out_ << "(((" << c_type_for_desc(idx->elem) << "*)(&";
+                    emit_expr(idx->base.get());
+                    out_ << "))[sd_check_tuple_index(" << idx->tuple_arity << ", ";
+                    emit_expr(idx->index.get());
+                    out_ << ")])";
+                } else {
+                    emit_expr(idx->base.get());
+                    out_ << ".f" << idx->member_index;
+                }
             } else if (idx->is_text) {
                 emit_expr(idx->base.get());
                 out_ << "[sd_check_index((int)strlen(";
@@ -776,8 +792,16 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                 out_ << ")]";
             }
         } else if (idx->is_tuple) {
-            emit_identifier_value(idx->name);
-            out_ << ".f" << idx->member_index;
+            if (idx->tuple_dynamic) {
+                out_ << "(((" << c_type_for_desc(idx->elem) << "*)(&";
+                emit_identifier_value(idx->name);
+                out_ << "))[sd_check_tuple_index(" << idx->tuple_arity << ", ";
+                emit_expr(idx->index.get());
+                out_ << ")])";
+            } else {
+                emit_identifier_value(idx->name);
+                out_ << ".f" << idx->member_index;
+            }
         } else if (idx->is_text) {
             emit_identifier_value(idx->name);
             out_ << "[sd_check_index((int)strlen(";

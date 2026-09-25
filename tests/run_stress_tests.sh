@@ -656,6 +656,115 @@ test_output "tuple_inference_and_index" \
     }' \
     "$(printf '3\n1')"
 
+test_output "tuple_dynamic_index_homogeneous" \
+    'fn triple(a: int, b: int, c: int) -> (int, int, int) {
+        return a, b, c
+    }
+    fn main() {
+        let t = triple(10, 20, 30)
+        let i = 1
+        print(t[i])
+        print(t[0])
+        print(t[i + 1])
+    }' \
+    "$(printf '20\n10\n30')"
+
+test_output "tuple_dynamic_index_loop" \
+    'fn triple(a: int, b: int, c: int) -> (int, int, int) {
+        return a, b, c
+    }
+    fn main() {
+        let t = triple(4, 5, 6)
+        for (let i = 0; i < 3; i++) {
+            print(t[i])
+        }
+    }' \
+    "$(printf '4\n5\n6')"
+
+test_exit_code "tuple_dynamic_index_oob" \
+    'fn triple(a: int, b: int, c: int) -> (int, int, int) {
+        return a, b, c
+    }
+    fn main() {
+        let t = triple(1, 2, 3)
+        let i = 3
+        print(t[i])
+    }' \
+    1
+
+test_exit_code "tuple_dynamic_index_negative" \
+    'fn f() -> (int, int) {
+        return 1, 2
+    }
+    fn main() {
+        let t = f()
+        let i = -1
+        print(t[i])
+    }' \
+    1
+
+test_output "tuple_dynamic_index_chained" \
+    'fn mk(a: int) -> (int, int) {
+        return a, a * 10
+    }
+    fn main() {
+        let grid: [(int, int)] = [mk(1), mk(2), mk(3)]
+        let i = 1
+        let j = 0
+        print(grid[i][j])
+        print(grid[i][j + 1])
+    }' \
+    "$(printf '2\n20')"
+
+test_output "tuple_dynamic_index_nested_tuple" \
+    'fn mk_pair(a: int) -> (int, int) {
+        return a, a + 1
+    }
+    fn f() -> ((int, int), (int, int)) {
+        return mk_pair(1), mk_pair(5)
+    }
+    fn main() {
+        let t = f()
+        let i = 0
+        print(t[i][0])
+        print(t[i][1])
+        print(t[1][i + 1])
+    }' \
+    "$(printf '1\n2\n6')"
+
+test_output "tuple_dynamic_index_destructure" \
+    'fn mk_pair(a: int) -> (int, int) {
+        return a, a + 1
+    }
+    fn f() -> ((int, int), (int, int)) {
+        return mk_pair(1), mk_pair(5)
+    }
+    fn main() {
+        let t = f()
+        let i = 1
+        let (x, y) = t[i]
+        print(x, y)
+    }' \
+    "$(printf '5 6')"
+
+test_output "tuple_dynamic_index_capture" \
+    'fn mk() -> (int, int) {
+        return 1, 2
+    }
+    fn make() -> fn() -> int {
+        let t = mk()
+        fn inner() -> int {
+            let i = 0
+            return t[i]
+        }
+        return inner
+    }
+    fn main() {
+        let f = make()
+        print(f())
+    }' \
+    "$(printf '1')"
+
 test_output "tuple_multi_assign" \
     'fn quotrem(a: int, b: int) -> (int, int) {
         return a / b, a - (a / b) * b

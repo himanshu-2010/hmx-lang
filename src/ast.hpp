@@ -160,7 +160,10 @@ struct ArrayIndexExpr : Expression {
     TypeDesc elem;                              // element descriptor after resolution
     bool is_tuple = false;                      // valid after resolution
     bool is_text = false;                       // valid after resolution: indexing a text (char element)
-    int member_index = -1;                      // valid after resolution when is_tuple
+    int member_index = -1;                      // valid after resolution when is_tuple (constant index)
+    bool tuple_dynamic = false;                 // valid after resolution: non-constant index on a
+                                                // homogeneous tuple; elem holds the common member type
+    int tuple_arity = 0;                        // member count when tuple_dynamic
     ArrayIndexExpr(std::string n, ExprPtr i)
         : name(std::move(n)), base(nullptr), index(std::move(i)) {}
     ArrayIndexExpr(ExprPtr b, ExprPtr i)

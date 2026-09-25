@@ -39,6 +39,7 @@ The current compiler supports:
   - Growable arrays with `push`, `pop`, `sort`, `slice`, `concat`, `index_of`, and `contains`
   - Reference semantics: array copies share backing storage, so mutations through any alias are visible
 - Multiple return values via tuples with destructuring
+  - Dynamic tuple indexing: `t[i]` with a runtime `int` index (bounds-checked) when all members share a type; constant `t[0]` always works
   - Destructuring also works on arrays and text, with an optional `...rest` to capture the remainder
   - Destructuring patterns nest: `((a, b), ...rest) = e` over nested tuples, arrays of tuples, nested arrays, and text elements
   - Nested tuple types (`((int, int), int)`) and arrays of tuples (`[(int, int)]`)
@@ -482,10 +483,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring | 49/49 passed |
-| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse | 173/173 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring | 89/89 passed |
-| Total | 311 test cases | 311/311 passed |
+| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing | 50/50 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse | 175/175 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing | 97/97 passed |
+| Total | 322 test cases | 322/322 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

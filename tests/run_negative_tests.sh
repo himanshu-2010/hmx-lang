@@ -673,16 +673,41 @@ test_error "tuple_ternary" \
     }' \
     "ternary branches cannot be tuples"
 
-test_error "tuple_index_non_constant" \
-    'fn f() -> (int, int) {
-        return 1, 2
+test_error "tuple_index_dynamic_hetero" \
+    'fn f() -> (int, text) {
+        return 1, "x"
     }
     fn main() {
         let t = f()
         let i = 0
         print(t[i])
     }' \
-    "tuple index must be an integer constant"
+    "tuple members must all be of the same type"
+
+test_error "tuple_index_dynamic_nested_hetero" \
+    'fn mk() -> (int, int) {
+        return 1, 2
+    }
+    fn f() -> ((int, int), text) {
+        return mk(), "x"
+    }
+    fn main() {
+        let t = f()
+        let i = 0
+        print(t[i])
+    }' \
+    "tuple members must all be of the same type"
+
+test_error "tuple_index_dynamic_non_int" \
+    'fn f() -> (int, int) {
+        return 1, 2
+    }
+    fn main() {
+        let t = f()
+        let s = "x"
+        print(t[s])
+    }' \
+    "tuple index must be int, got text"
 
 test_error "tuple_index_out_of_range" \
     'fn f() -> (int, int) {

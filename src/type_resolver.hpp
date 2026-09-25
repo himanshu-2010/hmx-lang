@@ -87,6 +87,8 @@ private:
     TypeDesc expr_desc(Expression* expr);
     std::vector<TypeDesc> expr_tuple_members(Expression* expr);
     TypeDesc expr_function_type(Expression* expr);
+    TypeKind resolve_tuple_index(ArrayIndexExpr* idx,
+                                 const std::vector<TypeDesc>& members, int line);
     bool types_match(const TypeDesc& a, const TypeDesc& b) const;
     void apply_destruct_pattern(std::vector<DestructPattern>& slots,
                                 const TypeDesc& val, int line, bool declare,

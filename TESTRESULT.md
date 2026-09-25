@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-25  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (311 / 311)
+**Status:** ALL TESTS PASSED (322 / 322)
 
 ---
 
@@ -29,11 +29,12 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 18. **Array/text destructuring with `...rest`**: `let (a, b, ...rest) = expr` and the multi-assign form bind the first `N` elements (arrays / text characters) with a runtime `length ≥ N` check; `...rest` captures the remainder as a new `[elem]` array or `text` substring; tuples still require an exact match and reject `...rest`.
 19. **Nested destructuring patterns**: any destructuring slot may itself be a parenthesized list — deep tuple nesting (`(((a,b),c),d)`), arrays of tuples (`[(int,int)]` with `((p,q), second)`), rest inside a nested array group (`((x, y, ...zs), row)`), and nested patterns over text elements (`(w0, (c1, c2))`) all type-check and lower correctly; nested tuple types and arrays of tuples were lifted from "not supported".
 20. **Nested tuple type support**: `((int, int), int)` annotations and `[(int, int)]` arrays now work via structural tuple typedef names, dependency-ordered struct emission, and recursive deep registration of tuple types.
+21. **Dynamic tuple indexing**: `t[i]` with a runtime `int` index works when every tuple member has the same type (the result has that type); the index is bounds-checked at runtime (`sd_check_tuple_index`, exit code 1 on out of range). Constant `t[0]` indexing is unchanged, heterogeneous tuples with a non-constant index are a compile error, and non-`int` indexes are rejected.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 311
-> - **Passed:** 311
+> - **Total Test Cases Executed:** 322
+> - **Passed:** 322
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -52,7 +53,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (49/49 Passed)
+### 1. Integration Fixtures (50/50 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -103,10 +104,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `text_ops.hmx` | **[NEW]** Text Ops | `text[i]` indexing, char-of-text chains (`names[1][0]`), `ord`/`chr`, `split` with preserved empty pieces, `index_of` on split results | **PASS** |
 | `destructure_rest.hmx` | **[NEW]** Destructure `...rest` | Array `(x, y, ...rest)`, text `(c1, c2, ...cs)`, extra elements ignored, nested `[[int]]` rows, rest from `split` and `grid[i]`, single-element rest-is-empty | **PASS** |
 | `destructure_nested.hmx` | **[NEW]** Nested Destructure | Deep tuple nesting, array of tuples with group+rest, rest inside a nested array group, nested patterns on text elements, nested multi-assign | **PASS** |
+| `tuple_dynamic_index.hmx` | **[NEW]** Dynamic Tuple Index | Variable/expression indexes on homogeneous tuples, chained array-of-homogeneous-tuples, nested homogeneous tuples feeding destructuring, closure capture | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (173/173 Passed)
+### 2. Negative & Error Handling Suite (175/175 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -161,7 +163,9 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `tuple_print` | **[NEW]** Print Tuple | `print(f())` where `f` returns `(int, int)` | **PASS** |
 | `tuple_binary_op` | **[NEW]** Binary Op on Tuple | `t + t` where `t` is `(int, int)` | **PASS** |
 | `tuple_ternary` | **[NEW]** Tuple Ternary Branch | Ternary selecting `(int, int)` values | **PASS** |
-| `tuple_index_non_constant` | **[NEW]** Variable Tuple Index | `t[i]` with loop variable | **PASS** |
+| `tuple_index_dynamic_hetero` | **[NEW]** Dynamic Index on Hetero Tuple | `t[i]` where `t: (int, text)` | `tuple members must all be of the same type` | **PASS** |
+| `tuple_index_dynamic_nested_hetero` | **[NEW]** Dynamic Index on Nested Hetero | `t[i]` where `t: ((int, int), text)` | `tuple members must all be of the same type` | **PASS** |
+| `tuple_index_dynamic_non_int` | **[NEW]** Non-Int Dynamic Index | `t[s]` with `s: text` on a homogeneous tuple | `tuple index must be int, got text` | **PASS** |
 | `tuple_index_out_of_range` | **[NEW]** Tuple Index OOR | `t[2]` on a 2-member tuple | **PASS** |
 | `tuple_index_on_int` | **[NEW]** Index on Non-Tuple | Indexing an `int` variable | **PASS** |
 | `tuple_destruct_count_mismatch` | **[NEW]** Destruct Arity Mismatch | 3 targets vs 2-member tuple | **PASS** |
@@ -273,7 +277,7 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (89/89 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (97/97 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -300,6 +304,14 @@ These tests verify exact runtime output matching and process exit code propagati
 | `array_oob_low` | **[NEW]** Bounds Check Low | Negative index | Exit Code: `1` | **PASS** |
 | `tuple_multi_return_destructure` | **[NEW]** Tuple Destructure | `quotrem(17, 5)` destructured | `3\n2` | **PASS** |
 | `tuple_inference_and_index` | **[NEW]** Tuple Inference + Index | Whole-tuple var with `[0]` / `[1]` access | `3\n1` | **PASS** |
+| `tuple_dynamic_index_homogeneous` | **[NEW]** Dynamic Tuple Index | Variable and expression indexes on `(int,int,int)` | `20\n10\n30` | **PASS** |
+| `tuple_dynamic_index_loop` | **[NEW]** Dynamic Index Loop | Homogeneous tuple walked with a `for` header index | `4\n5\n6` | **PASS** |
+| `tuple_dynamic_index_oob` | **[NEW]** Runtime Error | Runtime index at/over member count aborts | Exit Code: `1` | **PASS** |
+| `tuple_dynamic_index_negative` | **[NEW]** Runtime Error | Negative runtime index aborts | Exit Code: `1` | **PASS** |
+| `tuple_dynamic_index_chained` | **[NEW]** Chained Dynamic Index | `grid[i][j]` on `[(int,int)]` with dynamic row and column | `2\n20` | **PASS** |
+| `tuple_dynamic_index_nested_tuple` | **[NEW]** Nested Homogeneous Tuple | `t[i][j]` on `((int,int),(int,int))` | `1\n2\n6` | **PASS** |
+| `tuple_dynamic_index_destructure` | **[NEW]** Dynamic Index + Destructure | `let (x, y) = t[i]` | `5 6` | **PASS** |
+| `tuple_dynamic_index_capture` | **[NEW]** Captured Tuple Index | `t[i]` inside a closure over a captured tuple | `1` | **PASS** |
 | `tuple_multi_assign` | **[NEW]** Tuple Multi-Assign | `(q, r) = quotrem(20, 7)` | `2\n6` | **PASS** |
 | `tuple_param_and_call` | **[NEW]** Tuple Params | `pair_it` + `swap(t: (int, int))` nesting | `5\n4` | **PASS** |
 | `tuple_text_member` | **[NEW]** Text Tuple Member | Destructure `(int, text)` return | `7\nhi` | **PASS** |
@@ -460,3 +472,17 @@ cd build && cmake .. && make && cd ..
 > collide. A nested slot's value must be a tuple, array, or text (scalars are a
 > compile error, as is `...rest` before another target). Suites rerun at
 > 49/173/89 = **311**.
+>
+> **0.A6 addition:** tuple indexing now accepts a runtime `int` expression —
+> `t[i]` — in addition to the existing compile-time constant. Because a dynamic
+> member selection has no single static type, it is restricted to tuples whose
+> members are all the same type; the result has that type and the index is
+> bounds-checked at runtime via the new `sd_check_tuple_index` helper (aborts
+> with exit code 1 out of range). Constant `t[N]` selection is unchanged.
+> Lowering casts the address of the tuple struct to the common member type
+> (struct layout of `N` identical fields); because call results can't be
+> indexed by the grammar, the base is always an lvalue. Heterogeneous tuples
+> under a non-constant index, and non-`int` indexes, are compile errors. Works
+> for captured (closure) tuples, chained `grid[i][j]` on arrays of homogeneous
+> tuples, nested homogeneous tuples (`t[i][j]`), and as a destructuring source.
+> Suites rerun at 50/175/97 = **322**.

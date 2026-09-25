@@ -349,6 +349,42 @@ TypeDesc TypeResolver::expr_function_type(Expression* expr) {
     return TypeDesc{};
 }
 
+TypeKind TypeResolver::resolve_tuple_index(ArrayIndexExpr* idx,
+                                           const std::vector<TypeDesc>& members,
+                                           int line) {
+    TypeKind it = resolve_expr(idx->index.get());
+    if (it != TypeKind::Int) {
+        throw err(line,
+            "tuple index must be int, got " + type_to_string(it));
+    }
+    if (auto* num = dynamic_cast<NumberLiteral*>(idx->index.get())) {
+        int member_index = num->value;
+        if (member_index < 0 || (size_t)member_index >= members.size()) {
+            throw err(line,
+                "tuple index " + std::to_string(member_index) +
+                " out of range for " + tuple_type_to_string(members));
+        }
+        const TypeDesc& member = members[member_index];
+        idx->is_tuple = true;
+        idx->member_index = member_index;
+        idx->elem = member;
+        return member.type;
+    }
+    const TypeDesc& first = members[0];
+    for (size_t m = 1; m < members.size(); m++) {
+        if (!(members[m] == first)) {
+            throw err(line,
+                "cannot index tuple " + tuple_type_to_string(members) +
+                " with a non-constant index: tuple members must all be of the same type");
+        }
+    }
+    idx->is_tuple = true;
+    idx->tuple_dynamic = true;
+    idx->tuple_arity = (int)members.size();
+    idx->elem = first;
+    return first.type;
+}
+
 bool TypeResolver::types_match(const TypeDesc& a, const TypeDesc& b) const {
     if (a.type != b.type) return false;
     if (a.type == TypeKind::Array) return a.element() == b.element();
@@ -929,26 +965,7 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                 idx->elem = elem_desc;
                 result = TypeKind::Char;
             } else if (bd.type == TypeKind::Tuple) {
-                auto* num = dynamic_cast<NumberLiteral*>(idx->index.get());
-                if (!num) {
-                    throw err(line(), "tuple index must be an integer constant");
-                }
-                TypeKind it = resolve_expr(idx->index.get());
-                if (it != TypeKind::Int) {
-                    throw err(line(),
-                        "tuple index must be int, got " + type_to_string(it));
-                }
-                int member_index = num->value;
-                if (member_index < 0 || (size_t)member_index >= bd.tuple_members.size()) {
-                    throw err(line(),
-                        "tuple index " + std::to_string(member_index) +
-                        " out of range for " + tuple_type_to_string(bd.tuple_members));
-                }
-                const TypeDesc& member = bd.tuple_members[member_index];
-                idx->is_tuple = true;
-                idx->member_index = member_index;
-                idx->elem = member;
-                result = member.type;
+                result = resolve_tuple_index(idx, bd.tuple_members, line());
             } else {
                 throw err(line(),
                     "cannot index value of type " + type_to_string(bd.type));
@@ -985,26 +1002,7 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             idx->elem = elem_desc;
             result = TypeKind::Char;
         } else if (sym->type == TypeKind::Tuple) {
-            auto* num = dynamic_cast<NumberLiteral*>(idx->index.get());
-            if (!num) {
-                throw err(line(), "tuple index must be an integer constant");
-            }
-            TypeKind it = resolve_expr(idx->index.get());
-            if (it != TypeKind::Int) {
-                throw err(line(),
-                    "tuple index must be int, got " + type_to_string(it));
-            }
-            int member_index = num->value;
-            if (member_index < 0 || (size_t)member_index >= sym->tuple_members.size()) {
-                throw err(line(),
-                    "tuple index " + std::to_string(member_index) +
-                    " out of range for " + tuple_type_to_string(sym->tuple_members));
-            }
-            const TypeDesc& member = sym->tuple_members[member_index];
-            idx->is_tuple = true;
-            idx->member_index = member_index;
-            idx->elem = member;
-            result = member.type;
+            result = resolve_tuple_index(idx, sym->tuple_members, line());
         } else {
             throw err(line(),
                 "variable '" + idx->name + "' is not an array");

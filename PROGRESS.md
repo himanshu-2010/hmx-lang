@@ -550,6 +550,44 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - Full regression: 49/49 integration, 173/173 negative, 89/89 stress/output =
   **311**; bison conflicts unchanged at 6; zero compiler warnings.
 
+### 0.A6 — Dynamic tuple indexing (`t[i]` with runtime bounds check) — DONE
+- Semantics: tuple indexing now accepts a runtime `int` expression in addition
+  to the existing compile-time `t[N]`. Because a dynamic member selection has no
+  single static type, it is allowed only when every member of the tuple has the
+  same type; the result then has that member type. The index is bounds-checked
+  at runtime (negative or ≥ arity aborts with exit code 1). Constant
+  `t[literal]` selection is unchanged (compile-time range check, direct `.fN`
+  field access). Heterogeneous tuples under a non-constant index and non-`int`
+  indexes remain compile errors.
+- Resolver: new `resolve_tuple_index(ArrayIndexExpr*, members, line)` helper used
+  by both `ArrayIndexExpr` branches (identifier base and chained base). It
+  resolves the index expression first (int-check), takes the constant path for
+  `NumberLiteral` (range-checked `.fN`), and otherwise requires homogeneity —
+  "cannot index tuple (A, B) with a non-constant index: tuple members must all
+  be of the same type" — setting `idx->tuple_dynamic`, `idx->tuple_arity`, and
+  `idx->elem` (the common member type). `expr_tuple_members` / `expr_element_desc`
+  already read `elem`, so dynamic indexes compose with destructuring, chained
+  indexing, and array-element typing without further changes.
+- Codegen: new `sd_check_tuple_index(length, index)` runtime helper (distinct
+  "tuple index out of bounds" diagnostic). Dynamic access lowers to casting the
+  address of the tuple struct to the common member type and subscripting it —
+  `(((T*)(&(t)))[sd_check_tuple_index(N, i)])` — which is a valid lvalue and
+  bounds-checked; the base is always an lvalue because the grammar can't index a
+  call result, and `N` identical `T` fields embed at `sizeof(T)` offsets with no
+  padding, so the struct layout matches an array of `T`. The tuple typedef isn't
+  needed here, only the pre-registered member type.
+- Tests: `tuple_dynamic_index.hmx` fixture; 3 net-new negatives (heterogeneous
+  dynamic index, nested-heterogeneous dynamic index, non-int index on a tuple —
+  the old `tuple_index_non_constant` negative, now legal, was removed); 8 new
+  stress cases (exact-output: homogeneous variable/expression index, `for` loop
+  walk, chained `grid[i][j]`, nested `((int,int),(int,int))` with `t[i][j]`,
+  dynamic-index destructuring source, closure-captured tuple; exit-code:
+  out-of-range high and negative indexes).
+- Docs: SYNTAX.md §5.4 rules and §9 tuple-indexing paragraph + example; this
+  entry.
+- Full regression: 50/50 integration, 175/175 negative, 97/97 stress/output =
+  **322**; bison conflicts unchanged at 6; zero compiler warnings.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

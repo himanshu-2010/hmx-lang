@@ -321,8 +321,10 @@ Rules:
   (`[int]`, etc.), or another tuple — nested tuples (`((int, int), int)`) and
   arrays of tuples (`[(int, int)]`) are supported.
 - Tuples are value types. Passing a tuple to a function or returning one copies it.
-- A tuple index must be an integer constant in range; `t[i]` with a variable `i` is
-  rejected at compile time.
+- A tuple index may be a compile-time `int` constant (`t[0]`, resolved directly to
+  that member). A runtime `int` index (`t[i]`) is also supported **when every member
+  has the same type**; the result has that type and the index is bounds-checked at
+  runtime. Dynamic indexing of a heterogeneous tuple is a compile error.
 - Tuple element assignment (`t[0] = x`) is not supported.
 - Tuples cannot be `print`ed, compared, combined arithmetically, used in `length`,
   or used as a ternary branch — destructure them or index their elements instead.
@@ -702,14 +704,21 @@ one-dimensional array have the array's element type. Index expressions chain:
 `a[i][j]` indexes element `j` of row `i`, and a chained indexed element can
 be assigned: `grid[0][1] = 99`.
 
-Tuple indexing uses the same `t[i]` syntax with a compile-time `int` constant; the
-result is the tuple member at that position. A variable index, an out-of-range
-index, or indexing a non-array, non-tuple value is a compile error.
+Tuple indexing uses the same `t[i]` syntax. With a compile-time `int` constant the
+result is the tuple member at that position. With a runtime `int` expression the
+tuple's members must all be the same type; the result has that type and the index is
+bounds-checked at runtime (an out-of-range `t[i]` aborts with a tuple index error). A
+non-`int` index, an out-of-range constant, a dynamic index on a heterogeneous tuple,
+or indexing a non-array, non-tuple value is a compile error.
 
 ```hmx
 let pair = divmod(9, 2)
 print(pair[0])    // first member
 print(pair[1])    // second member
+
+let weights = triple(1, 2, 3)   // (int, int, int)
+let i = 1
+print(weights[i])               // runtime index -> 2
 ```
 
 Comparison of `text` values is limited: `==` and `!=` are supported (via `strcmp`);

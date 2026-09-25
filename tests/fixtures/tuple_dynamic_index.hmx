@@ -1,0 +1,42 @@
+fn triple(a: int, b: int, c: int) -> (int, int, int) {
+    return a, b, c
+}
+fn mk(a: int) -> (int, int) {
+    return a, a * 10
+}
+fn mk_pair(a: int) -> (int, int) {
+    return a, a + 1
+}
+fn nested() -> ((int, int), (int, int)) {
+    return mk_pair(1), mk_pair(5)
+}
+fn make_getter() -> fn() -> int {
+    let t = mk(7)
+    fn inner() -> int {
+        let i = 1
+        return t[i]
+    }
+    return inner
+}
+fn main() {
+    // plain homogeneous tuple, variable index
+    let t = triple(10, 20, 30)
+    let i = 1
+    print(t[i])
+    // expression index
+    print(t[i + 1])
+    // chained: array of homogeneous tuples
+    let grid: [(int, int)] = [mk(1), mk(2), mk(3)]
+    let j = 0
+    print(grid[2][j])
+    print(grid[2][j + 1])
+    // nested homogeneous tuple
+    let nt = nested()
+    print(nt[1][0], nt[1][1])
+    // dynamic index result feeds destructuring
+    let (x, y) = nt[0]
+    print(x, y)
+    // closure capture
+    let f = make_getter()
+    print(f())
+}
