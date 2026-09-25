@@ -520,6 +520,72 @@ test_error "array_param_element_mismatch" \
     }' \
     "expects array of int, got array of text"
 
+test_error "array_builtin_push_non_array" \
+    'fn main() {
+        push(3, 1)
+    }' \
+    "builtin 'push' expects an array as argument 1"
+
+test_error "array_builtin_push_type_mismatch" \
+    'fn main() {
+        let a: [int] = [1]
+        push(a, "x")
+    }' \
+    "cannot push text to array of int"
+
+test_error "array_builtin_push_immutable" \
+    'fn main() {
+        const a: [int] = [1]
+        push(a, 2)
+    }' \
+    "cannot modify immutable array 'a'"
+
+test_error "array_builtin_push_as_value" \
+    'fn main() {
+        let a: [int] = [1]
+        let x = push(a, 2)
+    }' \
+    "returns nothing and cannot be used as a value"
+
+test_error "array_builtin_sort_bool" \
+    'fn main() {
+        let a: [bool] = [true, false]
+        sort(a)
+    }' \
+    "requires an array of int, decimal, byte, char, or text"
+
+test_error "array_builtin_slice_non_int" \
+    'fn main() {
+        let a: [int] = [1]
+        let b = slice(a, 0, "x")
+    }' \
+    "builtin 'slice' expects int indexes"
+
+test_error "array_builtin_concat_mismatch" \
+    'fn main() {
+        concat([1], ["x"])
+    }' \
+    "cannot concatenate array of text with array of int"
+
+test_error "array_builtin_index_of_type_mismatch" \
+    'fn main() {
+        index_of(["a", "b"], 2)
+    }' \
+    "index_of value of int does not match array of text"
+
+test_error "array_builtin_index_of_nested" \
+    'fn main() {
+        index_of([[1]], [1])
+    }' \
+    "requires an array of scalar or text elements"
+
+test_error "array_builtin_pop_on_const" \
+    'fn main() {
+        const a: [int] = [1]
+        pop(a)
+    }' \
+    "cannot modify immutable array 'a'"
+
 test_error "tuple_print" \
     'fn f() -> (int, int) {
         return 1, 2

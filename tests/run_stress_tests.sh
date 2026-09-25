@@ -404,6 +404,44 @@ test_exit_code "array_oob_low" \
     }' \
     1
 
+test_output "array_builtins" \
+    'fn main() {
+        let a: [int] = [3, 1, 2]
+        push(a, 9)
+        sort(a)
+        print(length(a))
+        print(a[3])
+        print(pop(a))
+        print(length(a))
+        let b: [int] = slice(a, 1, 3)
+        print(length(b))
+        print(b[0])
+        let c: [int] = concat(a, b)
+        print(length(c))
+        print(index_of(c, 9))
+        print(index_of(c, 3))
+        print(contains(c, 3))
+        print(contains(c, 9))
+        let t: [text] = ["banana", "apple"]
+        sort(t)
+        print(t[0])
+    }' \
+    "$(printf '4\n9\n9\n3\n2\n2\n5\n-1\n2\n1\n0\napple')"
+
+test_exit_code "array_pop_empty" \
+    'fn main() {
+        let a: [int] = []
+        pop(a)
+    }' \
+    1
+
+test_exit_code "array_slice_oob" \
+    'fn main() {
+        let a: [int] = [1, 2]
+        let b: [int] = slice(a, 0, 5)
+    }' \
+    1
+
 test_output "tuple_multi_return_destructure" \
     'fn quotrem(a: int, b: int) -> (int, int) {
         return a / b, a - (a / b) * b

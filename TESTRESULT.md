@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-25  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (255 / 255)
+**Status:** ALL TESTS PASSED (269 / 269)
 
 ---
 
@@ -24,11 +24,12 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 13. **Modules**: `use "file.hmx"` at the top of a file imports top-level functions from other `.hmx` files (relative paths, cycle detection, dedupe by canonical path, file-tagged diagnostics for imported-module errors).
 14. **Unicode identifiers**: any non-ASCII UTF-8 byte is a valid identifier character, emitted verbatim into the generated C.
 15. **Nested arrays & chained indexing**: recursive element type descriptors enable `[[int]]` annotations, nested-literal inference, `a[i][j]` reads, `a[i][j] = v` chained assignment, and nested `foreach`; bison conflict count still 6 SR (5 states), all resolved by shift.
+16. **Growable arrays (`sd_array*`) + array built-ins**: every array is a heap pointer with spare capacity; `push`/`pop`/`sort` mutate the shared backing in place, `slice`/`concat` build independent copies, `index_of` finds the first match (`-1` if absent), `contains` reports membership; immutable/captured arrays reject mutation, void built-ins reject value use, and `pop` on empty / out-of-range `slice` terminate at runtime with exit code 1.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 255
-> - **Passed:** 255
+> - **Total Test Cases Executed:** 269
+> - **Passed:** 269
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -47,7 +48,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (45/45 Passed)
+### 1. Integration Fixtures (46/46 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -94,10 +95,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `mod_nonlocal` | **[NEW]** Module Non-local | Imported fn uses non-local `break` from a nested fn | **PASS** |
 | `mod_unicode` | **[NEW]** Module Unicode | Unicode identifiers (`ö`, `saludar`) inside an imported module | **PASS** |
 | `nested_arrays.hmx` | **[NEW]** Nested Arrays | `[[int]]` annotation, nested inference, `a[i][j]` reads, chained assignment, nested `foreach`, array-of-arrays from array vars | **PASS** |
+| `array_builtins.hmx` | **[NEW]** Growable Arrays | `push`/`pop`/`sort`/`slice`/`concat`/`index_of`/`contains` on int and text arrays; `push`/`pop` of whole rows on `[[int]]` | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (141/141 Passed)
+### 2. Negative & Error Handling Suite (151/151 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -229,10 +231,20 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `use_module_type_error` | **[NEW]** Module Type Error | type error inside imported `err.hmx` | `Error \[.*err\.hmx:4\]` | **PASS** |
 | `use_module_parse_error` | **[NEW]** Module Parse Error | syntactically broken module | `parsing failed in module` | **PASS** |
 | `use_reserved_keyword` | **[NEW]** Reserved `use` | `let use = 5` | `Parse error` | **PASS** |
+| `array_builtin_push_non_array` | **[NEW]** Push Non-Array | `push(3, 1)` | `builtin 'push' expects an array as argument 1` | **PASS** |
+| `array_builtin_push_type_mismatch` | **[NEW]** Push Element Mismatch | `push(a, "x")` on `[int]` | `cannot push text to array of int` | **PASS** |
+| `array_builtin_push_immutable` | **[NEW]** Push Const Array | `push` on `const` array | `cannot modify immutable array` | **PASS** |
+| `array_builtin_push_as_value` | **[NEW]** Void Builtin as Value | `let x = push(a, 2)` | `returns nothing and cannot be used as a value` | **PASS** |
+| `array_builtin_sort_bool` | **[NEW]** Sort Unsupported Elem | `sort` on `[bool]` | `requires an array of int, decimal, byte, char, or text` | **PASS** |
+| `array_builtin_slice_non_int` | **[NEW]** Slice Non-Int Index | `slice(a, 0, "x")` | `builtin 'slice' expects int indexes` | **PASS** |
+| `array_builtin_concat_mismatch` | **[NEW]** Concat Element Mismatch | `concat([1], ["x"])` | `cannot concatenate array of text with array of int` | **PASS** |
+| `array_builtin_index_of_type_mismatch` | **[NEW]** `index_of` Value Mismatch | `index_of(["a"], 2)` | `index_of value of int does not match array of text` | **PASS** |
+| `array_builtin_index_of_nested` | **[NEW]** `index_of` Nested Elem | `index_of([[1]], [1])` | `requires an array of scalar or text elements` | **PASS** |
+| `array_builtin_pop_on_const` | **[NEW]** Pop Const Array | `pop(a)` on `const` array | `cannot modify immutable array` | **PASS** |
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (69/69 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (72/72 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -303,6 +315,9 @@ These tests verify exact runtime output matching and process exit code propagati
 | `mod_output_basic` | **[NEW]** Module Output | imported `sum`/`twice` called from entry | `3\n42` | **PASS** |
 | `mod_diamond_dedupe` | **[NEW]** Module Diamond | `e1`/`e2` both `use` `d.hmx` — loaded once, correct results | `10 18` | **PASS** |
 | `mod_exit_code` | **[NEW]** Module Exit Code | `main` returns a value from an imported fn | Exit Code: `42` | **PASS** |
+| `array_builtins` | **[NEW]** Array Built-ins | push/sort/pop/slice/concat/index_of/contains output | `4\n9\n9\n3\n2\n2\n5\n-1\n2\n1\n0\napple` | **PASS** |
+| `array_pop_empty` | **[NEW]** Runtime Error | `pop` on an empty array aborts | Exit Code: `1` | **PASS** |
+| `array_slice_oob` | **[NEW]** Runtime Error | out-of-range `slice` bounds abort | Exit Code: `1` | **PASS** |
 
 ---
 
@@ -359,3 +374,13 @@ cd build && cmake .. && make && cd ..
 > statement assignments via the new `postfix_index` grammar + `ElementAssignStmt`),
 > tuple-member-array chains (`pair[1][0]`), and nested `foreach (row in grid)`. The conflict
 > count is unchanged at 6 SR across 5 states; suites rerun at 45/141/69 = **255**.
+>
+> **0.A2 addition:** arrays are now growable heap pointers (`sd_array*` with `capacity`),
+> so `push`/`pop`/`sort` mutate the shared backing in place (and through any alias —
+> `let b = a; push(a, 9)` is visible via `b`), while `slice`/`concat` return independent
+> copies. The seven array built-ins (`push`, `pop`, `sort`, `slice`, `concat`,
+> `index_of`, `contains`) are resolver-typed (immutable/captured arrays, element-type
+> mismatches, void-as-value, unsupported element kinds all rejected) and lowered to
+> inline loop/statement-expression C plus runtime helpers (`sd_push`,
+> `sd_ensure_capacity`). Runtime guards abort with exit code 1 on `pop` from an empty
+> array and out-of-range/reversed `slice`. Suites rerun at 46/151/72 = **269**.

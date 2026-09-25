@@ -1,0 +1,21 @@
+fn main() {
+    let a: [int] = [3, 1, 2]
+    push(a, 9)
+    sort(a)
+    print(length(a))
+    print(a[3])
+    print(pop(a))
+    let b: [int] = slice(a, 1, 3)
+    let c: [int] = concat(a, b)
+    print(length(c))
+    print(index_of(c, 3))
+    print(contains(c, 99))
+    let t: [text] = ["banana", "apple"]
+    sort(t)
+    print(t[0])
+    let grid: [[int]] = [[1, 2], [3, 4]]
+    push(grid, [5, 6])
+    let row: [int] = pop(grid)
+    print(row[1])
+    print(length(grid))
+}

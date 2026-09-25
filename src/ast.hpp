@@ -142,6 +142,7 @@ struct CallExpr : Expression {
     std::vector<ExprPtr> args;
     bool is_function_value_call = false;   // set by resolver: name is a function-typed value
     TypeDesc fn_type;                      // function type of the value when is_function_value_call
+    TypeDesc array_aux;                    // element desc of arg0 for array builtins (resolver-set)
     CallExpr(std::string n, std::vector<ExprPtr> a)
         : name(std::move(n)), args(std::move(a)) {}
 };

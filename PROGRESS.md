@@ -396,6 +396,44 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   §13.? empty-literal note; this entry.
 - Full regression: 45/45 integration, 141/141 negative, 69/69 stress/output = **255**.
 
+### 0.A2 — Growable arrays (`sd_array*` pointer model) + array built-ins — DONE
+- Runtime: the emitted `sd_array` struct now tracks `capacity` and element size
+  (`esize`) alongside `data`/`length`; every array value is a heap `sd_array*`
+  pointer (`sd_make_array` returns a pointer, `text[i]`-style element access
+  becomes `->data`/`->length`). Array variables, params, returns, captures,
+  variadic tails, tuple members, and `foreach` values all carry the pointer
+  type. Added `sd_push` (grown by doubling +8) and `sd_ensure_capacity` runtime
+  helpers. Reference semantics are preserved and now include the header: any
+  `let b = a` shares the growable struct, so `push(a, …)`/`pop(a)`/`sort(a)`
+  through one name are visible through the other, matching the already-shared
+  element backing.
+- Codegen/Resolver: `c_type_for_desc(Array)` → `sd_array*`; function signatures
+  for array returns now use the full return descriptor; `VarDecl` emission emits
+  `sd_array*` for array-annotated variables (annotated and inferred paths), with
+  `VarDecl::elem_desc` now populated for inferred array initializers too (it was
+  previously only set in the annotated path).
+- Built-ins (resolver-typed via `CallExpr::array_aux`, codegen lowers to inline
+  statement-expressions + runtime helpers): `push(a, v)` (mutates in place,
+  returns nothing), `pop(a)` (returns the removed element; runtime error on empty
+  array), `sort(a)` (in-place insertion sort for `[int]`/`[decimal]`/`[byte]`/
+  `[char]`/`[text]`, text via `strcmp`), `slice(a, s, e)` (new independent copy;
+  runtime-bounds-checked), `concat(a, b)` (new copy joining two arrays of one
+  element type), `index_of(a, v)` (`-1` if absent), `contains(a, v)` (bool).
+  `push`/`pop`/`sort` reject immutable array identifiers and captured-outer
+  arrays (matching element-assignment rules); `index_of`/`contains` reject
+  array/function element types; void built-ins (`push`, `sort`) enforce the
+  "cannot be used as a value" rule. `expr_element_desc` understands
+  `slice`/`concat`/`pop` so `let x = pop(grid)` on `[[T]]` infers `[T]`.
+- Tests: `array_builtins.hmx` fixture (grow/sort/pop/slice/concat/index_of/
+  contains + nested-array push/pop rows); 10 new negative tests (non-array arg,
+  element/type mismatch, immutable array, void-as-value, unsupported sort
+  element, non-int slice index, concat mismatch, `index_of` mismatch and
+  nested-array rejection); stress additions `array_builtins` (exact output)
+  plus runtime-error exit-code cases `array_pop_empty` and `array_slice_oob`.
+- Docs: SYNTAX.md §5.3 (growable + reference semantics), §13.3 Array Built-ins
+  (renumbered `input`→13.4, conversions→13.5); this entry.
+- Full regression: 46/46 integration, 151/151 negative, 72/72 stress/output = **269**.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

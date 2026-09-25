@@ -280,6 +280,14 @@ TypeDesc TypeResolver::expr_element_desc(Expression* expr) {
         if (call->is_function_value_call && call->fn_type.fn_info &&
             call->fn_type.fn_info->ret.type == TypeKind::Array)
             return call->fn_type.fn_info->ret.element();
+        if (call->name == "slice" || call->name == "concat") {
+            return expr_element_desc(call->args[0].get());
+        }
+        if (call->name == "pop") {
+            TypeDesc inner = expr_element_desc(call->args[0].get());
+            if (inner.type == TypeKind::Array) return inner.element();
+            return inner;
+        }
     }
     if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->elem.type == TypeKind::Array) return idx->elem.element();
@@ -439,6 +447,109 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                     }
                     result = TypeKind::Text;
                 }
+            }
+            expr->resolved_type = result;
+            return result;
+        }
+        if (call->name == "push" || call->name == "pop" || call->name == "sort" ||
+            call->name == "slice" || call->name == "concat" ||
+            call->name == "index_of" || call->name == "contains") {
+            size_t expected = (call->name == "sort" || call->name == "pop") ? 1
+                : (call->name == "slice" ? 3 : 2);
+            if (call->args.size() != expected) {
+                throw err(line(), "builtin '" + call->name + "' expects " +
+                    std::to_string(expected) + " arguments, got " +
+                    std::to_string(call->args.size()));
+            }
+            if (resolve_expr(call->args[0].get()) != TypeKind::Array) {
+                throw err(line(),
+                    "builtin '" + call->name + "' expects an array as argument 1");
+            }
+            TypeDesc arr_elem = expr_element_desc(call->args[0].get());
+            call->array_aux = arr_elem;
+            if (!desc_fully_known(arr_elem)) {
+                throw err(line(),
+                    "builtin '" + call->name +
+                    "' requires a fully-known array element type");
+            }
+            if (call->name == "push" || call->name == "sort" || call->name == "pop") {
+                if (auto* id = dynamic_cast<Identifier*>(call->args[0].get())) {
+                    const Symbol* sym = find_symbol(id->name);
+                    if (!sym && is_in_outer_scopes(id->name)) {
+                        throw err(line(),
+                            "cannot modify captured variable '" + id->name + "'");
+                    }
+                    if (sym && !sym->is_mutable) {
+                        throw err(line(),
+                            "cannot modify immutable array '" + id->name + "'");
+                    }
+                }
+            }
+            if (call->name == "push") {
+                resolve_expr(call->args[1].get());
+                TypeDesc vt = expr_desc(call->args[1].get());
+                if (vt != arr_elem) {
+                    throw err(line(),
+                        "type mismatch: cannot push " + type_desc_to_string(vt) +
+                        " to array of " + type_desc_to_string(arr_elem));
+                }
+                if (!allow_void_call_) {
+                    throw err(line(),
+                        "builtin 'push' returns nothing and cannot be used as a value");
+                }
+                result = TypeKind::Unknown;
+            } else if (call->name == "pop") {
+                result = arr_elem.type == TypeKind::Array ? TypeKind::Array : arr_elem.type;
+            } else if (call->name == "sort") {
+                if (arr_elem.type != TypeKind::Int && arr_elem.type != TypeKind::Decimal &&
+                    arr_elem.type != TypeKind::Byte && arr_elem.type != TypeKind::Char &&
+                    arr_elem.type != TypeKind::Text) {
+                    throw err(line(),
+                        "builtin 'sort' requires an array of int, decimal, byte, char, or text");
+                }
+                if (!allow_void_call_) {
+                    throw err(line(),
+                        "builtin 'sort' returns nothing and cannot be used as a value");
+                }
+                result = TypeKind::Unknown;
+            } else if (call->name == "slice") {
+                for (size_t i = 1; i < 3; i++) {
+                    TypeKind it = resolve_expr(call->args[i].get());
+                    if (it != TypeKind::Int) {
+                        throw err(line(),
+                            "builtin 'slice' expects int indexes, got " + type_to_string(it));
+                    }
+                }
+                result = TypeKind::Array;
+            } else if (call->name == "concat") {
+                TypeKind at = resolve_expr(call->args[1].get());
+                if (at != TypeKind::Array) {
+                    throw err(line(), "builtin 'concat' expects two arrays");
+                }
+                TypeDesc a2 = expr_element_desc(call->args[1].get());
+                if (a2 != arr_elem) {
+                    throw err(line(),
+                        "type mismatch: cannot concatenate array of " +
+                        type_desc_to_string(a2) + " with array of " +
+                        type_desc_to_string(arr_elem));
+                }
+                result = TypeKind::Array;
+            } else {
+                resolve_expr(call->args[1].get());
+                TypeDesc vt = expr_desc(call->args[1].get());
+                if (vt != arr_elem) {
+                    throw err(line(),
+                        "type mismatch: " + call->name + " value of " +
+                        type_desc_to_string(vt) + " does not match array of " +
+                        type_desc_to_string(arr_elem));
+                }
+                if (arr_elem.type == TypeKind::Array ||
+                    arr_elem.type == TypeKind::Function) {
+                    throw err(line(),
+                        "builtin '" + call->name +
+                        "' requires an array of scalar or text elements");
+                }
+                result = call->name == "index_of" ? TypeKind::Int : TypeKind::Bool;
             }
             expr->resolved_type = result;
             return result;
@@ -906,6 +1017,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                     throw err(var->line,
                         "cannot infer array element type for '" + var->name + "'; use an annotation like [int]");
                 }
+                var->elem_desc = elem;
             }
             if (init_type == TypeKind::Tuple) {
                 var->tuple_members = expr_tuple_members(var->initializer.get());

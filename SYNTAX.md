@@ -260,8 +260,9 @@ let x: int = "hello"   // Error: type mismatch
 
 ### 5.3 Array Types **[Implemented]**
 
-An array is an ordered, fixed-size collection of elements of a single primitive type.
-Arrays are declared with a `[type]` annotation:
+An array is an ordered collection of elements of a single type, held in
+heap-allocated growable storage. Arrays are declared with a `[type]` annotation
+(or inferred from a non-empty literal):
 
 ```hmx
 let scores: [int] = [10, 20, 30]
@@ -279,8 +280,11 @@ explicit annotation so the compiler can infer the element type; a non-empty
 literal infers its element type from its elements.
 
 Arrays are reference values: assigning one array variable to another (`let b = a`)
-shares the backing storage, so element writes through either name are visible through
-both. The backing storage is heap-allocated by the generated code.
+shares the backing storage, so element writes or structural changes (`push`,
+`pop`, `sort`) through either name are visible through both. The backing storage
+is heap-allocated by the generated code; arrays are growable (`push`) and carry
+spare capacity so repeated growth does not re-allocate on every push. The
+growable built-ins are described in §13.3.
 
 ### 5.4 Tuple Types **[Implemented]**
 
@@ -1315,7 +1319,48 @@ let values: [int] = [3, 5, 7]
 print(length(values))     // prints 3
 ```
 
-### 13.3 `input` **[Implemented]**
+### 13.3 Array Built-ins **[Implemented]**
+
+Arrays are growable. The following built-ins operate on arrays; the array
+argument must be a mutable array variable or array expression in the current
+scope (`push`, `pop`, and `sort` reject immutable arrays).
+
+- `push(array, element)` appends `element` to the end of `array`. The element
+  type must match the array's element type (arrays-of-arrays push whole rows).
+  It returns nothing and is used as a statement.
+- `pop(array)` removes the last element and returns it (an element of the
+  array's element type). `pop` on an empty array terminates the program with a
+  runtime error.
+- `sort(array)` sorts the array in place, ascending. Element types are limited
+  to `int`, `decimal`, `byte`, `char`, or `text` (text sorts lexicographically).
+  It returns nothing.
+- `slice(array, start, end)` returns a new array holding the half-open range
+  `[start, end)` of `array`. Duplicate growth: the copy is independent of the
+  source. Out-of-range or reversed bounds terminate the program at runtime.
+- `concat(array_a, array_b)` returns a new array holding the elements of
+  `array_a` followed by those of `array_b`. Both arrays must share an element
+  type; nested-array elements are shared by reference.
+- `index_of(array, value)` returns the index of the first element equal to
+  `value`, or `-1` if absent. Only scalar and `text` element types are
+  supported; `text` compares by string content.
+- `contains(array, value)` returns true if `value` appears in `array`, false
+  otherwise. Same element-type restrictions as `index_of`.
+
+```hmx
+let values: [int] = [3, 1, 2]
+push(values, 9)
+sort(values)                 // [1, 2, 3, 9]
+print(pop(values))           // 9
+let mid: [int] = slice(values, 1, 3)       // [2, 3]
+let all: [int] = concat(values, mid)       // [1, 2, 3, 2, 3]
+print(index_of(all, 3))      // 2
+print(contains(all, 9))      // 0
+```
+
+`concat` is the only way to join arrays: the binary `+` operator remains
+text-concatenation only (§8.1).
+
+### 13.4 `input` **[Implemented]**
 
 `input()` reads one line from standard input and returns it as `text` with the
 trailing newline (and CRLF) removed. At end of input it returns the empty string.
@@ -1325,7 +1370,7 @@ let name = input()       // waits for a line on stdin
 print("hi", name)
 ```
 
-### 13.4 Conversions: `tostr`, `parse_int`, `parse_decimal` **[Implemented]**
+### 13.5 Conversions: `tostr`, `parse_int`, `parse_decimal` **[Implemented]**
 
 `tostr(value)` converts an `int`, `decimal`, `bool`, `char`, or `byte` into its
 text form, matching how `print` renders that type. Passing `text` returns it

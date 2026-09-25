@@ -106,14 +106,40 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "typedef struct sd_array {\n";
     out_ << "    void* data;\n";
     out_ << "    int length;\n";
+    out_ << "    int capacity;\n";
+    out_ << "    int esize;\n";
     out_ << "} sd_array;\n\n";
 
-    out_ << "static sd_array sd_make_array(const void* data, size_t nbytes, int length) {\n";
-    out_ << "    sd_array a;\n";
-    out_ << "    a.data = malloc(nbytes ? nbytes : 1);\n";
-    out_ << "    if (!a.data) exit(1);\n";
-    out_ << "    if (nbytes) memcpy(a.data, data, nbytes);\n";
-    out_ << "    a.length = length;\n";
+    out_ << "static sd_array* sd_make_array(const void* data, size_t nbytes, int length, size_t esize) {\n";
+    out_ << "    size_t el = esize ? esize : 1;\n";
+    out_ << "    sd_array* a = malloc(sizeof(sd_array));\n";
+    out_ << "    if (!a) exit(1);\n";
+    out_ << "    a->esize = (int)el;\n";
+    out_ << "    a->length = length;\n";
+    out_ << "    a->capacity = length + 16;\n";
+    out_ << "    a->data = malloc(nbytes ? nbytes : el);\n";
+    out_ << "    if (!a->data) exit(1);\n";
+    out_ << "    if (nbytes) memcpy(a->data, data, nbytes);\n";
+    out_ << "    return a;\n";
+    out_ << "}\n\n";
+
+    out_ << "static sd_array* sd_push(sd_array* a, const void* item, size_t esize) {\n";
+    out_ << "    if (a->length >= a->capacity) {\n";
+    out_ << "        a->capacity = a->capacity * 2 + 8;\n";
+    out_ << "        a->data = realloc(a->data, (size_t)a->capacity * (size_t)a->esize);\n";
+    out_ << "        if (!a->data) exit(1);\n";
+    out_ << "    }\n";
+    out_ << "    memcpy((char*)a->data + (size_t)a->length * (size_t)a->esize, item, esize);\n";
+    out_ << "    a->length++;\n";
+    out_ << "    return a;\n";
+    out_ << "}\n\n";
+
+    out_ << "static sd_array* sd_ensure_capacity(sd_array* a, int extra) {\n";
+    out_ << "    if (a->length + extra > a->capacity) {\n";
+    out_ << "        while (a->length + extra > a->capacity) a->capacity = a->capacity * 2 + 8;\n";
+    out_ << "        a->data = realloc(a->data, (size_t)a->capacity * (size_t)a->esize);\n";
+    out_ << "        if (!a->data) exit(1);\n";
+    out_ << "    }\n";
     out_ << "    return a;\n";
     out_ << "}\n\n";
 
@@ -259,6 +285,8 @@ std::string CodeGen::emit_function_signature(FunctionDecl* fn) {
     if (fn->has_return_type) {
         if (fn->return_type == TypeKind::Tuple) {
             s += tuple_name(fn->return_tuple_members);
+        } else if (fn->return_type == TypeKind::Array) {
+            s += c_type_for_desc(fn->return_desc);
         } else {
             s += type_to_c(fn->return_type);
         }
@@ -277,6 +305,7 @@ std::string CodeGen::emit_function_signature(FunctionDecl* fn) {
 }
 
 std::string CodeGen::c_type_for_desc(const TypeDesc& d) {
+    if (d.type == TypeKind::Array) return "sd_array*";
     if (d.type == TypeKind::Tuple) return tuple_name(d.tuple_members);
     if (d.type == TypeKind::Function) return "sd_closure";
     return type_to_c(d.type);
@@ -428,7 +457,7 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         if (call->name == "length") {
             if (get_expr_type(call->args[0].get()) == TypeKind::Array) {
                 emit_expr(call->args[0].get());
-                out_ << ".length";
+                out_ << "->length";
             } else {
                 out_ << "(int)strlen(";
                 emit_expr(call->args[0].get());
@@ -441,6 +470,73 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                 emit_expr(call->args[i].get());
             }
             out_ << ")";
+        } else if (call->name == "push") {
+            std::string T = c_type_for_desc(call->array_aux);
+            out_ << "({ " << T << " _sd_v = (";
+            emit_expr(call->args[1].get());
+            out_ << "); sd_push((";
+            emit_expr(call->args[0].get());
+            out_ << "), &_sd_v, sizeof(" << T << ")); })";
+        } else if (call->name == "pop") {
+            std::string T = c_type_for_desc(call->array_aux);
+            out_ << "({ sd_array* _sd_p = (";
+            emit_expr(call->args[0].get());
+            out_ << "); if (_sd_p->length == 0) { fprintf(stderr, \"Error: pop on empty array\\n\"); exit(1); } --_sd_p->length; "
+                 << T << " _sd_v = *((" << T << "*)((char*)_sd_p->data + (size_t)_sd_p->length * sizeof(" << T << "))); _sd_v; })";
+        } else if (call->name == "sort") {
+            std::string T = c_type_for_desc(call->array_aux);
+            bool is_text = call->array_aux.type == TypeKind::Text;
+            out_ << "({ sd_array* _sd_a = (";
+            emit_expr(call->args[0].get());
+            out_ << "); for (int _sd_i = 1; _sd_i < _sd_a->length; _sd_i++) { for (int _sd_j = _sd_i; _sd_j > 0; _sd_j--) { ";
+            if (is_text) {
+                out_ << "int _sd_c = strcmp(((" << T << "*)_sd_a->data)[_sd_j - 1], ((" << T << "*)_sd_a->data)[_sd_j]); ";
+            } else {
+                out_ << "int _sd_c = ((" << T << "*)_sd_a->data)[_sd_j - 1] > ((" << T << "*)_sd_a->data)[_sd_j]; ";
+            }
+            out_ << "if (_sd_c <= 0) break; " << T << " _sd_w = ((" << T << "*)_sd_a->data)[_sd_j]; "
+                 << "((" << T << "*)_sd_a->data)[_sd_j] = ((" << T << "*)_sd_a->data)[_sd_j - 1]; "
+                 << "((" << T << "*)_sd_a->data)[_sd_j - 1] = _sd_w; } } })";
+        } else if (call->name == "slice") {
+            std::string T = c_type_for_desc(call->array_aux);
+            out_ << "({ sd_array* _sd_s = (";
+            emit_expr(call->args[0].get());
+            out_ << "); int _sd_a = (";
+            emit_expr(call->args[1].get());
+            out_ << "); int _sd_b = (";
+            emit_expr(call->args[2].get());
+            out_ << "); if (_sd_a < 0 || _sd_b > _sd_s->length || _sd_a > _sd_b) { fprintf(stderr, \"Error: slice out of bounds (%d, %d)\\n\", _sd_a, _sd_b); exit(1); } sd_make_array((char*)_sd_s->data + (size_t)_sd_a * sizeof(" << T << "), (size_t)(_sd_b - _sd_a) * sizeof(" << T << "), _sd_b - _sd_a, sizeof(" << T << ")); })";
+        } else if (call->name == "concat") {
+            std::string T = c_type_for_desc(call->array_aux);
+            out_ << "({ sd_array* _sd_x = (";
+            emit_expr(call->args[0].get());
+            out_ << "); sd_array* _sd_y = (";
+            emit_expr(call->args[1].get());
+            out_ << "); sd_array* _sd_c = sd_make_array(0, 0, 0, sizeof(" << T << ")); "
+                 << "size_t _sd_n = (size_t)_sd_x->length * sizeof(" << T << ") + (size_t)_sd_y->length * sizeof(" << T << "); "
+                 << "_sd_c->data = malloc(_sd_n ? _sd_n : 1); if (!_sd_c->data) exit(1); "
+                 << "_sd_c->length = _sd_x->length + _sd_y->length; _sd_c->capacity = _sd_c->length + 16; "
+                 << "if (_sd_x->length) memcpy(_sd_c->data, _sd_x->data, (size_t)_sd_x->length * sizeof(" << T << ")); "
+                 << "if (_sd_y->length) memcpy((char*)_sd_c->data + (size_t)_sd_x->length * sizeof(" << T << "), _sd_y->data, (size_t)_sd_y->length * sizeof(" << T << ")); _sd_c; })";
+        } else if (call->name == "index_of" || call->name == "contains") {
+            std::string T = c_type_for_desc(call->array_aux);
+            bool is_text = call->array_aux.type == TypeKind::Text;
+            out_ << "({ " << T << " _sd_v = (";
+            emit_expr(call->args[1].get());
+            out_ << "); sd_array* _sd_a = (";
+            emit_expr(call->args[0].get());
+            out_ << "); int _sd_r = " << (call->name == "index_of" ? "-1" : "0") << "; "
+                 << "for (int _sd_i = 0; _sd_i < _sd_a->length; _sd_i++) { ";
+            if (is_text) {
+                out_ << "int _sd_f = strcmp(((" << T << "*)_sd_a->data)[_sd_i], _sd_v) == 0; ";
+            } else {
+                out_ << "int _sd_f = ((" << T << "*)_sd_a->data)[_sd_i] == _sd_v; ";
+            }
+            if (call->name == "index_of") {
+                out_ << "if (_sd_f) { _sd_r = _sd_i; break; } } _sd_r; })";
+            } else {
+                out_ << "if (_sd_f) { _sd_r = 1; break; } } _sd_r; })";
+            }
         } else if (call->name == "input") {
             out_ << "sd_read_line()";
         } else if (call->name == "tostr") {
@@ -518,9 +614,11 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                         }
                         out_ << "}, sizeof(" << c_type_for_desc(callee->params[variadic_index].elem_desc)
                              << ") * " << (call->args.size() - fixed) << ", "
-                             << (call->args.size() - fixed) << ")";
+                             << (call->args.size() - fixed) << ", sizeof("
+                             << c_type_for_desc(callee->params[variadic_index].elem_desc) << "))";
                     } else {
-                        out_ << "sd_make_array(0, 0, 0)";
+                        out_ << "sd_make_array(0, 0, 0, sizeof("
+                             << c_type_for_desc(callee->params[variadic_index].elem_desc) << "))";
                     }
                 }
                 out_ << ")";
@@ -543,7 +641,7 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         out_ << ")";
     } else if (auto* arr = dynamic_cast<ArrayLiteral*>(expr)) {
         if (arr->elements.empty()) {
-            out_ << "sd_make_array(0, 0, 0)";
+            out_ << "sd_make_array(0, 0, 0, sizeof(" << c_type_for_desc(arr->elem) << "))";
         } else {
             out_ << "sd_make_array((" << c_type_for_desc(arr->elem) << "[]){";
             for (size_t i = 0; i < arr->elements.size(); i++) {
@@ -551,7 +649,8 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                 emit_expr(arr->elements[i].get());
             }
             out_ << "}, sizeof(" << c_type_for_desc(arr->elem) << ") * "
-                 << arr->elements.size() << ", " << arr->elements.size() << ")";
+                 << arr->elements.size() << ", " << arr->elements.size() << ", sizeof("
+                 << c_type_for_desc(arr->elem) << "))";
         }
     } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->base) {
@@ -562,10 +661,10 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                 std::string ct = c_type_for_desc(idx->elem);
                 out_ << "((" << ct << "*)";
                 emit_expr(idx->base.get());
-                out_ << ".data)";
+                out_ << "->data)";
                 out_ << "[sd_check_index(";
                 emit_expr(idx->base.get());
-                out_ << ".length, ";
+                out_ << "->length, ";
                 emit_expr(idx->index.get());
                 out_ << ")]";
             }
@@ -575,10 +674,10 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         } else {
             out_ << "((" << c_type_for_desc(idx->elem) << "*)";
             emit_identifier_value(idx->name);
-            out_ << ".data)";
+            out_ << "->data)";
             out_ << "[sd_check_index(";
             emit_identifier_value(idx->name);
-            out_ << ".length, ";
+            out_ << "->length, ";
             emit_expr(idx->index.get());
             out_ << ")]";
         }
@@ -628,6 +727,8 @@ void CodeGen::emit_stmt(Statement* stmt) {
         out_ << "    " << (var->is_mutable ? "" : "const ");
         if (var->annotation == TypeKind::Tuple) {
             out_ << tuple_name(var->tuple_members);
+        } else if (var->annotation == TypeKind::Array) {
+            out_ << "sd_array*";
         } else {
             out_ << type_to_c(var->annotation);
         }
@@ -647,8 +748,8 @@ void CodeGen::emit_stmt(Statement* stmt) {
     } else if (auto* aa = dynamic_cast<ArrayAssignStmt*>(stmt)) {
         emit_line_directive(aa->line, line_file_);
         TypeKind elem_type = get_expr_type(aa->rhs.get());
-        out_ << "    ((" << type_to_c(elem_type) << "*)" << aa->name << ".data)";
-        out_ << "[sd_check_index(" << aa->name << ".length, ";
+        out_ << "    ((" << type_to_c(elem_type) << "*)" << aa->name << "->data)";
+        out_ << "[sd_check_index(" << aa->name << "->length, ";
         emit_expr(aa->index.get());
         out_ << ")] = ";
         emit_expr(aa->rhs.get());
@@ -744,12 +845,12 @@ void CodeGen::emit_stmt(Statement* stmt) {
             std::string ct = c_type_for_desc(ed);
             out_ << "    for (int " << idx << " = 0; " << idx << " < ";
             emit_expr(fe->iterable.get());
-            out_ << ".length; " << idx << "++) {\n";
+            out_ << "->length; " << idx << "++) {\n";
             nl_arm();
             out_ << "        " << ct << " " << fe->value_name
                  << " = ((" << ct << "*)";
             emit_expr(fe->iterable.get());
-            out_ << ".data)[" << idx << "];\n";
+            out_ << "->data)[" << idx << "];\n";
             for (auto& body_stmt : fe->body) emit_stmt(body_stmt.get());
             nl_disarm();
             out_ << "    }\n";
@@ -906,6 +1007,8 @@ void CodeGen::emit_for_component(Statement* stmt) {
     if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
         if (var->annotation == TypeKind::Tuple) {
             out_ << tuple_name(var->tuple_members);
+        } else if (var->annotation == TypeKind::Array) {
+            out_ << "sd_array*";
         } else {
             out_ << type_to_c(var->annotation);
         }
