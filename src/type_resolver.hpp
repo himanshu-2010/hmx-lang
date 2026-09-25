@@ -20,14 +20,14 @@ struct CompileError : std::runtime_error {
 
 struct FunctionSig {
     std::vector<TypeKind> param_types;
-    std::vector<TypeKind> param_element_types;
+    std::vector<TypeDesc> param_elems;
     std::vector<std::vector<TypeDesc>> param_tuple_members;  // valid when param is Tuple
     std::vector<TypeDesc> param_descs;                       // full descriptor per param
     std::vector<bool> param_has_default;                     // aligned with param_types
     bool variadic = false;                                   // trailing ...elem collector
-    TypeKind variadic_element_type = TypeKind::Unknown;
+    TypeDesc variadic_elem;
     TypeKind return_type = TypeKind::Unknown;
-    TypeKind return_element_type = TypeKind::Unknown;
+    TypeDesc return_elem;
     std::vector<TypeDesc> return_tuple_members;              // valid when return_type is Tuple
     TypeDesc return_desc;                                    // full return descriptor
     bool has_return = false;
@@ -37,7 +37,7 @@ struct FunctionSig {
 struct Symbol {
     TypeKind type;
     bool is_mutable;
-    TypeKind array_element_type = TypeKind::Unknown;
+    TypeDesc elem;
     std::vector<TypeDesc> tuple_members = {};   // valid when type is Tuple
     TypeDesc desc = {};                         // full descriptor (Function etc.)
 };
@@ -57,7 +57,7 @@ private:
     std::set<std::string> resolved_functions_;
     FunctionDecl* current_fn_ = nullptr;
     TypeKind current_return_ = TypeKind::Unknown;
-    TypeKind current_return_element_ = TypeKind::Unknown;
+    TypeDesc current_return_elem_;
     TypeDesc current_return_desc_ = {};
     std::vector<TypeDesc> current_return_tuple_;
     bool in_function_ = false;
@@ -73,7 +73,7 @@ private:
     void push_scope();
     void pop_scope();
     void define(const std::string& name, TypeKind type, bool is_mutable = true,
-                TypeKind array_element_type = TypeKind::Unknown,
+                const TypeDesc& elem = TypeDesc{},
                 const std::vector<TypeDesc>& tuple_members = {},
                 const TypeDesc& desc = TypeDesc{});
     const Symbol* find_symbol(const std::string& name) const;
@@ -83,11 +83,11 @@ private:
     void require_capture_visibility(const std::string& fname);
     void require_function_value(const std::string& fname);
     int line() const { return current_line_; }
-    TypeKind expr_array_element_type(Expression* expr);
+    TypeDesc expr_element_desc(Expression* expr);
+    TypeDesc expr_desc(Expression* expr);
     std::vector<TypeDesc> expr_tuple_members(Expression* expr);
     TypeDesc expr_function_type(Expression* expr);
-    bool types_match(TypeKind a, TypeKind ae, const std::vector<TypeDesc>& am,
-                     TypeKind b, TypeKind be, const std::vector<TypeDesc>& bm) const;
+    bool types_match(const TypeDesc& a, const TypeDesc& b) const;
 
     TypeKind resolve_expr(Expression* expr);
     bool resolve_stmt(Statement* stmt);

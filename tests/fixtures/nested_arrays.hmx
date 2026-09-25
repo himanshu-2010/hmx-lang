@@ -1,0 +1,29 @@
+fn main() {
+    let grid: [[int]] = [[1, 2, 3], [4, 5, 6]]
+    print(grid[0][0])
+    print(grid[1][2])
+    print(length(grid))
+    print(length(grid[0]))
+
+    grid[0][1] = 99
+    print(grid[0][1])
+
+    let inferred = [[10, 20], [30, 40]]
+    print(inferred[1][0])
+
+    let sum = 0
+    foreach (row in grid) {
+        foreach (n in row) {
+            sum += n
+        }
+    }
+    print(sum)
+
+    let total = 0
+    let flat: [int] = [1, 2]
+    let stack: [[int]] = [flat, flat]
+    foreach (row in stack) {
+        total += length(row)
+    }
+    print(total)
+}

@@ -33,6 +33,7 @@ The current compiler supports:
  - First-class function types (`fn(int) -> int`) with higher-order calls and closures
  - Non-local `break` / `continue` from nested functions targeting an enclosing loop
  - Arrays with typed elements, indexing, element assignment, and `length()`
+ - Nested arrays (`[[int]]`) with chained indexing (`a[i][j]`) and assignment
 - Multiple return values via tuples with destructuring
 - Compile-time type checking with line-numbered diagnostics
 - Duplicate declaration detection and definite-return checking
@@ -474,10 +475,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | `.hmx` fixtures incl. tuples, closures, non-local exit, unicode identifiers & modules | 44/44 passed |
-| Negative | Type, syntax, and resolver errors incl. module/`use` failures | 140/140 passed |
+| Integration | `.hmx` fixtures incl. tuples, closures, nested arrays, chained indexing, non-local exit, unicode identifiers & modules | 45/45 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures | 141/141 passed |
 | Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules & unicode | 69/69 passed |
-| Total | 253 test cases | 253/253 passed |
+| Total | 255 test cases | 255/255 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

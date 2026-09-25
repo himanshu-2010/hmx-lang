@@ -2,7 +2,10 @@
 
 bool TypeDesc::operator==(const TypeDesc& other) const {
     if (type != other.type) return false;
-    if (element_type != other.element_type) return false;
+    if (elem != other.elem) {
+        if (!elem || !other.elem) return false;
+        if (*elem != *other.elem) return false;
+    }
     if (tuple_members != other.tuple_members) return false;
     if (type == TypeKind::Function) {
         if (fn_info == other.fn_info) return true;
@@ -14,7 +17,11 @@ bool TypeDesc::operator==(const TypeDesc& other) const {
 
 bool TypeDesc::operator<(const TypeDesc& other) const {
     if (type != other.type) return type < other.type;
-    if (element_type != other.element_type) return element_type < other.element_type;
+    if (elem != other.elem) {
+        if (!elem) return true;
+        if (!other.elem) return false;
+        if (*elem != *other.elem) return *elem < *other.elem;
+    }
     if (tuple_members != other.tuple_members) return tuple_members < other.tuple_members;
     if (type == TypeKind::Function) {
         if (fn_info && other.fn_info) {
@@ -81,7 +88,7 @@ std::string type_to_string(TypeKind kind) {
 
 std::string type_desc_to_string(const TypeDesc& desc) {
     if (desc.type == TypeKind::Array) {
-        return "array of " + type_to_string(desc.element_type);
+        return "array of " + type_desc_to_string(desc.element());
     }
     if (desc.type == TypeKind::Tuple) {
         return tuple_type_to_string(desc.tuple_members);

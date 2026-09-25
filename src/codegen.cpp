@@ -1,10 +1,10 @@
 #include "codegen.hpp"
 
 static TypeDesc codegen_param_desc(const FunctionDecl::Param& p) {
-    if (p.type == TypeKind::Function) return p.desc;
+    if (p.desc.type != TypeKind::Unknown) return p.desc;
     TypeDesc d;
     d.type = p.type;
-    d.element_type = p.array_element_type;
+    d.elem = p.elem_desc.elem;
     d.tuple_members = p.tuple_members;
     return d;
 }
@@ -342,7 +342,7 @@ TypeKind CodeGen::get_expr_type(Expression* expr) {
 
 static std::string mangle_type_name(const TypeDesc& d) {
     if (d.type == TypeKind::Array)
-        return "arr_of_" + type_to_string(d.element_type);
+        return "arr_of_" + mangle_type_name(d.element());
     return type_to_string(d.type);
 }
 
@@ -510,13 +510,13 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                     out_ << ", ";
                     if (call->args.size() > fixed) {
                         out_ << "sd_make_array(("
-                             << type_to_c(callee->params[variadic_index].array_element_type)
+                             << c_type_for_desc(callee->params[variadic_index].elem_desc)
                              << "[]){";
                         for (size_t i = fixed; i < call->args.size(); i++) {
                             if (i > fixed) out_ << ", ";
                             emit_expr(call->args[i].get());
                         }
-                        out_ << "}, sizeof(" << type_to_c(callee->params[variadic_index].array_element_type)
+                        out_ << "}, sizeof(" << c_type_for_desc(callee->params[variadic_index].elem_desc)
                              << ") * " << (call->args.size() - fixed) << ", "
                              << (call->args.size() - fixed) << ")";
                     } else {
@@ -545,20 +545,35 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         if (arr->elements.empty()) {
             out_ << "sd_make_array(0, 0, 0)";
         } else {
-            out_ << "sd_make_array((" << type_to_c(arr->element_type) << "[]){";
+            out_ << "sd_make_array((" << c_type_for_desc(arr->elem) << "[]){";
             for (size_t i = 0; i < arr->elements.size(); i++) {
                 if (i > 0) out_ << ", ";
                 emit_expr(arr->elements[i].get());
             }
-            out_ << "}, sizeof(" << type_to_c(arr->element_type) << ") * "
+            out_ << "}, sizeof(" << c_type_for_desc(arr->elem) << ") * "
                  << arr->elements.size() << ", " << arr->elements.size() << ")";
         }
     } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
-        if (idx->is_tuple) {
+        if (idx->base) {
+            if (idx->is_tuple) {
+                emit_expr(idx->base.get());
+                out_ << ".f" << idx->member_index;
+            } else {
+                std::string ct = c_type_for_desc(idx->elem);
+                out_ << "((" << ct << "*)";
+                emit_expr(idx->base.get());
+                out_ << ".data)";
+                out_ << "[sd_check_index(";
+                emit_expr(idx->base.get());
+                out_ << ".length, ";
+                emit_expr(idx->index.get());
+                out_ << ")]";
+            }
+        } else if (idx->is_tuple) {
             emit_identifier_value(idx->name);
             out_ << ".f" << idx->member_index;
         } else {
-            out_ << "((" << type_to_c(idx->element_type) << "*)";
+            out_ << "((" << c_type_for_desc(idx->elem) << "*)";
             emit_identifier_value(idx->name);
             out_ << ".data)";
             out_ << "[sd_check_index(";
@@ -638,6 +653,13 @@ void CodeGen::emit_stmt(Statement* stmt) {
         out_ << ")] = ";
         emit_expr(aa->rhs.get());
         out_ << ";\n";
+    } else if (auto* ea = dynamic_cast<ElementAssignStmt*>(stmt)) {
+        emit_line_directive(ea->line, line_file_);
+        out_ << "    ";
+        emit_expr(ea->target.get());
+        out_ << " = ";
+        emit_expr(ea->rhs.get());
+        out_ << ";\n";
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
         emit_line_directive(td->line, line_file_);
         std::string tname = tuple_name(td->tuple_members);
@@ -646,7 +668,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         emit_expr(td->rhs.get());
         out_ << ";\n";
         for (size_t i = 0; i < td->names.size(); i++) {
-            out_ << "    " << type_to_c(td->tuple_members[i].type) << " " << td->names[i]
+            out_ << "    " << c_type_for_desc(td->tuple_members[i]) << " " << td->names[i]
                  << " = " << tmp << ".f" << i << ";\n";
         }
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
@@ -718,13 +740,14 @@ void CodeGen::emit_stmt(Statement* stmt) {
             }
         };
         if (itype == TypeKind::Array) {
-            TypeKind elem = fe->element_type;
+            TypeDesc ed = fe->elem;
+            std::string ct = c_type_for_desc(ed);
             out_ << "    for (int " << idx << " = 0; " << idx << " < ";
             emit_expr(fe->iterable.get());
             out_ << ".length; " << idx << "++) {\n";
             nl_arm();
-            out_ << "        " << type_to_c(elem) << " " << fe->value_name
-                 << " = ((" << type_to_c(elem) << "*)";
+            out_ << "        " << ct << " " << fe->value_name
+                 << " = ((" << ct << "*)";
             emit_expr(fe->iterable.get());
             out_ << ".data)[" << idx << "];\n";
             for (auto& body_stmt : fe->body) emit_stmt(body_stmt.get());

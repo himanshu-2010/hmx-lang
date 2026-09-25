@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-25  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (253 / 253)
+**Status:** ALL TESTS PASSED (255 / 255)
 
 ---
 
@@ -23,11 +23,12 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 12. **Non-local exit**: `break` / `continue` inside a nested function break/continue the nearest loop of the enclosing function (restricted to direct calls from the loop's owner inside the loop).
 13. **Modules**: `use "file.hmx"` at the top of a file imports top-level functions from other `.hmx` files (relative paths, cycle detection, dedupe by canonical path, file-tagged diagnostics for imported-module errors).
 14. **Unicode identifiers**: any non-ASCII UTF-8 byte is a valid identifier character, emitted verbatim into the generated C.
+15. **Nested arrays & chained indexing**: recursive element type descriptors enable `[[int]]` annotations, nested-literal inference, `a[i][j]` reads, `a[i][j] = v` chained assignment, and nested `foreach`; bison conflict count still 6 SR (5 states), all resolved by shift.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 253
-> - **Passed:** 253
+> - **Total Test Cases Executed:** 255
+> - **Passed:** 255
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -46,7 +47,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (44/44 Passed)
+### 1. Integration Fixtures (45/45 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -92,10 +93,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `mod_closures` | **[NEW]** Module Closures | Imported fn returns a closure (`make_adder`) called from entry | **PASS** |
 | `mod_nonlocal` | **[NEW]** Module Non-local | Imported fn uses non-local `break` from a nested fn | **PASS** |
 | `mod_unicode` | **[NEW]** Module Unicode | Unicode identifiers (`ö`, `saludar`) inside an imported module | **PASS** |
+| `nested_arrays.hmx` | **[NEW]** Nested Arrays | `[[int]]` annotation, nested inference, `a[i][j]` reads, chained assignment, nested `foreach`, array-of-arrays from array vars | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (140/140 Passed)
+### 2. Negative & Error Handling Suite (141/141 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -138,7 +140,8 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `array_element_type_mismatch` | **[NEW]** Array Element Mismatch | Array init type vs annotation | **PASS** |
 | `array_mixed_element_types` | **[NEW]** Mixed Array Elements | Array with heterogeneous literal types | **PASS** |
 | `array_untyped_empty` | **[NEW]** Untyped Empty Array | `[]` without annotation | **PASS** |
-| `array_nested` | **[NEW]** Nested Array | `[[1], [2]]` literal | **PASS** |
+| `array_nested_mismatch` | **[NEW]** Nested Array Annotation Mismatch | `[int] = [[1], [2]]` now rejects with the typed message | **PASS** |
+| `array_nested_element_mismatch` | **[NEW]** Nested Heterogeneous Rows | `[[int]] = [[1], ["x"]]` element-type mismatch | **PASS** |
 | `array_index_on_non_array` | **[NEW]** Index on Non-Array | Indexing an `int` variable | **PASS** |
 | `array_index_non_int` | **[NEW]** Non-Int Index | `a["x"]` | **PASS** |
 | `array_assign_type_mismatch` | **[NEW]** Element Assign Mismatch | Assign `text` to `[int]` element | **PASS** |
@@ -349,3 +352,10 @@ cd build && cmake .. && make && cd ..
 > an enclosing loop — all compile through the HMX pipeline and pass
 > integration, negative, and stress/output tests. The bison parser still carries
 > six harmless shift/reduce conflicts (all resolved by shift).
+>
+> **0.A1 addition:** recursive element type descriptors now make arrays recursively typed.
+> Nested arrays (`[[int]]`) are implemented end-to-end: annotations, literal inference,
+> empty-literal contextual fixing, `a[i][j]` chained indexing (expression reads and
+> statement assignments via the new `postfix_index` grammar + `ElementAssignStmt`),
+> tuple-member-array chains (`pair[1][0]`), and nested `foreach (row in grid)`. The conflict
+> count is unchanged at 6 SR across 5 states; suites rerun at 45/141/69 = **255**.

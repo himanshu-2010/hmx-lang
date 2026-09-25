@@ -457,11 +457,17 @@ test_error "array_untyped_empty" \
     }' \
     "cannot infer array element type"
 
-test_error "array_nested" \
+test_error "array_nested_mismatch" \
     'fn main() {
         let a: [int] = [[1], [2]]
     }' \
-    "nested arrays are not supported"
+    "declared as array of int but initialized with array of array of int"
+
+test_error "array_nested_element_mismatch" \
+    'fn main() {
+        let a: [[int]] = [[1], ["x"]]
+    }' \
+    "array elements must all be the same type"
 
 test_error "array_index_on_non_array" \
     'fn main() {

@@ -21,9 +21,19 @@ struct FunctionTypeInfo;
 
 struct TypeDesc {
     TypeKind type = TypeKind::Unknown;
-    TypeKind element_type = TypeKind::Unknown;          // valid when type == Array
+    std::shared_ptr<TypeDesc> elem;                    // valid when type == Array (recursive)
     std::vector<TypeDesc> tuple_members;                // valid when type == Tuple
     std::shared_ptr<FunctionTypeInfo> fn_info = nullptr; // valid when type == Function
+    const TypeDesc& element() const {
+        static const TypeDesc empty{};
+        return elem ? *elem : empty;
+    }
+    static TypeDesc array_of(const TypeDesc& e) {
+        TypeDesc d;
+        d.type = TypeKind::Array;
+        d.elem = std::make_shared<TypeDesc>(e);
+        return d;
+    }
     bool operator==(const TypeDesc& other) const;
     bool operator!=(const TypeDesc& other) const { return !(*this == other); }
     bool operator<(const TypeDesc& other) const;
@@ -138,19 +148,21 @@ struct CallExpr : Expression {
 
 struct ArrayLiteral : Expression {
     std::vector<ExprPtr> elements;
-    TypeKind element_type = TypeKind::Unknown;
+    TypeDesc elem;                       // element descriptor after resolution
     explicit ArrayLiteral(std::vector<ExprPtr> e) : elements(std::move(e)) {}
 };
 
 struct ArrayIndexExpr : Expression {
-    std::string name;
+    std::string name;                       // valid when base == null (direct indentifier)
+    ExprPtr base;                           // non-null for chained indexing (a[0][1])
     ExprPtr index;
-    TypeKind element_type = TypeKind::Unknown;
-    bool is_tuple = false;                     // valid after resolution
-    int member_index = -1;                     // valid after resolution when is_tuple
-    TypeKind array_of_element_type = TypeKind::Unknown;  // tuple member that is an array
+    TypeDesc elem;                              // element descriptor after resolution
+    bool is_tuple = false;                      // valid after resolution
+    int member_index = -1;                      // valid after resolution when is_tuple
     ArrayIndexExpr(std::string n, ExprPtr i)
-        : name(std::move(n)), index(std::move(i)) {}
+        : name(std::move(n)), base(nullptr), index(std::move(i)) {}
+    ArrayIndexExpr(ExprPtr b, ExprPtr i)
+        : name(), base(std::move(b)), index(std::move(i)) {}
 };
 
 struct Statement : ASTNode {
@@ -167,7 +179,7 @@ using StmtPtr = std::unique_ptr<Statement>;
 struct VarDecl : Statement {
     std::string name;
     TypeKind annotation = TypeKind::Unknown;
-    TypeKind array_element_type = TypeKind::Unknown;   // valid when annotation == Array
+    TypeDesc elem_desc;                              // element descriptor when annotation == Array
     std::vector<TypeDesc> tuple_members;               // valid when annotation == Tuple
     TypeDesc annotation_desc;                          // full desc for Function annotations
     bool has_annotation = false;
@@ -197,6 +209,11 @@ struct DestructDecl : Statement {
 struct ArrayAssignStmt : Statement {
     std::string name;
     ExprPtr index;
+    ExprPtr rhs;
+};
+
+struct ElementAssignStmt : Statement {
+    ExprPtr target;   // ArrayIndexExpr (possibly chained)
     ExprPtr rhs;
 };
 
@@ -231,7 +248,7 @@ struct ForeachStmt : Statement {
     std::string index_name;     // empty when only the value form is used
     ExprPtr iterable;
     std::vector<StmtPtr> body;
-    TypeKind element_type = TypeKind::Unknown;   // filled by resolver
+    TypeDesc elem;              // element descriptor (arrays) / char (text); filled by resolver
 };
 
 struct IfStmt : Statement {
@@ -263,15 +280,15 @@ struct FunctionDecl : Statement {
     struct Param {
         std::string name;
         TypeKind type;
-        TypeKind array_element_type = TypeKind::Unknown;   // valid when type == Array
-        std::vector<TypeDesc> tuple_members;               // valid when type == Tuple
-        TypeDesc desc;                                     // full descriptor (Function etc.)
-        ExprPtr default_value;                             // null when no default
-        bool variadic = false;                             // trailing ...elem collector
+        TypeDesc elem_desc;                                    // valid when type == Array
+        std::vector<TypeDesc> tuple_members;                   // valid when type == Tuple
+        TypeDesc desc;                                         // full descriptor (Function etc.)
+        ExprPtr default_value;                                 // null when no default
+        bool variadic = false;                                 // trailing ...elem collector
     };
     std::vector<Param> params;
     TypeKind return_type = TypeKind::Unknown;
-    TypeKind return_array_element_type = TypeKind::Unknown;  // valid when return_type == Array
+    TypeDesc return_elem;                                     // element descriptor when return_type == Array
     std::vector<TypeDesc> return_tuple_members;              // valid when return_type == Tuple
     TypeDesc return_desc;                                    // full descriptor (Function etc.)
     bool has_return_type = false;

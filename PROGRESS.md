@@ -364,6 +364,38 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - Docs: SYNTAX.md §1.6 Modules, §2 keyword table, §3 identifier grammar (unicode),
   §15 roadmap emptied; README.md features/tests/Remaining Features; TESTRESULT.md.
 
+### 0.A1 — Recursive type descriptors, nested arrays, chained indexing — DONE
+- AST: `TypeDesc` now carries a recursive element type
+  (`std::shared_ptr<TypeDesc> elem`, null-safe `element()`, `TypeDesc::array_of()`);
+  element fields renamed for clarity (`elem`/`elem_desc`/`return_elem`/`param_elems`/
+  `variadic_elem`/`return_elem`/`current_return_elem_`); dead `array_of_elem` removed;
+  `ArrayIndexExpr` gained an expression `base` for chains; new `ElementAssignStmt`.
+- Parser: bison-typed `postfix_index` (recursive `a[0][1]…`) replacing the single
+  `IDENTIFIER '[' expr ']'` factor, plus a chained-assign statement
+  `postfix_index '[' expr ']' '=' expr` (single-index assignment unchanged); `[int]`
+  var-decl annotations now store the element desc directly (`elem_desc = *$5`); param
+  actions copy `desc` before moving tuple members (member vec was previously emptied
+  in `desc`). Conflict count unchanged: still 6 shift/reduce across 5 states, all
+  resolved by shift (2 on `return`, 1 call-vs-factor — now also covering the array
+  postfix, and one each on `not`/`+`/`-` `factor AS type`).
+- Resolver: `types_match`/`expr_element_desc`/`expr_desc` rewritten on recursive
+  descs; nested-array literals enabled (inference from elements, contextual fixing of
+  empty literals); `ArrayIndexExpr` chain branch resolves base first then applies the
+  index (array or tuple member); foreach value defined against its own element type so
+  `foreach (row in grid)` yields an array value that can itself be iterated; annotated
+  variable paths use the full recursive descriptor.
+- Codegen: `c_type_for_desc` recursion, `mangle_type_name` recursion, chained index
+  emission doubles the (pure) base expression for `.data`/`.length`, `ElementAssignStmt`
+  emits the chain target as an lvalue; tuple member array chains (`pair[1][0]`) work.
+- Tests: `nested_arrays.hmx` fixture (annotation, inference, `a[i][j]` reads, chained
+  assignment, nested foreach, array-of-arrays built from array vars); negative suite
+  reworked: `array_nested_mismatch` (`[int] = [[1],[2]]`) and
+  `array_nested_element_mismatch` (`[[int]]` heterogeneous rows) replace the removed
+  "nested arrays are not supported" test.
+- Docs: SYNTAX.md §5.3 (nested arrays implemented), §7 grammar (postfix_index),
+  §13.? empty-literal note; this entry.
+- Full regression: 45/45 integration, 141/141 negative, 69/69 stress/output = **255**.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

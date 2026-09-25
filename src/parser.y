@@ -53,7 +53,7 @@ Program* g_program = nullptr;
 %type <ival> NUMBER
 %type <fval> DECIMAL
 %type <sval> STRING CHAR IDENTIFIER
-%type <expr> expression conditional logical_or logical_and equality relational additive term factor
+%type <expr> expression conditional logical_or logical_and equality relational additive term factor postfix_index
 %type <stmt> statement var_decl assign_stmt print_stmt loop_stmt foreach_stmt while_stmt for_stmt do_while_stmt if_stmt switch_stmt return_stmt call_stmt fn_decl break_stmt continue_stmt
 %type <stmt> for_init for_update
 %type <params> param_list
@@ -307,7 +307,7 @@ var_decl
             v->name = $2;
             v->has_annotation = true;
             v->annotation = TypeKind::Array;
-            v->array_element_type = $5->type;
+            v->elem_desc = *$5;
             delete $5;
             v->is_mutable = true;
             v->initializer = ExprPtr($8);
@@ -373,7 +373,7 @@ var_decl
             v->name = $2;
             v->has_annotation = true;
             v->annotation = TypeKind::Array;
-            v->array_element_type = $5->type;
+            v->elem_desc = *$5;
             delete $5;
             v->is_mutable = false;
             v->initializer = ExprPtr($8);
@@ -534,6 +534,14 @@ assign_stmt
             a->rhs = ExprPtr($6);
             a->line = yylineno;
             free($1);
+            $$ = a;
+        }
+    | postfix_index '[' expression ']' '=' expression
+        {
+            auto* a = new ElementAssignStmt();
+            a->target = ExprPtr(new ArrayIndexExpr(ExprPtr($1), ExprPtr($3)));
+            a->rhs = ExprPtr($6);
+            a->line = yylineno;
             $$ = a;
         }
     | '(' id_list ')' '=' expression
@@ -795,30 +803,30 @@ return_stmt
     ;
 
 param_type
-    : TYPE_INT     { $$ = new TypeDesc{TypeKind::Int, TypeKind::Unknown, {}}; }
-    | TYPE_DECIMAL { $$ = new TypeDesc{TypeKind::Decimal, TypeKind::Unknown, {}}; }
-    | TYPE_TEXT    { $$ = new TypeDesc{TypeKind::Text, TypeKind::Unknown, {}}; }
-    | TYPE_BOOL    { $$ = new TypeDesc{TypeKind::Bool, TypeKind::Unknown, {}}; }
-    | TYPE_CHAR    { $$ = new TypeDesc{TypeKind::Char, TypeKind::Unknown, {}}; }
-    | TYPE_BYTE    { $$ = new TypeDesc{TypeKind::Byte, TypeKind::Unknown, {}}; }
+    : TYPE_INT     { $$ = new TypeDesc{TypeKind::Int, {}, {}, {}}; }
+    | TYPE_DECIMAL { $$ = new TypeDesc{TypeKind::Decimal, {}, {}, {}}; }
+    | TYPE_TEXT    { $$ = new TypeDesc{TypeKind::Text, {}, {}, {}}; }
+    | TYPE_BOOL    { $$ = new TypeDesc{TypeKind::Bool, {}, {}, {}}; }
+    | TYPE_CHAR    { $$ = new TypeDesc{TypeKind::Char, {}, {}, {}}; }
+    | TYPE_BYTE    { $$ = new TypeDesc{TypeKind::Byte, {}, {}, {}}; }
     | '[' param_type ']'
         {
             if ($2->type == TypeKind::Tuple) {
                 yyerror("arrays of tuples are not supported");
             }
-            $$ = new TypeDesc{TypeKind::Array, $2->type, {}};
+            $$ = new TypeDesc(TypeDesc::array_of(*$2));
             delete $2;
         }
     | '(' tuple_elem_list ')'
         {
-            auto* td = new TypeDesc{TypeKind::Tuple, TypeKind::Unknown, {}};
+            auto* td = new TypeDesc{TypeKind::Tuple, {}, {}, {}};
             td->tuple_members = std::move(*$2);
             delete $2;
             $$ = td;
         }
     | FN '(' fn_type_params ')' ARROW param_type
         {
-            auto* td = new TypeDesc{TypeKind::Function, TypeKind::Unknown, {}};
+            auto* td = new TypeDesc{TypeKind::Function, {}, {}, {}};
             auto* info = new FunctionTypeInfo();
             info->params = std::move(*$3);
             delete $3;
@@ -829,7 +837,7 @@ param_type
         }
     | FN '(' ')' ARROW param_type
         {
-            auto* td = new TypeDesc{TypeKind::Function, TypeKind::Unknown, {}};
+            auto* td = new TypeDesc{TypeKind::Function, {}, {}, {}};
             auto* info = new FunctionTypeInfo();
             info->ret = *$5;
             delete $5;
@@ -918,9 +926,13 @@ param
             auto* p = new FunctionDecl::Param();
             p->name = std::string($1);
             p->type = $3->type;
-            p->array_element_type = $3->element_type;
-            if (p->type == TypeKind::Tuple) p->tuple_members = std::move($3->tuple_members);
             p->desc = *$3;
+            if (p->type == TypeKind::Tuple) {
+                p->tuple_members = std::move($3->tuple_members);
+                p->desc.tuple_members = p->tuple_members;
+            } else {
+                p->elem_desc = $3->elem ? *$3->elem : TypeDesc{};
+            }
             delete $3;
             free($1);
             $$ = p;
@@ -930,9 +942,13 @@ param
             auto* p = new FunctionDecl::Param();
             p->name = std::string($1);
             p->type = $3->type;
-            p->array_element_type = $3->element_type;
-            if (p->type == TypeKind::Tuple) p->tuple_members = std::move($3->tuple_members);
             p->desc = *$3;
+            if (p->type == TypeKind::Tuple) {
+                p->tuple_members = std::move($3->tuple_members);
+                p->desc.tuple_members = p->tuple_members;
+            } else {
+                p->elem_desc = $3->elem ? *$3->elem : TypeDesc{};
+            }
             p->default_value = ExprPtr($5);
             delete $3;
             free($1);
@@ -943,9 +959,9 @@ param
             auto* p = new FunctionDecl::Param();
             p->name = std::string($1);
             p->type = TypeKind::Array;
-            p->array_element_type = $4->type;
+            p->elem_desc = *$4;
             p->variadic = true;
-            p->desc = TypeDesc{TypeKind::Array, $4->type, {}};
+            p->desc = TypeDesc::array_of(*$4);
             delete $4;
             free($1);
             $$ = p;
@@ -972,7 +988,7 @@ fn_decl
             f->name = $2;
             f->has_return_type = true;
             f->return_type = $6->type;
-            f->return_array_element_type = $6->element_type;
+            f->return_elem = $6->elem ? *$6->elem : TypeDesc{};
             if (f->return_type == TypeKind::Tuple) f->return_tuple_members = std::move($6->tuple_members);
             f->return_desc = *$6;
             delete $6;
@@ -1007,7 +1023,7 @@ fn_decl
             delete $4;
             f->has_return_type = true;
             f->return_type = $7->type;
-            f->return_array_element_type = $7->element_type;
+            f->return_elem = $7->elem ? *$7->elem : TypeDesc{};
             if (f->return_type == TypeKind::Tuple) f->return_tuple_members = std::move($7->tuple_members);
             f->return_desc = *$7;
             delete $7;
@@ -1193,11 +1209,9 @@ factor
             free($1);
             $$ = call;
         }
-    | IDENTIFIER '[' expression ']'
+    | postfix_index
         {
-            auto* idx = new ArrayIndexExpr(std::string($1), ExprPtr($3));
-            free($1);
-            $$ = idx;
+            $$ = $1;
         }
     | '[' ']'
         {
@@ -1220,6 +1234,19 @@ factor
     | '(' expression ')'
         {
             $$ = $2;
+        }
+    ;
+
+postfix_index
+    : IDENTIFIER '[' expression ']'
+        {
+            auto* idx = new ArrayIndexExpr(std::string($1), ExprPtr($3));
+            free($1);
+            $$ = idx;
+        }
+    | postfix_index '[' expression ']'
+        {
+            $$ = new ArrayIndexExpr(ExprPtr($1), ExprPtr($3));
         }
     ;
 

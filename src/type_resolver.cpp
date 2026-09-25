@@ -3,12 +3,45 @@
 #include <set>
 
 static TypeDesc param_type_desc(const FunctionDecl::Param& p) {
-    if (p.type == TypeKind::Function) return p.desc;
+    if (p.desc.type != TypeKind::Unknown) return p.desc;
     TypeDesc d;
     d.type = p.type;
-    d.element_type = p.array_element_type;
+    d.elem = p.elem_desc.elem;
     d.tuple_members = p.tuple_members;
     return d;
+}
+
+static bool desc_fully_known(const TypeDesc& d) {
+    if (d.type == TypeKind::Unknown) return false;
+    if (d.type == TypeKind::Array) return desc_fully_known(d.element());
+    return true;
+}
+
+static bool fix_empty_array_literal(ArrayLiteral* arr, const TypeDesc& target_elem) {
+    // Fills type-denoting empty literals ([]) from the annotation's element
+    // descriptor and returns true when the resulting descriptor matches.
+    if (arr->elements.empty() &&
+        (arr->elem.elem == nullptr || arr->elem.element().type == TypeKind::Unknown)) {
+        arr->elem = target_elem;
+        return true;
+    }
+    if (arr->elem.type == TypeKind::Array && target_elem.type == TypeKind::Array) {
+        if (arr->elements.empty()) {
+            arr->elem = target_elem;
+            return true;
+        }
+        for (auto& e : arr->elements) {
+            if (auto* nested = dynamic_cast<ArrayLiteral*>(e.get())) {
+                if (!fix_empty_array_literal(nested, target_elem.element())) return false;
+            }
+        }
+        if (arr->elem.element().type == TypeKind::Unknown) {
+            arr->elem = target_elem;
+            return true;
+        }
+        return arr->elem == target_elem;
+    }
+    return arr->elem == target_elem;
 }
 
 void TypeResolver::push_scope() {
@@ -20,13 +53,13 @@ void TypeResolver::pop_scope() {
 }
 
 void TypeResolver::define(const std::string& name, TypeKind type, bool is_mutable,
-                          TypeKind array_element_type,
+                          const TypeDesc& elem,
                           const std::vector<TypeDesc>& tuple_members,
                           const TypeDesc& desc) {
     if (scopes_.back().count(name)) {
         throw err(line(), "duplicate declaration of variable '" + name + "'");
     }
-    scopes_.back()[name] = {type, is_mutable, array_element_type, tuple_members, desc};
+    scopes_.back()[name] = {type, is_mutable, elem, tuple_members, desc};
 }
 
 const Symbol* TypeResolver::find_symbol(const std::string& name) const {
@@ -67,7 +100,7 @@ void TypeResolver::register_capture(const std::string& name, const Symbol& sym) 
     TypeDesc d = sym.desc;
     if (d.type == TypeKind::Unknown && sym.type != TypeKind::Unknown) {
         d.type = sym.type;
-        d.element_type = sym.array_element_type;
+        d.elem = sym.elem.elem;
         d.tuple_members = sym.tuple_members;
     }
     current_fn_->captures.push_back({name, d});
@@ -232,28 +265,41 @@ const FunctionSig* TypeResolver::get_function(const std::string& name) const {
     return nullptr;
 }
 
-TypeKind TypeResolver::expr_array_element_type(Expression* expr) {
+TypeDesc TypeResolver::expr_element_desc(Expression* expr) {
     if (auto* arr = dynamic_cast<ArrayLiteral*>(expr)) {
-        return arr->element_type;
+        return arr->elem;
     }
     if (auto* id = dynamic_cast<Identifier*>(expr)) {
         const Symbol* s = find_symbol(id->name);
         if (!s) s = find_outer_symbol(id->name);
-        if (s && s->type == TypeKind::Array) return s->array_element_type;
+        if (s && s->type == TypeKind::Array) return s->elem;
     }
     if (auto* call = dynamic_cast<CallExpr*>(expr)) {
         const FunctionSig* sig = get_function(call->name);
-        if (sig && sig->return_type == TypeKind::Array) return sig->return_element_type;
+        if (sig && sig->return_type == TypeKind::Array) return sig->return_elem;
         if (call->is_function_value_call && call->fn_type.fn_info &&
             call->fn_type.fn_info->ret.type == TypeKind::Array)
-            return call->fn_type.fn_info->ret.element_type;
+            return call->fn_type.fn_info->ret.element();
     }
     if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
-        if (idx->is_tuple && idx->element_type == TypeKind::Array) {
-            return idx->array_of_element_type;
-        }
+        if (idx->elem.type == TypeKind::Array) return idx->elem.element();
     }
-    return TypeKind::Unknown;
+    return TypeDesc{};
+}
+
+TypeDesc TypeResolver::expr_desc(Expression* expr) {
+    TypeKind k = expr->resolved_type;
+    if (k == TypeKind::Array) return TypeDesc::array_of(expr_element_desc(expr));
+    if (k == TypeKind::Tuple) {
+        TypeDesc d;
+        d.type = TypeKind::Tuple;
+        d.tuple_members = expr_tuple_members(expr);
+        return d;
+    }
+    if (k == TypeKind::Function) return expr_function_type(expr);
+    TypeDesc d;
+    d.type = k;
+    return d;
 }
 
 std::vector<TypeDesc> TypeResolver::expr_tuple_members(Expression* expr) {
@@ -287,11 +333,10 @@ TypeDesc TypeResolver::expr_function_type(Expression* expr) {
     return TypeDesc{};
 }
 
-bool TypeResolver::types_match(TypeKind a, TypeKind ae, const std::vector<TypeDesc>& am,
-                               TypeKind b, TypeKind be, const std::vector<TypeDesc>& bm) const {
-    if (a != b) return false;
-    if (a == TypeKind::Array) return ae == be;
-    if (a == TypeKind::Tuple) return am == bm;
+bool TypeResolver::types_match(const TypeDesc& a, const TypeDesc& b) const {
+    if (a.type != b.type) return false;
+    if (a.type == TypeKind::Array) return a.element() == b.element();
+    if (a.type == TypeKind::Tuple) return a.tuple_members == b.tuple_members;
     return true;
 }
 
@@ -422,13 +467,13 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                             type_desc_to_string(expected) + ", got " + type_to_string(at));
                     }
                     if (expected.type == TypeKind::Array) {
-                        TypeKind arg_elem = expr_array_element_type(call->args[i].get());
-                        if (arg_elem != expected.element_type) {
+                        TypeDesc arg_elem = expr_element_desc(call->args[i].get());
+                        if (arg_elem != expected.element()) {
                             throw err(line(),
                                 "type mismatch: argument " + std::to_string(i + 1) +
                                 " of '" + call->name + "' expects array of " +
-                                type_to_string(expected.element_type) + ", got array of " +
-                                type_to_string(arg_elem));
+                                type_desc_to_string(expected.element()) + ", got array of " +
+                                type_desc_to_string(arg_elem));
                         }
                     }
                     if (expected.type == TypeKind::Tuple) {
@@ -508,13 +553,13 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                     type_to_string(at));
             }
             if (sig->param_types[i] == TypeKind::Array) {
-                TypeKind arg_elem = expr_array_element_type(call->args[i].get());
-                if (arg_elem != sig->param_element_types[i]) {
+                TypeDesc arg_elem = expr_element_desc(call->args[i].get());
+                if (arg_elem != sig->param_elems[i]) {
                     throw err(line(),
                         "type mismatch: argument " + std::to_string(i + 1) +
                         " of '" + call->name + "' expects array of " +
-                        type_to_string(sig->param_element_types[i]) + ", got array of " +
-                        type_to_string(arg_elem));
+                        type_desc_to_string(sig->param_elems[i]) + ", got array of " +
+                        type_desc_to_string(arg_elem));
                 }
             }
             if (sig->param_types[i] == TypeKind::Tuple) {
@@ -542,11 +587,11 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         if (sig->variadic) {
             for (size_t i = fixed; i < call->args.size(); i++) {
                 TypeKind at = resolve_expr(call->args[i].get());
-                if (at != sig->variadic_element_type) {
+                if (at != sig->variadic_elem.type) {
                     throw err(line(),
                         "type mismatch: variadic argument " + std::to_string(i + 1) +
                         " of '" + call->name + "' expects " +
-                        type_to_string(sig->variadic_element_type) + ", got " +
+                        type_desc_to_string(sig->variadic_elem) + ", got " +
                         type_to_string(at));
                 }
             }
@@ -564,28 +609,71 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         if (arr->elements.empty()) {
             result = TypeKind::Array;
         } else {
-            TypeKind first = resolve_expr(arr->elements[0].get());
-            if (first == TypeKind::Unknown) {
+            resolve_expr(arr->elements[0].get());
+            TypeDesc first = expr_desc(arr->elements[0].get());
+            if (first.type == TypeKind::Unknown) {
                 throw err(line(), "cannot infer array element type");
             }
-            if (first == TypeKind::Array) {
-                throw err(line(), "nested arrays are not supported");
-            }
-            if (first == TypeKind::Tuple) {
+            if (first.type == TypeKind::Tuple) {
                 throw err(line(), "arrays of tuples are not supported");
             }
+            if (first.type == TypeKind::Array && !desc_fully_known(first)) {
+                throw err(line(), "cannot infer nested array element type");
+            }
             for (size_t i = 1; i < arr->elements.size(); i++) {
-                TypeKind t = resolve_expr(arr->elements[i].get());
+                resolve_expr(arr->elements[i].get());
+                TypeDesc t = expr_desc(arr->elements[i].get());
                 if (t != first) {
                     throw err(line(),
                         "array elements must all be the same type, got " +
-                        type_to_string(first) + " and " + type_to_string(t));
+                        type_desc_to_string(first) + " and " + type_desc_to_string(t));
                 }
             }
-            arr->element_type = first;
+            arr->elem = first;
             result = TypeKind::Array;
         }
     } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
+        if (idx->base) {
+            TypeKind bt = resolve_expr(idx->base.get());
+            if (bt == TypeKind::Unknown) {
+                throw err(line(), "cannot index value with unknown type");
+            }
+            TypeDesc bd = expr_desc(idx->base.get());
+            if (bd.type == TypeKind::Array) {
+                TypeKind it = resolve_expr(idx->index.get());
+                if (it != TypeKind::Int) {
+                    throw err(line(),
+                        "array index must be int, got " + type_to_string(it));
+                }
+                idx->elem = bd.element();
+                result = idx->elem.type;
+            } else if (bd.type == TypeKind::Tuple) {
+                auto* num = dynamic_cast<NumberLiteral*>(idx->index.get());
+                if (!num) {
+                    throw err(line(), "tuple index must be an integer constant");
+                }
+                TypeKind it = resolve_expr(idx->index.get());
+                if (it != TypeKind::Int) {
+                    throw err(line(),
+                        "tuple index must be int, got " + type_to_string(it));
+                }
+                int member_index = num->value;
+                if (member_index < 0 || (size_t)member_index >= bd.tuple_members.size()) {
+                    throw err(line(),
+                        "tuple index " + std::to_string(member_index) +
+                        " out of range for " + tuple_type_to_string(bd.tuple_members));
+                }
+                const TypeDesc& member = bd.tuple_members[member_index];
+                idx->is_tuple = true;
+                idx->member_index = member_index;
+                idx->elem = member;
+                result = member.type;
+            } else {
+                throw err(line(),
+                    "cannot index value of type " + type_to_string(bd.type));
+            }
+            return result;
+        }
         const Symbol* sym = find_symbol(idx->name);
         if (!sym) sym = find_outer_symbol(idx->name);
         if (!sym) {
@@ -597,12 +685,12 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                 throw err(line(),
                     "array index must be int, got " + type_to_string(it));
             }
-            if (sym->array_element_type == TypeKind::Unknown) {
+            if (sym->elem.type == TypeKind::Unknown) {
                 throw err(line(),
                     "cannot index array '" + idx->name + "' with unknown element type");
             }
-            idx->element_type = sym->array_element_type;
-            result = sym->array_element_type;
+            idx->elem = sym->elem;
+            result = sym->elem.type;
         } else if (sym->type == TypeKind::Tuple) {
             auto* num = dynamic_cast<NumberLiteral*>(idx->index.get());
             if (!num) {
@@ -622,8 +710,7 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             const TypeDesc& member = sym->tuple_members[member_index];
             idx->is_tuple = true;
             idx->member_index = member_index;
-            idx->element_type = member.type;
-            if (member.type == TypeKind::Array) idx->array_of_element_type = member.element_type;
+            idx->elem = member;
             result = member.type;
         } else {
             throw err(line(),
@@ -772,21 +859,23 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                         type_desc_to_string(var->annotation_desc) + " but initialized with " +
                         (init_desc.type == TypeKind::Function ? type_desc_to_string(init_desc) : type_to_string(init_type)));
                 }
-                define(var->name, TypeKind::Function, var->is_mutable, TypeKind::Unknown, {},
-                       var->annotation_desc);
+                define(var->name, TypeKind::Function, var->is_mutable, {},
+                       {}, var->annotation_desc);
             } else if (var->annotation == TypeKind::Array) {
                 if (auto* arrlit = dynamic_cast<ArrayLiteral*>(var->initializer.get())) {
-                    if (arrlit->element_type == TypeKind::Unknown) {
-                        arrlit->element_type = var->array_element_type;
-                    } else if (var->array_element_type != TypeKind::Unknown &&
-                               arrlit->element_type != var->array_element_type) {
+                    fix_empty_array_literal(arrlit, var->elem_desc);
+                    if (arrlit->elem != var->elem_desc) {
                         throw err(var->line,
                             "type mismatch: variable '" + var->name + "' declared as array of " +
-                            type_to_string(var->array_element_type) + " but initialized with array of " +
-                            type_to_string(arrlit->element_type));
+                            type_desc_to_string(var->elem_desc) + " but initialized with array of " +
+                            type_desc_to_string(arrlit->elem));
                     }
+                } else if (!desc_fully_known(var->elem_desc)) {
+                    throw err(var->line,
+                        "cannot infer array element type for '" + var->name +
+                        "'; use a complete annotation like [[int]]");
                 }
-                define(var->name, TypeKind::Array, var->is_mutable, var->array_element_type);
+                define(var->name, TypeKind::Array, var->is_mutable, var->elem_desc);
             } else if (var->annotation == TypeKind::Tuple) {
                 if (init_type != TypeKind::Tuple) {
                     throw err(var->line,
@@ -800,7 +889,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                         tuple_type_to_string(var->tuple_members) + " but initialized with " +
                         tuple_type_to_string(expr_tuple_members(var->initializer.get())));
                 }
-                define(var->name, TypeKind::Tuple, var->is_mutable, TypeKind::Unknown,
+                define(var->name, TypeKind::Tuple, var->is_mutable, {},
                        var->tuple_members);
             } else {
                 define(var->name, var->annotation, var->is_mutable);
@@ -810,10 +899,10 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 throw err(var->line,
                     "cannot infer type for '" + var->name + "'");
             }
-            TypeKind elem = TypeKind::Unknown;
+            TypeDesc elem;
             if (init_type == TypeKind::Array) {
-                elem = expr_array_element_type(var->initializer.get());
-                if (elem == TypeKind::Unknown) {
+                elem = expr_element_desc(var->initializer.get());
+                if (!desc_fully_known(elem)) {
                     throw err(var->line,
                         "cannot infer array element type for '" + var->name + "'; use an annotation like [int]");
                 }
@@ -833,7 +922,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                         "cannot infer function type for '" + var->name + "'; use an annotation like fn(int) -> int");
                 }
                 var->annotation_desc = init_desc;
-                define(var->name, init_type, var->is_mutable, TypeKind::Unknown, {}, init_desc);
+                define(var->name, init_type, var->is_mutable, {}, {}, init_desc);
             } else {
                 define(var->name, init_type, var->is_mutable, elem, var->tuple_members);
             }
@@ -861,15 +950,32 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             throw err(stmt->line,
                 "array index must be int, got " + type_to_string(it));
         }
-        if (sym->array_element_type == TypeKind::Unknown) {
+        if (sym->elem.type == TypeKind::Unknown) {
             throw err(stmt->line,
                 "cannot index array '" + aassign->name + "' with unknown element type");
         }
         TypeKind vt = resolve_expr(aassign->rhs.get());
-        if (vt != sym->array_element_type) {
+        if (vt != sym->elem.type) {
             throw err(stmt->line,
                 "type mismatch: cannot assign " + type_to_string(vt) +
-                " to array element of " + type_to_string(sym->array_element_type));
+                " to array element of " + type_desc_to_string(sym->elem));
+        }
+    } else if (auto* eassign = dynamic_cast<ElementAssignStmt*>(stmt)) {
+        TypeKind tt = resolve_expr(eassign->target.get());
+        auto* tidx = dynamic_cast<ArrayIndexExpr*>(eassign->target.get());
+        if (tidx->is_tuple) {
+            auto* base = dynamic_cast<ArrayIndexExpr*>(tidx->base.get());
+            const Symbol* tsym = base ? find_symbol(base->name) : nullptr;
+            if (tsym && tsym->type == TypeKind::Tuple && !tsym->is_mutable) {
+                throw err(stmt->line,
+                    "cannot modify immutable tuple");
+            }
+        }
+        TypeKind vt = resolve_expr(eassign->rhs.get());
+        if (vt != tt) {
+            throw err(stmt->line,
+                "type mismatch: cannot assign " + type_to_string(vt) +
+                " to element of " + type_desc_to_string(tidx->elem));
         }
     } else if (auto* assign = dynamic_cast<AssignStmt*>(stmt)) {
         if (!has_type(assign->name)) {
@@ -900,11 +1006,12 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                     " to " + type_to_string(var_type));
             }
             if (var_type == TypeKind::Array) {
-                if (expr_array_element_type(assign->rhs.get()) != symbol->array_element_type) {
+                TypeDesc rd = expr_element_desc(assign->rhs.get());
+                if (rd != symbol->elem) {
                     throw err(stmt->line,
                         "type mismatch: cannot assign array of " +
-                        type_to_string(expr_array_element_type(assign->rhs.get())) +
-                        " to " + type_to_string(symbol->array_element_type));
+                        type_desc_to_string(rd) +
+                        " to " + type_desc_to_string(symbol->elem));
                 }
             }
             if (var_type == TypeKind::Tuple) {
@@ -979,8 +1086,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         }
         for (size_t i = 0; i < td->names.size(); i++) {
             const TypeDesc& m = td->tuple_members[i];
-            define(td->names[i], m.type, td->is_mutable,
-                   m.type == TypeKind::Array ? m.element_type : TypeKind::Unknown);
+            define(td->names[i], m.type, td->is_mutable, m.element());
         }
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
         TypeKind src_type = resolve_expr(ma->rhs.get());
@@ -1007,12 +1113,11 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                     "cannot modify immutable variable '" + ma->names[i] + "'");
             }
             const TypeDesc& m = ma->tuple_members[i];
-            bool ok = types_match(sym->type, sym->array_element_type, sym->tuple_members,
-                                  m.type, m.element_type, {});
+            bool ok = types_match(TypeDesc{sym->type, sym->elem.elem, sym->tuple_members, {}}, m);
             if (!ok) {
                 throw err(stmt->line,
                     "type mismatch: cannot assign " + type_desc_to_string(m) +
-                    " to " + type_desc_to_string(TypeDesc{sym->type, sym->array_element_type, {}}));
+                    " to " + type_desc_to_string(TypeDesc{sym->type, sym->elem.elem, sym->tuple_members, {}}));
             }
         }
     } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
@@ -1039,15 +1144,15 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             define(fe->index_name, TypeKind::Int);
         }
         if (it == TypeKind::Array) {
-            TypeKind elem = expr_array_element_type(fe->iterable.get());
-            if (elem == TypeKind::Unknown) {
+            TypeDesc ed = expr_element_desc(fe->iterable.get());
+            if (!desc_fully_known(ed)) {
                 throw err(stmt->line,
                     "foreach cannot infer element type for this array");
             }
-            fe->element_type = elem;
-            define(fe->value_name, elem);
+            fe->elem = ed;
+            define(fe->value_name, ed.type, true, ed.element());
         } else {
-            fe->element_type = TypeKind::Char;
+            fe->elem = TypeDesc{TypeKind::Char, {}, {}, {}};
             define(fe->value_name, TypeKind::Char);
         }
         loop_depth_++;
@@ -1201,14 +1306,13 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                         std::to_string(ret->values.size()));
                 }
                 for (size_t i = 0; i < ret->values.size(); i++) {
-                    TypeKind vt = resolve_expr(ret->values[i].get());
+                    resolve_expr(ret->values[i].get());
                     const TypeDesc& expected = current_return_tuple_[i];
-                    bool ok = types_match(vt, expr_array_element_type(ret->values[i].get()), {},
-                                          expected.type, expected.element_type, {});
+                    bool ok = types_match(expr_desc(ret->values[i].get()), expected);
                     if (!ok) {
                         throw err(stmt->line,
                             "type mismatch: return value " + std::to_string(i + 1) +
-                            " has type " + type_desc_to_string(TypeDesc{vt, expr_array_element_type(ret->values[i].get()), {}}) +
+                            " has type " + type_desc_to_string(expr_desc(ret->values[i].get())) +
                             " but function member " + std::to_string(i + 1) +
                             " expects " + type_desc_to_string(expected));
                     }
@@ -1237,12 +1341,12 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 }
             }
             if (current_return_ == TypeKind::Array) {
-                TypeKind elem = expr_array_element_type(ret->values[0].get());
-                if (elem != current_return_element_) {
+                TypeDesc ed = expr_element_desc(ret->values[0].get());
+                if (ed != current_return_elem_) {
                     throw err(stmt->line,
-                        "type mismatch: return array of " + type_to_string(elem) +
+                        "type mismatch: return array of " + type_desc_to_string(ed) +
                         " but function returns array of " +
-                        type_to_string(current_return_element_));
+                        type_desc_to_string(current_return_elem_));
                 }
             }
         }
@@ -1282,7 +1386,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         if (!fn->file.empty()) current_file_ = fn->file;
         fn->captures.clear();
         for (auto& p : fn->params) {
-            define(p.name, p.type, true, p.array_element_type, p.tuple_members,
+            define(p.name, p.type, true, p.elem_desc, p.tuple_members,
                    param_type_desc(p));
             if (p.default_value) {
                 TypeKind dt = infer_from_literal(p.default_value.get());
@@ -1306,7 +1410,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             }
         }
         TypeKind saved_ret = current_return_;
-        TypeKind saved_ret_elem = current_return_element_;
+        TypeDesc saved_ret_elem = current_return_elem_;
         TypeDesc saved_ret_desc = current_return_desc_;
         std::vector<TypeDesc> saved_ret_tuple = current_return_tuple_;
         bool saved_in_fn = in_function_;
@@ -1315,7 +1419,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         loop_depth_ = 0;
         switch_entry_loop_depths_.clear();
         current_return_ = fn->has_return_type ? fn->return_type : TypeKind::Unknown;
-        current_return_element_ = fn->has_return_type ? fn->return_array_element_type : TypeKind::Unknown;
+        current_return_elem_ = fn->has_return_type ? fn->return_elem : TypeDesc{};
         current_return_desc_ = fn->has_return_type ? fn->return_desc : TypeDesc{};
         current_return_tuple_ = fn->has_return_type ? fn->return_tuple_members : std::vector<TypeDesc>{};
         in_function_ = true;
@@ -1328,7 +1432,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         }
         in_function_ = saved_in_fn;
         current_return_ = saved_ret;
-        current_return_element_ = saved_ret_elem;
+        current_return_elem_ = saved_ret_elem;
         current_return_desc_ = saved_ret_desc;
         current_return_tuple_ = saved_ret_tuple;
         loop_depth_ = saved_loop_depth;
@@ -1373,7 +1477,7 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
         std::vector<TypeDesc> param_descs;
         for (auto& p : fn->params) {
             sig.param_types.push_back(p.type);
-            sig.param_element_types.push_back(p.array_element_type);
+            sig.param_elems.push_back(p.elem_desc);
             sig.param_tuple_members.push_back(p.tuple_members);
             sig.param_has_default.push_back(p.default_value != nullptr);
             TypeDesc pd = param_type_desc(p);
@@ -1385,10 +1489,10 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
         } else {
             sig.variadic = fn->params.back().variadic;
             if (sig.variadic) {
-                sig.variadic_element_type = fn->params.back().array_element_type;
-                if (sig.variadic_element_type == TypeKind::Array ||
-                    sig.variadic_element_type == TypeKind::Tuple ||
-                    fn->params.back().type == TypeKind::Function) {
+                sig.variadic_elem = fn->params.back().elem_desc;
+                if (sig.variadic_elem.type == TypeKind::Array ||
+                    sig.variadic_elem.type == TypeKind::Tuple ||
+                    fn->params.back().desc.type == TypeKind::Function) {
                     throw err(fn->line,
                         "variadic parameter of function '" + fn->name +
                         "' must collect a scalar type",
@@ -1424,7 +1528,7 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
             }
         }
         sig.return_type = fn->has_return_type ? fn->return_type : TypeKind::Unknown;
-        sig.return_element_type = fn->has_return_type ? fn->return_array_element_type : TypeKind::Unknown;
+        sig.return_elem = fn->has_return_type ? fn->return_elem : TypeDesc{};
         sig.return_tuple_members = fn->has_return_type ? fn->return_tuple_members : std::vector<TypeDesc>{};
         sig.return_desc = fn->has_return_type ? fn->return_desc : TypeDesc{};
         sig.has_return = fn->has_return_type;

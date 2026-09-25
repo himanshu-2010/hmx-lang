@@ -269,10 +269,14 @@ let names: [text] = ["alice", "bob"]
 let empty: [int] = []
 ```
 
-Element types may be `int`, `decimal`, `text`, `bool`, `char`, or `byte`. Nested
-arrays (`[[int]]`) are **not** supported. An empty array literal (`[]`) requires an
-explicit annotation so the compiler can infer the element type; a non-empty literal
-infers its element type from its elements.
+Element types may be any type including nested arrays: `int`, `decimal`,
+`text`, `bool`, `char`, `byte`, or another array type. Nested arrays
+(`[[int]]`) are supported: element type descriptors are recursive, so
+multi-dimensional arrays can be annotated, inferred from nested literals
+(`let m = [[1, 2], [3, 4]]`), indexed (`m[i][j]`), assigned (`m[i][j] = v`),
+and walked with nested `foreach`. An empty array literal (`[]`) requires an
+explicit annotation so the compiler can infer the element type; a non-empty
+literal infers its element type from its elements.
 
 Arrays are reference values: assigning one array variable to another (`let b = a`)
 shares the backing storage, so element writes through either name are visible through
@@ -599,15 +603,20 @@ factor       : NUMBER | DECIMAL | STRING
              | "-" factor        // unary minus
              | IDENTIFIER
              | IDENTIFIER "(" args? ")"      // function call
-             | IDENTIFIER "[" expression "]" // array index (read)
+             | postfix_index                  // index chains, e.g. a[0][1]
              | "[" "]"                        // empty array literal
              | "[" args "]"                   // array literal
              | "(" expression ")"
 args         : expression ("," expression)*
+
+postfix_index : IDENTIFIER "[" expression "]"
+             | postfix_index "[" expression "]"
 ```
 
 Array indexes must be `int` and are bounds-checked at runtime. Elements of a
-one-dimensional array have the array's element type.
+one-dimensional array have the array's element type. Index expressions chain:
+`a[i][j]` indexes element `j` of row `i`, and a chained indexed element can
+be assigned: `grid[0][1] = 99`.
 
 Tuple indexing uses the same `t[i]` syntax with a compile-time `int` constant; the
 result is the tuple member at that position. A variable index, an out-of-range
