@@ -21,6 +21,7 @@ The current compiler supports:
 - Integer modulo `%`, compound assignment (`+=`, `%=`, ...), and unary `-` / `+`
 - String built-ins `length` and `substring`, plus `input` for stdin lines
 - Byte-level text access: `text[i]` character indexing, `ord`, `chr`, and `split`
+- Destructuring with `...rest` over arrays and text (`let (a, b, ...rest) = arr`)
 - Type conversions via `tostr`, `parse_int`, and `parse_decimal`
 - `if` / `else` conditionals
 - `else if` conditional chains
@@ -38,6 +39,7 @@ The current compiler supports:
   - Growable arrays with `push`, `pop`, `sort`, `slice`, `concat`, `index_of`, and `contains`
   - Reference semantics: array copies share backing storage, so mutations through any alias are visible
 - Multiple return values via tuples with destructuring
+  - Destructuring also works on arrays and text, with an optional `...rest` to capture the remainder
 - Compile-time type checking with line-numbered diagnostics
 - Duplicate declaration detection and definite-return checking
 - Native executables and propagated `main` exit codes
@@ -478,10 +480,10 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules & text ops | 47/47 passed |
-| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array-builtin misuse & text-op misuse | 160/160 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array & text built-ins | 77/77 passed |
-| Total | 284 test cases | 284/284 passed |
+| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops & `...rest` destructuring | 48/48 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse | 167/167 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring | 81/81 passed |
+| Total | 296 test cases | 296/296 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

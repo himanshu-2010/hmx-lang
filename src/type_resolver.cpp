@@ -1257,53 +1257,111 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         allow_void_call_ = saved;
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
         TypeKind src_type = resolve_expr(td->rhs.get());
-        if (src_type != TypeKind::Tuple) {
+        if (src_type == TypeKind::Tuple) {
+            if (!td->rest_name.empty()) {
+                throw err(stmt->line,
+                    "cannot use '...rest' when destructuring a tuple");
+            }
+            td->destruct_type = TypeKind::Tuple;
+            td->tuple_members = expr_tuple_members(td->rhs.get());
+            if (td->tuple_members.size() != td->names.size()) {
+                throw err(stmt->line,
+                    "cannot destructure tuple of " +
+                    std::to_string(td->tuple_members.size()) + " members into " +
+                    std::to_string(td->names.size()) + " variables");
+            }
+            for (size_t i = 0; i < td->names.size(); i++) {
+                const TypeDesc& m = td->tuple_members[i];
+                define(td->names[i], m.type, td->is_mutable, m.element());
+            }
+        } else if (src_type == TypeKind::Array) {
+            TypeDesc ed = expr_element_desc(td->rhs.get());
+            if (!desc_fully_known(ed)) {
+                throw err(stmt->line,
+                    "cannot infer element type for this array destructuring");
+            }
+            td->destruct_type = TypeKind::Array;
+            td->destruct_elem = ed;
+            for (const std::string& n : td->names) {
+                define(n, ed.type, td->is_mutable, ed.element());
+            }
+            if (!td->rest_name.empty()) {
+                define(td->rest_name, TypeKind::Array, td->is_mutable, ed);
+            }
+        } else if (src_type == TypeKind::Text) {
+            td->destruct_type = TypeKind::Text;
+            for (const std::string& n : td->names) {
+                define(n, TypeKind::Char, td->is_mutable);
+            }
+            if (!td->rest_name.empty()) {
+                define(td->rest_name, TypeKind::Text, td->is_mutable);
+            }
+        } else {
             throw err(stmt->line,
-                "right side of tuple destructuring must be a tuple, got " +
+                "right side of destructuring must be a tuple, array, or text, got " +
                 type_to_string(src_type));
-        }
-        td->tuple_members = expr_tuple_members(td->rhs.get());
-        if (td->tuple_members.size() != td->names.size()) {
-            throw err(stmt->line,
-                "cannot destructure tuple of " +
-                std::to_string(td->tuple_members.size()) + " members into " +
-                std::to_string(td->names.size()) + " variables");
-        }
-        for (size_t i = 0; i < td->names.size(); i++) {
-            const TypeDesc& m = td->tuple_members[i];
-            define(td->names[i], m.type, td->is_mutable, m.element());
         }
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
         TypeKind src_type = resolve_expr(ma->rhs.get());
-        if (src_type != TypeKind::Tuple) {
-            throw err(stmt->line,
-                "right side of tuple destructuring must be a tuple, got " +
-                type_to_string(src_type));
-        }
-        ma->tuple_members = expr_tuple_members(ma->rhs.get());
-        if (ma->tuple_members.size() != ma->names.size()) {
-            throw err(stmt->line,
-                "cannot destructure tuple of " +
-                std::to_string(ma->tuple_members.size()) + " members into " +
-                std::to_string(ma->names.size()) + " variables");
-        }
-        for (size_t i = 0; i < ma->names.size(); i++) {
-            const Symbol* sym = find_symbol(ma->names[i]);
+        auto check_target = [&](const std::string& n, const TypeDesc& need) {
+            const Symbol* sym = find_symbol(n);
             if (!sym) {
-                throw err(stmt->line,
-                    "undefined variable '" + ma->names[i] + "'");
+                throw err(stmt->line, "undefined variable '" + n + "'");
             }
             if (!sym->is_mutable) {
                 throw err(stmt->line,
-                    "cannot modify immutable variable '" + ma->names[i] + "'");
+                    "cannot modify immutable variable '" + n + "'");
             }
-            const TypeDesc& m = ma->tuple_members[i];
-            bool ok = types_match(TypeDesc{sym->type, sym->elem.elem, sym->tuple_members, {}}, m);
-            if (!ok) {
+            TypeDesc have{sym->type,
+                std::make_shared<TypeDesc>(sym->elem), sym->tuple_members, {}};
+            if (!types_match(have, need)) {
                 throw err(stmt->line,
-                    "type mismatch: cannot assign " + type_desc_to_string(m) +
-                    " to " + type_desc_to_string(TypeDesc{sym->type, sym->elem.elem, sym->tuple_members, {}}));
+                    "type mismatch: cannot assign " + type_desc_to_string(need) +
+                    " to " + type_desc_to_string(have));
             }
+        };
+        if (src_type == TypeKind::Tuple) {
+            if (!ma->rest_name.empty()) {
+                throw err(stmt->line,
+                    "cannot use '...rest' when destructuring a tuple");
+            }
+            ma->destruct_type = TypeKind::Tuple;
+            ma->tuple_members = expr_tuple_members(ma->rhs.get());
+            if (ma->tuple_members.size() != ma->names.size()) {
+                throw err(stmt->line,
+                    "cannot destructure tuple of " +
+                    std::to_string(ma->tuple_members.size()) + " members into " +
+                    std::to_string(ma->names.size()) + " variables");
+            }
+            for (size_t i = 0; i < ma->names.size(); i++) {
+                check_target(ma->names[i], ma->tuple_members[i]);
+            }
+        } else if (src_type == TypeKind::Array) {
+            TypeDesc ed = expr_element_desc(ma->rhs.get());
+            if (!desc_fully_known(ed)) {
+                throw err(stmt->line,
+                    "cannot infer element type for this array destructuring");
+            }
+            ma->destruct_type = TypeKind::Array;
+            ma->destruct_elem = ed;
+            for (const std::string& n : ma->names) {
+                check_target(n, ed);
+            }
+            if (!ma->rest_name.empty()) {
+                check_target(ma->rest_name, TypeDesc::array_of(ed));
+            }
+        } else if (src_type == TypeKind::Text) {
+            ma->destruct_type = TypeKind::Text;
+            for (const std::string& n : ma->names) {
+                check_target(n, TypeDesc{TypeKind::Char, {}, {}, {}});
+            }
+            if (!ma->rest_name.empty()) {
+                check_target(ma->rest_name, TypeDesc{TypeKind::Text, {}, {}, {}});
+            }
+        } else {
+            throw err(stmt->line,
+                "right side of destructuring must be a tuple, array, or text, got " +
+                type_to_string(src_type));
         }
     } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
         TypeKind ct = resolve_expr(loop->count.get());

@@ -714,7 +714,62 @@ test_error "tuple_destruct_non_tuple" \
     'fn main() {
         let (a, b) = 5
     }' \
-    "right side of tuple destructuring must be a tuple"
+    "right side of destructuring must be a tuple, array, or text, got int"
+
+test_error "destruct_tuple_rest" \
+    'fn f() -> (int, int) {
+        return 1, 2
+    }
+    fn main() {
+        let (a, ...rest) = f()
+    }' \
+    "cannot use '...rest' when destructuring a tuple"
+
+test_error "destruct_array_unknown_elem" \
+    'fn main() {
+        let (a, b) = []
+    }' \
+    "cannot infer element type for this array destructuring"
+
+test_error "destruct_array_multiassign_mismatch" \
+    'fn main() {
+        let a = "x"
+        let b = "y"
+        (a, b) = [1, 2]
+    }' \
+    "cannot assign int to text"
+
+test_error "destruct_array_rest_target_mismatch" \
+    'fn main() {
+        let x = 1
+        let r = 5
+        (x, ...r) = [1, 2, 3]
+    }' \
+    "cannot assign array of int to int"
+
+test_error "destruct_array_immutable_target" \
+    'fn main() {
+        const c: int = 1
+        let a: int = 0
+        (c, a) = [5, 6]
+    }' \
+    "cannot modify immutable variable 'c'"
+
+test_error "destruct_text_multiassign_mismatch" \
+    'fn main() {
+        let x = 1
+        let y = 2
+        (x, y) = "ab"
+    }' \
+    "cannot assign char to int"
+
+test_error "destruct_text_rest_target_mismatch" \
+    'fn main() {
+        let a = '\''a'\''
+        let r: [int] = [1]
+        (a, ...r) = "hi there"
+    }' \
+    "cannot assign text to array of int"
 
 test_error "tuple_destruct_target_type_mismatch" \
     'fn f() -> (int, text) {

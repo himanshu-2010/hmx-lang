@@ -431,6 +431,8 @@ count = 10
 
 A parenthesized list of existing variables can be assigned a tuple in one
 multi-assignment statement. The target count and member types must match the tuple.
+Arrays and text use the same syntax with a length check and optional `...rest` —
+see §7.5.
 
 ```hmx
 let (q, r) = divmod(9, 2)
@@ -468,7 +470,53 @@ count++          // count is now 6
 count--          // count is now 5
 ```
 
-### 7.5 Explicit Numeric Casts
+### 7.5 Array and Text Destructuring **[Implemented]**
+
+Arrays and text values support destructuring declarations and multi-assignment
+in the same parenthesized form as tuples. Each name binds the element at its
+position (arrays) or the character at that index (text); a trailing `...name`
+binds everything from that position onward — an array of the same element type,
+or a text substring. The runtime abort shown on the last line terminates the
+generated program when the source has fewer elements than the number of fixed
+targets.
+
+```hmx
+let scores: [int] = [10, 20, 30, 40]
+let (high1, high2, ...rest) = scores
+print(high1)             // 10
+print(high2)             // 20
+print(rest[0])           // 30
+print(length(rest))      // 2
+
+let name = "ada"
+let (c0, c1, ...tail) = name
+print(c0)                // a
+print(c1)                // d
+print(tail)              // a
+print(length(tail))      // 1
+
+let (a, b) = [1, 2, 3]   // extra elements are ignored
+print(a, b)              // 1 2
+
+let (x, y) = [9]         // Error: cannot destructure array of length 1 into 2 targets
+```
+
+Rules:
+
+- Tuple destructuring requires an exact member-count match and rejects `...rest`.
+- Array/text destructuring binds the first `N` elements (or characters) and
+  requires at least `N` at runtime; `...rest` captures the remainder (possibly
+  empty) as a new `[element-type]` array or `text`.
+- Multi-assignment forms (`(a, b, ...rest) = expr`) are supported with the same
+  semantics; all targets must already exist and be mutable, and the element
+  type of the source must match the declared types of the targets (`...rest`
+  targets must be arrays of the source's element type, or `text`).
+- The whole thing applies to any array- or text-valued expression:
+  `(first, ...tail) = split("a,b", ",")` and `(head, ...rest) = grid[i]` work.
+- Destructuring on any other type is a compile error, as is using `...rest`
+  when destructuring a tuple.
+
+### 7.6 Explicit Numeric Casts
 
 Use `as` for explicit conversion between `int` and `decimal`. There is no implicit
 numeric promotion, and casts involving `text` or `bool` are rejected.
@@ -645,7 +693,7 @@ A statement is one of the following. Statements execute in sequence.
 |---|---|
 | Variable declaration | `let ...` |
 | Assignment | `name = expr` / `name op= expr` / `name++` / `name--` |
-| Tuple multi-assignment | `(name, name) = expr` |
+| Destructuring (tuple / array / text) | `let (name, ...name) = expr` / `(name, ...name) = expr` |
 | Array element assignment | `name[index] = expr` |
 | Function call | `name(args...)` |
 | Output | `print(...)` |

@@ -143,6 +143,11 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "    return a;\n";
     out_ << "}\n\n";
 
+    out_ << "static sd_array* sd_array_slice(sd_array* a, int start, int end) {\n";
+    out_ << "    if (start < 0 || end < start || end > a->length) { fprintf(stderr, \"Error: slice out of bounds (%d, %d)\\n\", start, end); exit(1); }\n";
+    out_ << "    return sd_make_array((char*)a->data + (size_t)start * (size_t)a->esize, (size_t)(end - start) * (size_t)a->esize, end - start, (size_t)a->esize);\n";
+    out_ << "}\n\n";
+
     out_ << "static sd_array* sd_split(const char* s, const char* sep) {\n";
     out_ << "    size_t pl = strlen(sep ? sep : \"\");\n";
     out_ << "    if (pl == 0) { fprintf(stderr, \"Error: split separator must not be empty\\n\"); exit(1); }\n";
@@ -821,24 +826,90 @@ void CodeGen::emit_stmt(Statement* stmt) {
         out_ << ";\n";
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
         emit_line_directive(td->line, line_file_);
-        std::string tname = tuple_name(td->tuple_members);
-        std::string tmp = "__sd_d" + std::to_string(temp_counter_++);
-        out_ << "    " << tname << " " << tmp << " = ";
-        emit_expr(td->rhs.get());
-        out_ << ";\n";
-        for (size_t i = 0; i < td->names.size(); i++) {
-            out_ << "    " << c_type_for_desc(td->tuple_members[i]) << " " << td->names[i]
-                 << " = " << tmp << ".f" << i << ";\n";
+        if (td->destruct_type == TypeKind::Array) {
+            std::string T = c_type_for_desc(td->destruct_elem);
+            std::string tmp = "__sd_d" + std::to_string(temp_counter_++);
+            std::string n = std::to_string(td->names.size());
+            out_ << "    sd_array* " << tmp << " = ";
+            emit_expr(td->rhs.get());
+            out_ << ";\n";
+            out_ << "    if (" << tmp << "->length < " << n << ") { fprintf(stderr, \"Error: cannot destructure array of length %d into " << n << " targets\\n\", " << tmp << "->length); exit(1); }\n";
+            for (size_t i = 0; i < td->names.size(); i++) {
+                out_ << "    " << T << " " << td->names[i] << " = ((" << T << "*)"
+                     << tmp << "->data)[" << i << "];\n";
+            }
+            if (!td->rest_name.empty()) {
+                out_ << "    sd_array* " << td->rest_name << " = sd_array_slice("
+                     << tmp << ", " << n << ", " << tmp << "->length);\n";
+            }
+        } else if (td->destruct_type == TypeKind::Text) {
+            std::string tmp = "__sd_t" + std::to_string(temp_counter_++);
+            std::string n = std::to_string(td->names.size());
+            out_ << "    char* " << tmp << " = ";
+            emit_expr(td->rhs.get());
+            out_ << ";\n";
+            out_ << "    int " << tmp << "_len = (int)strlen(" << tmp << ");\n";
+            out_ << "    if (" << tmp << "_len < " << n << ") { fprintf(stderr, \"Error: cannot destructure text of length %d into " << n << " targets\\n\", " << tmp << "_len); exit(1); }\n";
+            for (size_t i = 0; i < td->names.size(); i++) {
+                out_ << "    char " << td->names[i] << " = " << tmp << "[" << i << "];\n";
+            }
+            if (!td->rest_name.empty()) {
+                out_ << "    char* " << td->rest_name << " = sd_substring(" << tmp
+                     << ", " << n << ", " << tmp << "_len);\n";
+            }
+        } else {
+            std::string tname = tuple_name(td->tuple_members);
+            std::string tmp = "__sd_d" + std::to_string(temp_counter_++);
+            out_ << "    " << tname << " " << tmp << " = ";
+            emit_expr(td->rhs.get());
+            out_ << ";\n";
+            for (size_t i = 0; i < td->names.size(); i++) {
+                out_ << "    " << c_type_for_desc(td->tuple_members[i]) << " " << td->names[i]
+                     << " = " << tmp << ".f" << i << ";\n";
+            }
         }
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
         emit_line_directive(ma->line, line_file_);
-        std::string tname = tuple_name(ma->tuple_members);
-        std::string tmp = "__sd_m" + std::to_string(temp_counter_++);
-        out_ << "    " << tname << " " << tmp << " = ";
-        emit_expr(ma->rhs.get());
-        out_ << ";\n";
-        for (size_t i = 0; i < ma->names.size(); i++) {
-            out_ << "    " << ma->names[i] << " = " << tmp << ".f" << i << ";\n";
+        if (ma->destruct_type == TypeKind::Array) {
+            std::string T = c_type_for_desc(ma->destruct_elem);
+            std::string tmp = "__sd_d" + std::to_string(temp_counter_++);
+            std::string n = std::to_string(ma->names.size());
+            out_ << "    sd_array* " << tmp << " = ";
+            emit_expr(ma->rhs.get());
+            out_ << ";\n";
+            out_ << "    if (" << tmp << "->length < " << n << ") { fprintf(stderr, \"Error: cannot destructure array of length %d into " << n << " targets\\n\", " << tmp << "->length); exit(1); }\n";
+            for (size_t i = 0; i < ma->names.size(); i++) {
+                out_ << "    " << ma->names[i] << " = ((" << T << "*)"
+                     << tmp << "->data)[" << i << "];\n";
+            }
+            if (!ma->rest_name.empty()) {
+                out_ << "    " << ma->rest_name << " = sd_array_slice("
+                     << tmp << ", " << n << ", " << tmp << "->length);\n";
+            }
+        } else if (ma->destruct_type == TypeKind::Text) {
+            std::string tmp = "__sd_t" + std::to_string(temp_counter_++);
+            std::string n = std::to_string(ma->names.size());
+            out_ << "    char* " << tmp << " = ";
+            emit_expr(ma->rhs.get());
+            out_ << ";\n";
+            out_ << "    int " << tmp << "_len = (int)strlen(" << tmp << ");\n";
+            out_ << "    if (" << tmp << "_len < " << n << ") { fprintf(stderr, \"Error: cannot destructure text of length %d into " << n << " targets\\n\", " << tmp << "_len); exit(1); }\n";
+            for (size_t i = 0; i < ma->names.size(); i++) {
+                out_ << "    " << ma->names[i] << " = " << tmp << "[" << i << "];\n";
+            }
+            if (!ma->rest_name.empty()) {
+                out_ << "    " << ma->rest_name << " = sd_substring(" << tmp
+                     << ", " << n << ", " << tmp << "_len);\n";
+            }
+        } else {
+            std::string tname = tuple_name(ma->tuple_members);
+            std::string tmp = "__sd_m" + std::to_string(temp_counter_++);
+            out_ << "    " << tname << " " << tmp << " = ";
+            emit_expr(ma->rhs.get());
+            out_ << ";\n";
+            for (size_t i = 0; i < ma->names.size(); i++) {
+                out_ << "    " << ma->names[i] << " = " << tmp << ".f" << i << ";\n";
+            }
         }
     } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
         emit_line_directive(print->line, line_file_);

@@ -466,6 +466,40 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   retargeted to §13.4); this entry.
 - Full regression: 47/47 integration, 160/160 negative, 77/77 stress/output = **284**.
 
+### 0.A4 — Destructuring arrays and text: first-N + `...rest` — DONE
+- Syntax extends the existing tuple destructuring forms: `let (a, b, ...rest) = e`
+  and `(a, b, ...rest) = e`. The parser's `id_list` now accepts an optional
+  trailing `ELLIPSIS IDENTIFIER` (the `...` is only allowed as the last target),
+  producing the new `IdList{names, rest}` struct shared by `DestructDecl` and
+  `MultiAssignStmt` (both gained `rest_name`, `destruct_type`, `destruct_elem`).
+- Resolver: destructure sources may be tuples, arrays, or text. Tuples keep the
+  exact-match rule and reject `...rest`. Arrays bind the first `N` targets to the
+  element type (recursively fine — `(row0, row1) = grid` and `(t, ...tt) =
+  grid[i]` work) and `...rest` to a new `[element-type]` array; text binds
+  `char` targets and a `text` rest. Generic error message for other sources
+  ("right side of destructuring must be a tuple, array, or text, got X" — the
+  old `tuple_destruct_non_tuple` expectation was updated accordingly).
+  Multi-assignment type-checks every target (including the rest target) for
+  mutability and matching type via a shared lambda.
+- Codegen: array destructuring lowers to a temp `sd_array*`, an upfront
+  `length < N` runtime check ("Error: cannot destructure array of length L into
+  N targets", exit 1), direct element copies, and a `sd_array_slice` runtime
+  helper (added to the preamble) for the independent rest copy. Text
+  destructuring lowers to a temp `char*`, a `strlen`-based length check ("Error:
+  cannot destructure text of length L into N targets", exit 1), `char` copies,
+  and `sd_substring` for the rest. Rest slices are independent (mutating them
+  does not affect the source).
+- Tests: `destructure_rest.hmx` fixture (array rest, text rest, extra elements
+  ignored, nested `[[int]]` rows, `...rest` from `split` and `grid[i]`,
+  single-element rest-is-empty); 7 new negative tests (tuple rest rejection,
+  unknown-element arrays, multi-assign element mismatch, rest-target mismatch,
+  immutable target, text multi-assign mismatch, text rest-target mismatch);
+  stress additions `destructure_array_rest`, `destructure_text_rest` (exact
+  output) and exit-code cases `destructure_array_oob`, `destructure_text_oob`.
+- Docs: SYNTAX.md §7.5 Array and Text Destructuring (renumbered casts→7.6),
+  §7.2 cross-reference, statement table row updated; this entry.
+- Full regression: 48/48 integration, 167/167 negative, 81/81 stress/output = **296**.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

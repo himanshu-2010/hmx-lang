@@ -1,0 +1,30 @@
+fn main() {
+    let a: [int] = [1, 2, 3, 4]
+    let (x, y, ...rest) = a
+    print(x)
+    print(y)
+    print(length(rest))
+    print(rest[0])
+    print(rest[1])
+    let (m, n) = a
+    print(m, n)
+    let s = "hello"
+    let (c1, c2, ...cs) = s
+    print(c1)
+    print(c2)
+    print(cs)
+    let grid: [[int]] = [[1, 2, 3], [4, 5, 6]]
+    let (row0, row1) = grid
+    print(length(row0), row0[2])
+    print(length(row1), row1[1])
+    let (t, ...tt) = grid[1]
+    print(t)
+    print(length(tt), tt[0], tt[1])
+    let parts: [text] = split("a,b,c", ",")
+    let (first, ...tail) = parts
+    print(first)
+    print(length(tail), tail[0], tail[1])
+    let one: [int] = [42]
+    let (e, ...es) = one
+    print(e, length(es))
+}

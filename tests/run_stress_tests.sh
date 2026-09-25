@@ -482,6 +482,53 @@ test_exit_code "split_empty_separator" \
     }' \
     1
 
+test_output "destructure_array_rest" \
+    'fn main() {
+        let a: [int] = [1, 2, 3, 4]
+        let (x, y, ...rest) = a
+        print(x)
+        print(y)
+        print(length(rest))
+        print(rest[0], rest[1])
+        let (m, n) = a
+        print(m, n)
+        let one: [int] = [42]
+        let (e, ...es) = one
+        print(e, length(es))
+    }' \
+    "$(printf '1\n2\n2\n3 4\n1 2\n42 0')"
+
+test_output "destructure_text_rest" \
+    'fn main() {
+        let s = "hello"
+        let (c1, c2, ...cs) = s
+        print(c1)
+        print(c2)
+        print(cs)
+        print(length(cs), cs[0], cs[1])
+        let grid: [[int]] = [[1, 2, 3], [4, 5, 6]]
+        let (row0, row1) = grid
+        print(length(row0), row0[2])
+        let (t, ...tt) = grid[1]
+        print(t)
+        print(length(tt), tt[0], tt[1])
+    }' \
+    "$(printf 'h\ne\nllo\n3 l l\n3 3\n4\n2 5 6')"
+
+test_exit_code "destructure_array_oob" \
+    'fn main() {
+        let a: [int] = [1, 2]
+        let (x, y, z) = a
+    }' \
+    1
+
+test_exit_code "destructure_text_oob" \
+    'fn main() {
+        let s = "h"
+        let (c1, c2) = s
+    }' \
+    1
+
 test_exit_code "array_pop_empty" \
     'fn main() {
         let a: [int] = []

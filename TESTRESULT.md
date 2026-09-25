@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-25  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (284 / 284)
+**Status:** ALL TESTS PASSED (296 / 296)
 
 ---
 
@@ -26,11 +26,12 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 15. **Nested arrays & chained indexing**: recursive element type descriptors enable `[[int]]` annotations, nested-literal inference, `a[i][j]` reads, `a[i][j] = v` chained assignment, and nested `foreach`; bison conflict count still 6 SR (5 states), all resolved by shift.
 16. **Growable arrays (`sd_array*`) + array built-ins**: every array is a heap pointer with spare capacity; `push`/`pop`/`sort` mutate the shared backing in place, `slice`/`concat` build independent copies, `index_of` finds the first match (`-1` if absent), `contains` reports membership; immutable/captured arrays reject mutation, void built-ins reject value use, and `pop` on empty / out-of-range `slice` terminate at runtime with exit code 1.
 17. **Byte-level text ops**: `text[i]` read-indexing yields a `char` (runtime bounds-checked via `strlen`; assignment to a text character rejected at compile time), `ord(char)` → `int`, `chr(int)` → `char` (runtime `0..255` check, exit 1), and `split(text, sep)` → `[text]` preserving empty pieces (empty separator aborts with exit code 1).
+18. **Array/text destructuring with `...rest`**: `let (a, b, ...rest) = expr` and the multi-assign form bind the first `N` elements (arrays / text characters) with a runtime `length ≥ N` check; `...rest` captures the remainder as a new `[elem]` array or `text` substring; tuples still require an exact match and reject `...rest`.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 284
-> - **Passed:** 284
+> - **Total Test Cases Executed:** 296
+> - **Passed:** 296
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -49,7 +50,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (47/47 Passed)
+### 1. Integration Fixtures (48/48 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -98,10 +99,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `nested_arrays.hmx` | **[NEW]** Nested Arrays | `[[int]]` annotation, nested inference, `a[i][j]` reads, chained assignment, nested `foreach`, array-of-arrays from array vars | **PASS** |
 | `array_builtins.hmx` | **[NEW]** Growable Arrays | `push`/`pop`/`sort`/`slice`/`concat`/`index_of`/`contains` on int and text arrays; `push`/`pop` of whole rows on `[[int]]` | **PASS** |
 | `text_ops.hmx` | **[NEW]** Text Ops | `text[i]` indexing, char-of-text chains (`names[1][0]`), `ord`/`chr`, `split` with preserved empty pieces, `index_of` on split results | **PASS** |
+| `destructure_rest.hmx` | **[NEW]** Destructure `...rest` | Array `(x, y, ...rest)`, text `(c1, c2, ...cs)`, extra elements ignored, nested `[[int]]` rows, rest from `split` and `grid[i]`, single-element rest-is-empty | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (160/160 Passed)
+### 2. Negative & Error Handling Suite (167/167 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -160,7 +162,7 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `tuple_index_out_of_range` | **[NEW]** Tuple Index OOR | `t[2]` on a 2-member tuple | **PASS** |
 | `tuple_index_on_int` | **[NEW]** Index on Non-Tuple | Indexing an `int` variable | **PASS** |
 | `tuple_destruct_count_mismatch` | **[NEW]** Destruct Arity Mismatch | 3 targets vs 2-member tuple | **PASS** |
-| `tuple_destruct_non_tuple` | **[NEW]** Destruct Non-Tuple | `let (a, b) = 5` | **PASS** |
+| `tuple_destruct_non_tuple` | **[NEW]** Destruct Non-Tuple | `let (a, b) = 5` | `right side of destructuring must be a tuple, array, or text, got int` | **PASS** |
 | `tuple_destruct_target_type_mismatch` | **[NEW]** Destruct Target Mismatch | Assign `(int, text)` to `(int, int)` targets | **PASS** |
 | `tuple_destruct_undefined_target` | **[NEW]** Undefined Destruct Target | `(a, b) = f()` with undeclared names | **PASS** |
 | `tuple_return_count_mismatch` | **[NEW]** Return Arity Mismatch | 3 values vs 2-member tuple return | **PASS** |
@@ -252,10 +254,17 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `split_expects_text1` | **[NEW]** `split` Non-Text 1 | `split(3, ",")` | `builtin 'split' expects text as argument 1, got int` | **PASS** |
 | `split_expects_text2` | **[NEW]** `split` Non-Text 2 | `split("a", 3)` | `builtin 'split' expects text as argument 2, got int` | **PASS** |
 | `split_arity` | **[NEW]** `split` Arity | `split("a")` | `builtin 'split' expects 2 arguments, got 1` | **PASS** |
+| `destruct_tuple_rest` | **[NEW]** `...rest` on Tuple | `let (a, ...rest) = f()` | `cannot use '...rest' when destructuring a tuple` | **PASS** |
+| `destruct_array_unknown_elem` | **[NEW]** Unknown Elem Array | `let (a, b) = []` | `cannot infer element type for this array destructuring` | **PASS** |
+| `destruct_array_multiassign_mismatch` | **[NEW]** Array Multi-Assign Mismatch | `(a, b) = [1, 2]` on text vars | `cannot assign int to text` | **PASS** |
+| `destruct_array_rest_target_mismatch` | **[NEW]** Rest Target Mismatch | `(x, ...r) = [1, 2, 3]` with `r: int` | `cannot assign array of int to int` | **PASS** |
+| `destruct_array_immutable_target` | **[NEW]** Immutable Target | `(c, a) = [5, 6]` with `const c` | `cannot modify immutable variable 'c'` | **PASS** |
+| `destruct_text_multiassign_mismatch` | **[NEW]** Text Multi-Assign Mismatch | `(x, y) = "ab"` on int vars | `cannot assign char to int` | **PASS** |
+| `destruct_text_rest_target_mismatch` | **[NEW]** Text Rest Target Mismatch | `(a, ...r) = "hi there"` with `r: [int]` | `cannot assign text to array of int` | **PASS** |
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (77/77 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (81/81 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -334,6 +343,10 @@ These tests verify exact runtime output matching and process exit code propagati
 | `text_index_oob` | **[NEW]** Runtime Error | text index at/over length aborts | Exit Code: `1` | **PASS** |
 | `chr_out_of_range` | **[NEW]** Runtime Error | `chr(300)` aborts | Exit Code: `1` | **PASS** |
 | `split_empty_separator` | **[NEW]** Runtime Error | `split("abc", "")` aborts | Exit Code: `1` | **PASS** |
+| `destructure_array_rest` | **[NEW]** Array `...rest` Output | first-N + rest binding, extra ignored, rest-is-empty | `1\n2\n2\n3 4\n1 2\n42 0` | **PASS** |
+| `destructure_text_rest` | **[NEW]** Text `...rest` Output | text destructure, `[[int]]` rows, `grid[i]` rest | `h\ne\nllo\n3 l l\n3 3\n4\n2 5 6` | **PASS** |
+| `destructure_array_oob` | **[NEW]** Runtime Error | too few array elements aborts | Exit Code: `1` | **PASS** |
+| `destructure_text_oob` | **[NEW]** Runtime Error | too few text characters aborts | Exit Code: `1` | **PASS** |
 
 ---
 
@@ -409,3 +422,12 @@ cd build && cmake .. && make && cd ..
 > range, and an empty separator aborts; all three runtime failures exit 1. Also
 > fixed chained-index resolution so `m[i][j]` records its resolved type (chars were
 > formatting as ints). Suites rerun at 47/160/77 = **284**.
+>
+> **0.A4 addition:** destructuring now works on arrays and text in addition to
+> tuples. `let (a, b, ...rest) = e` and `(a, b, ...rest) = e` bind the first `N`
+> elements (or characters) and an optional `...rest` (a new `[elem]` array or a
+> `text` substring), with a runtime length check that aborts (exit 1) when the
+> source is too short. Tuple destructuring keeps exact-match semantics and
+> rejects `...rest`. The `sd_array_slice` runtime helper backs array rest;
+> `sd_substring` backs text rest; rest copies are independent of the source.
+> Suites rerun at 48/167/81 = **296**.

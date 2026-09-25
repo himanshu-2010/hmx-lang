@@ -33,7 +33,8 @@ Program* g_program = nullptr;
     std::vector<ExprPtr>* args;
     std::vector<SwitchCase>* cases;
     std::vector<TypeDesc>* tlist;
-    std::vector<std::string>* idlist;
+    std::vector<std::string>* strlist;
+    IdList* idlist;
     TypeDesc* tdesc;
 }
 
@@ -66,7 +67,7 @@ Program* g_program = nullptr;
 %type <tlist> fn_type_params
 %type <program> program
 %type <stmts> stmt_list
-%type <idlist> use_list
+%type <strlist> use_list
 %type <sval> use_stmt
 
 %%
@@ -436,7 +437,8 @@ var_decl
     | LET '(' id_list ')' '=' expression
         {
             auto* d = new DestructDecl();
-            d->names = std::move(*$3);
+            d->names = std::move($3->names);
+            d->rest_name = std::move($3->rest);
             delete $3;
             d->rhs = ExprPtr($6);
             d->is_mutable = true;
@@ -547,7 +549,8 @@ assign_stmt
     | '(' id_list ')' '=' expression
         {
             auto* m = new MultiAssignStmt();
-            m->names = std::move(*$2);
+            m->names = std::move($2->names);
+            m->rest_name = std::move($2->rest);
             delete $2;
             m->rhs = ExprPtr($5);
             m->line = yylineno;
@@ -889,17 +892,32 @@ tuple_elem_list
 id_list
     : id_list ',' IDENTIFIER
         {
-            $1->push_back(std::string($3));
+            $1->names.push_back(std::string($3));
             free($3);
+            $$ = $1;
+        }
+    | id_list ',' ELLIPSIS IDENTIFIER
+        {
+            $1->rest = std::string($4);
+            free($4);
             $$ = $1;
         }
     | IDENTIFIER ',' IDENTIFIER
         {
-            auto* v = new std::vector<std::string>();
-            v->push_back(std::string($1));
-            v->push_back(std::string($3));
+            auto* v = new IdList();
+            v->names.push_back(std::string($1));
+            v->names.push_back(std::string($3));
             free($1);
             free($3);
+            $$ = v;
+        }
+    | IDENTIFIER ',' ELLIPSIS IDENTIFIER
+        {
+            auto* v = new IdList();
+            v->names.push_back(std::string($1));
+            v->rest = std::string($4);
+            free($1);
+            free($4);
             $$ = v;
         }
     ;

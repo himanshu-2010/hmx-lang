@@ -195,17 +195,28 @@ struct AssignStmt : Statement {
     ExprPtr rhs;         // null for "++" / "--"
 };
 
+struct IdList {
+    std::vector<std::string> names;
+    std::string rest;          // name after '...' , empty when absent
+};
+
 struct MultiAssignStmt : Statement {
     std::vector<std::string> names;
+    std::string rest_name;              // empty when no '...rest'
     ExprPtr rhs;
-    std::vector<TypeDesc> tuple_members;   // filled by resolver
+    std::vector<TypeDesc> tuple_members;   // filled by resolver for Tuple
+    TypeKind destruct_type = TypeKind::Unknown;  // Tuple / Array / Text after resolution
+    TypeDesc destruct_elem;              // element desc when destruct_type == Array
 };
 
 struct DestructDecl : Statement {
     std::vector<std::string> names;
+    std::string rest_name;              // empty when no '...rest'
     ExprPtr rhs;
     bool is_mutable = true;
-    std::vector<TypeDesc> tuple_members;   // filled by resolver
+    std::vector<TypeDesc> tuple_members;   // filled by resolver for Tuple
+    TypeKind destruct_type = TypeKind::Unknown;  // Tuple / Array / Text after resolution
+    TypeDesc destruct_elem;              // element desc when destruct_type == Array
 };
 
 struct ArrayAssignStmt : Statement {
