@@ -1,0 +1,121 @@
+:root {
+  font-family: ui-monospace, "Cascadia Code", "Fira Code", Menlo, Consolas,
+    monospace;
+  line-height: 1.5;
+  color: #e6edf3;
+  background-color: #0d1117;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.run-button {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.35rem 1rem;
+  border: 1px solid #2f81f7;
+  border-radius: 6px;
+  color: #fff;
+  background: #1f6feb;
+  cursor: pointer;
+}
+
+.run-button:hover {
+  background: #388bfd;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 1;
+  min-height: 0;
+}
+
+.editor {
+  width: 100%;
+  height: 100%;
+  padding: 0.75rem 1rem;
+  border: 0;
+  border-right: 1px solid #30363d;
+  resize: none;
+  outline: none;
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: inherit;
+  font-size: 0.95rem;
+  tab-size: 4;
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: auto;
+}
+
+.pane {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #30363d;
+}
+
+.pane-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8b949e;
+  margin-bottom: 0.5rem;
+}
+
+.exit-code {
+  text-transform: none;
+  letter-spacing: 0;
+  color: #7ee787;
+  background: #12261a;
+  border: 1px solid #2ea043;
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  margin-left: 0.5rem;
+}
+
+.output-body,
+.errors-body {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.errors-body {
+  color: #ff7b72;
+}
+
+@media (max-width: 720px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+}
