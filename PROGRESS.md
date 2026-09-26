@@ -1,6 +1,6 @@
 # HMX Compiler — Progress Log
 
-Last updated: 2026-09-25
+Last updated: 2026-09-26
 ## Objective
 Implement the HMX transpiler's 8-phase plan (from `PLAN.md`) so users can write full hello-world-capable programs. Multi-stage pipeline: lexer → parser → type resolution → codegen → gcc.
 
@@ -697,6 +697,44 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   this entry.
 - Full regression: 52/52 integration, 190/190 negative, 116/116 stress/output =
   **358**; bison conflicts unchanged at 6; zero compiler warnings.
+
+### Milestone — Web playground: full native-parity compiler (M2–M4) — DONE
+- **Scope:** the browser playground (`web-playground/`) ships a from-scratch,
+  no-backend compiler (Vite + React + TS only) whose output is byte-identical to
+  `build/hmx` across all 358 native suite cases.
+- **Frontend (M2):** TypeScript lexer mirroring lexer.l; `tables/tables.json`
+  extracted from bison's generated `build/parser.cpp` by
+  `tools/extract_parser_table.mjs`; a generic LALR driver reproducing all six
+  shift/reduce conflicts; rule actions mirroring parser.y; full AST.
+- **Resolver (M3):** port of type_resolver.cpp — scopes, declarations, closures +
+  captures, function values, defaults/variadics, arrays/text destructuring +
+  `...rest`, dynamic tuple indexing, lambdas + partial application, and the
+  `err(line, msg[, file])` pair with the entry-aware file overload. Two parsing
+  shapes the port surfaced were fixed: partial-application calls must spread the
+  rest args, and capture-aware reads are required for base-less array indexes and
+  element assigns.
+- **Backend (M4):** `codegen_js.ts` emits JS mirroring codegen.cpp
+  (`v_*`/`f_*` mangling, `_sd_*` internals, closures `{f, e}`, int division via
+  `SD.idiv`, `SD.copy` shallow tuple copies at C struct boundaries, and destructure
+  recursion threading the full `TypeDesc` so nested members resolve against their
+  own tuple members / element descs); `runtime.ts` implements the SD helpers
+  (concat, bounds checks, split, substring, parse_int/parse_decimal, tostr) with
+  verbatim native error strings; `vm.ts` executes the emitted body via
+  `new Function("SD", src)` and unwinds `ExitSignal`; `program.ts` mirrors main.cpp
+  (`.hmx` check, module loader with entry-seeded cycle detection, module
+  parse-detail diagnostics, `main()` exit-code propagation).
+- **Parity gate:** `tools/smoke/gen-data.mts` parses the three native `.sh`
+  suites with a bash-aware tokenizer (handles the `'"'"'` / `'\''` idioms and
+  `$(printf ...)` substitutions) and snapshots `{ stdout, stderr, exit }` per
+  case from `build/hmx`; the committed `tests/data/*.json` + `tests/parity.test.ts`
+  assert `runProgram()` verbatim across 52 integration, 116 stress, and 190
+  negative cases (361 vitest). Module diagnostics compare entry-relative (native
+  embeds absolute `weakly_canonical` paths; web canonicalizes relative to entry).
+- **Deploy:** `npx tsc -b` and `vite build` green (Antideploy auto-builds `main`
+  → https://hmx.antideploy.com; live bundle hash matches the local build).
+- Docs: TESTRESULT.md (web parity section added); PLAN.md quirks note clarified.
+- Full parity: 52/52 integration, 116/116 stress, 190/190 negative — all
+  web-vs-native byte-identical; native suites unchanged at **358**.
 
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).

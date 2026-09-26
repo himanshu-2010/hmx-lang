@@ -1,8 +1,8 @@
 # HMX Transpiler — Test Execution Report
 
-**Date:** 2026-09-25  
+**Date:** 2026-09-26  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED (337 / 337)
+**Status:** ALL TESTS PASSED — native 358 / 358; web-playground parity 358 / 358 (361 vitest)
 
 ---
 
@@ -424,6 +424,11 @@ cd build && cmake .. && make && cd ..
 
 # 4. Run Stress & Output Verification Tests
 ./tests/run_stress_tests.sh
+
+# 5. Web-playground parity gate (data files are committed; no native binary needed)
+npx vitest run
+# Regenerate tests/data/*.json from the native suites + build/hmx (dev tool, needs the binary):
+npx vite-node web-playground/tools/smoke/gen-data.mts
 ```
 
 ---
@@ -535,3 +540,42 @@ cd build && cmake .. && make && cd ..
 > an array of tuples now binds the loop variable's member types. Tuples remain
 > immutable values — element assignment (`t[0] = x`) is still unsupported.
 > Suites rerun at 52/190/116 = **358**, conflicts still exactly 6.
+
+---
+
+## Web Playground — Browser Compiler Native Parity (M2–M4)
+
+**Date:** 2026-09-26. The web playground (`web-playground/`) now compiles and
+executes HMX entirely in the browser — Vite + React + TS only, no backend, no
+WASM — and its output is **byte-identical to the native compiler** across every
+case in the three native suites:
+
+| Suite | Native cases | Web-vs-native verbatim |
+| :--- | :---: | :---: |
+| Integration (47 fixtures + 5 `use` module programs) | 52 | 52 |
+| Stress / output (exact output, exit codes, stdin-fed) | 116 | 116 |
+| Negative / errors (exit ≠ 0 + `.sh` grep pattern) | 190 | 190 |
+| **Total** | **358** | **358** |
+
+The pipeline mirrors the native one stage for stage: lexer → generic LALR driver
+over the bison tables (`web-playground/src/compiler/tables/tables.json`, all six
+shift/reduce conflicts reproduced) → rule actions → AST → type resolver → JS
+emitter → in-browser SD runtime (`new Function`, tagged non-local-exit throws,
+`SD.copy` at C struct boundaries), and the module loader in `program.ts` mirrors
+main.cpp (`.hmx` extension check → cycle detection → dedupe → parse → merge),
+including entry-seeded cycle detection and module parse-detail diagnostics.
+
+Parity is enforced by the committed gate `web-playground/tests/parity.test.ts`
+(361 vitest cases) against snapshots in
+`web-playground/tests/data/{integration,stress,negative}.json`, regenerated from
+the native suites by `web-playground/tools/smoke/gen-data.mts` (a bash-aware
+extractor handling the `'"'"'` / `'\''` quoting idioms and `$(printf ...)`
+substitutions, plus a `build/hmx` snapshot pass). Module diagnostics are compared
+**entry-relative**: native embeds absolute `weakly_canonical` paths, the web
+loader uses the same paths canonicalized relative to the entry file; the generator
+strips the per-case snapshot-dir prefix from expected stderr so both sides agree.
+
+**Status: 358/358 web-vs-native byte-identical (stress 116, negative 190,
+integration 52); 361/361 vitest green; native suites unchanged and green.**
+Deployed at https://hmx.antideploy.com (auto-build from `main`; live bundle hash
+matches the local `dist` build).

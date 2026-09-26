@@ -126,6 +126,8 @@ prior fixtures, and lands one complete feature.
 - **NOT FIXED:** HMX identifiers that are C keywords (e.g. `double`, `long`,
   `static`, `struct`) still collide with generated C — codegen writes variable
   and parameter names verbatim, so `let double = 2` fails in gcc with a
-  confusing error. The JS backend (web playground, M2–M4) targets JS
-  identifiers and is unaffected; a generalized identifier-mangling pass in
-  `codegen.cpp` would close it for the native binary.
+  confusing error. The JS backend (web playground, M2–M4, shipped 2026-09-26)
+  targets JS identifiers and is unaffected — it passes a 358-case verbatim
+  parity gate (`web-playground/tests/parity.test.ts`); a generalized
+  identifier-mangling pass in `codegen.cpp` would close the gap for the native
+  binary.
