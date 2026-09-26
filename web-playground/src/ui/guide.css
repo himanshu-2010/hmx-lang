@@ -1,0 +1,149 @@
+/* ─────────────────────────────────────────────────────────────
+   Playground guided tour — first-time desktop users
+   ───────────────────────────────────────────────────────────── */
+
+.guide-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.guide-spot {
+  position: fixed;
+  z-index: 201;
+  pointer-events: none;
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 9999px rgba(8, 3, 3, 0.86),
+    0 0 0 2px var(--scarlet),
+    0 0 26px rgba(230, 57, 70, 0.55);
+  transition: all 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.guide-card {
+  position: fixed;
+  z-index: 210;
+  max-width: 330px;
+  padding: 1.05rem 1.15rem 0.95rem;
+  border: 1px solid var(--border-red);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #191312, #0f0c0c);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.65),
+    0 0 30px rgba(230, 57, 70, 0.2);
+  animation: guide-pop 0.25s ease;
+}
+@keyframes guide-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.guide-card::before {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+.guide-card[data-edge="below"]::before {
+  top: -6px;
+  left: 24px;
+  border-left: 1px solid var(--border-red);
+  border-top: 1px solid var(--border-red);
+}
+.guide-card[data-edge="above"]::before {
+  bottom: -6px;
+  left: 24px;
+  border-right: 1px solid var(--border-red);
+  border-bottom: 1px solid var(--border-red);
+}
+.guide-card[data-edge="right"]::before {
+  left: -6px;
+  top: 22px;
+  border-left: 1px solid var(--border-red);
+  border-bottom: 1px solid var(--border-red);
+}
+.guide-card[data-edge="left"]::before {
+  right: -6px;
+  top: 22px;
+  border-right: 1px solid var(--border-red);
+  border-top: 1px solid var(--border-red);
+}
+
+.guide-kicker {
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--coral);
+}
+.guide-card h4 {
+  margin: 0.4rem 0 0;
+  font-size: 1rem;
+}
+.guide-card p {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+.guide-progress {
+  margin-top: 0.9rem;
+  color: var(--dim);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+.guide-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+.guide-dots {
+  display: flex;
+  gap: 0.35rem;
+  margin-right: auto;
+}
+.guide-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dusty);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+.guide-dot.guide-dot-on {
+  background: var(--scarlet);
+  box-shadow: 0 0 8px var(--scarlet);
+}
+.guide-btn {
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.42rem 0.95rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: filter 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.guide-btn-next {
+  color: #fff;
+  border: 1px solid var(--blood);
+  background: linear-gradient(180deg, var(--scarlet), var(--blood));
+}
+.guide-btn-next:hover {
+  filter: brightness(1.15);
+}
+.guide-btn-skip {
+  color: var(--muted);
+  border: 1px solid var(--border);
+  background: none;
+}
+.guide-btn-skip:hover {
+  color: var(--text);
+  border-color: var(--border-red);
+}

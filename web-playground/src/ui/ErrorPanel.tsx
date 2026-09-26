@@ -5,7 +5,7 @@ interface ErrorPanelProps {
 export function ErrorPanel({ stderr }: ErrorPanelProps) {
   if (!stderr) return null;
   return (
-    <section className="pane errors">
+    <section className="pane errors" id="hmx-errors">
       <header className="pane-title">Errors</header>
       <pre className="errors-body">{stderr}</pre>
     </section>

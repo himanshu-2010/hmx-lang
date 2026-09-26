@@ -14,6 +14,8 @@ export function Editor({ source, onChange, onRun }: EditorProps) {
       </div>
       <textarea
         className="editor"
+        id="hmx-editor"
+        data-guide="editor"
         value={source}
         spellCheck={false}
         aria-label="HMX source code"

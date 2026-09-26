@@ -5,7 +5,7 @@ interface OutputProps {
 
 export function Output({ stdout, exit }: OutputProps) {
   return (
-    <section className="pane output">
+    <section className="pane output" id="hmx-output">
       <header className="pane-title">
         Output{" "}
         <span className={`exit-code ${exit !== 0 ? "exit-nonzero" : ""}`}>

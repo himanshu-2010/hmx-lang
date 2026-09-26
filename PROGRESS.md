@@ -736,6 +736,33 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - Full parity: 52/52 integration, 116/116 stress, 190/190 negative — all
   web-vs-native byte-identical; native suites unchanged at **358**.
 
+### Milestone — Landing page, multi-page app + guided tour — DONE
+- **Routes:** `react-router-dom` (HashRouter — hash links survive static hosting,
+  so `hmx.antideploy.com/#/playground` deep-links work). `/` = home, `/playground`
+  = compiler workspace, `/docs` = docs. The top bar becomes route links; runner
+  state is lifted into a `RunnerProvider` so the home samples and docs examples
+  load straight into the playground editor via one dispatch + navigate.
+- **Home page:** a full landing page in the red/black brand palette with
+  originkit-style detailing — animated hero (drifting blood-red blur blobs, grid
+  mask, vignette), glowing terminal-style sample card, stats strip, keyword
+  marquee, compiler-pipeline card + fact sheet, spotlight-hover feature grid,
+  three verified runnable samples (closures / tuples / loops) with their exact
+  stdout shown, native-vs-web byte-parity cards, CTA banner, and footer. Every
+  sample was validated against `build/hmx` before being committed.
+- **Guided tour:** first-time users on desktop only (`matchMedia` pointer:fine +
+  ≥1024px; localStorage-gated) get a 4-step coach-mark tour that spotlights the
+  editor, Run button, Output pane, and the Docs nav link; re-playable via a `?`
+  button in the results toolbar; touch/coarse pointers never see it.
+- **Palette:** `index.css` `:root` re-themed to the brand palette (near-black
+  `#0A0A0A` canvas, burgundy `#1A0505` depths, `#8B0000`/`#C41E3A`/`#E63946`
+  reds, `#FF6B6B` warm highlight, `#F5F0F0` off-white text, `#4A2C2C` dusty
+  secondary) via its existing CSS variables, so the whole app re-themes.
+- **Hygiene:** `tsc -b` + `vite build` + `oxlint` (0 errors) green; a jsdom
+  render smoke suite (`tests/app.test.tsx`, 5 tests) mounts the real app and
+  asserts Home/Playground/Docs routing plus a real `Run` through the pipeline;
+  parity gate unchanged at 361 vitest green. Browser API usage hardened
+  (`matchMedia` / `IntersectionObserver` guards).
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

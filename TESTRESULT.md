@@ -579,3 +579,33 @@ strips the per-case snapshot-dir prefix from expected stderr so both sides agree
 integration 52); 361/361 vitest green; native suites unchanged and green.**
 Deployed at https://hmx.antideploy.com (auto-build from `main`; live bundle hash
 matches the local `dist` build).
+
+## Web Playground — Landing Page, Routing & Guided Tour (M6)
+
+**Date:** 2026-09-26. The playground gained a full product shell while the parity
+contract stayed untouched (361 vitest green).
+
+- **Routing:** react-router-dom (HashRouter) with three routes — `/` (home),
+  `/playground` (compiler workspace), `/docs` (docs). Hash-based URLs
+  (`hmx.antideploy.com/#/playground`) survive static hosting; the top bar uses
+  route links and runner state is shared app-wide through a `RunnerProvider`
+  (home samples and docs examples load straight into the editor).
+- **Home page:** landing page in the red/black brand palette with originkit-style
+  detailing (animated blobs, grid mask, glowing terminal card, spotlight feature
+  cards, marquee, reveal-on-scroll). Three runnable samples — closures, tuples,
+  loops — show **exact native outputs** (verified against `build/hmx`):
+  - closures → `42\n42` (exit 0)
+  - tuples → `lo: 3 hi: 3` (exit 0)
+  - loops → `0\n1\n2\ntotal: 10` (exit 0)
+- **Guided tour:** first-time **desktop** users (`matchMedia("(pointer: fine) and
+  (min-width: 1024px)")`) get a 4-step coach-mark tour (editor → Run → Output →
+  Docs link), gated by localStorage and replayable via the `?` toolbar button.
+  Touch/coarse-pointer devices never show it.
+- **Palette applied app-wide:** near-black `#0A0A0A`, burgundy `#1A0505`, blood
+  `#8B0000`, crimson `#C41E3A`, scarlet `#E63946`, coral `#FF6B6B`, off-white
+  text `#F5F0F0`, dusty `#4A2C2C`.
+- **Smoke suite:** `web-playground/tests/app.test.tsx` (jsdom, 5 tests) mounts the
+  app, routes Home/Playground/Docs, and executes the default program through the
+  real in-browser pipeline (`HMX in the browser` / `sum: 20` / `exit: 0`).
+- **Status: 366 vitest green (361 parity + 5 app smoke); `tsc -b`, `vite build`
+  and `oxlint` (0 errors) all green.**

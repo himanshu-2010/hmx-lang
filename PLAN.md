@@ -131,3 +131,14 @@ prior fixtures, and lands one complete feature.
   parity gate (`web-playground/tests/parity.test.ts`); a generalized
   identifier-mangling pass in `codegen.cpp` would close the gap for the native
   binary.
+
+## Web playground UI (shipped 2026-09-26)
+
+- **M2–M4 web compiler:** full native-parity compiler in the browser (see
+  PROGRESS.md milestone).
+- **M6 site shell:** react-router multi-page app (`/` home, `/playground`,
+  `/docs` — HashRouter for static-host deep links), a landing page in the
+  red/black brand palette, and a first-time-user guided tour restricted to
+  desktop (`matchMedia` pointer:fine + ≥1024px, localStorage-gated, replayable
+  from the playground toolbar). Details + verification notes in
+  PROGRESS.md / TESTRESULT.md.

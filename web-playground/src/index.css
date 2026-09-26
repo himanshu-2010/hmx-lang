@@ -3,20 +3,35 @@
    ───────────────────────────────────────────────────────────── */
 
 :root {
-  --bg: #0a0a0c;
-  --bg-soft: #101014;
-  --panel: #141419;
-  --panel-2: #18181f;
-  --border: #26262f;
-  --border-red: #3a1a1c;
-  --text: #f0f0f4;
-  --muted: #9a9aa7;
-  --dim: #6b6b78;
-  --red: #ff2b2d;
-  --red-hi: #ff5c5e;
-  --red-deep: #b91c1e;
-  --red-glow: rgba(255, 43, 45, 0.35);
-  --red-tint: rgba(255, 43, 45, 0.12);
+  /* ── HMX brand palette ───────────────────────────────────
+     Background      #0A0A0A  near-black canvas
+     Deep Accent     #1A0505  very dark burgundy (gradient depths)
+     Primary Red     #8B0000  dark blood red (glow, particles)
+     Mid Crimson     #C41E3A  crimson (highlights, strong particles)
+     Bright Accent   #E63946  scarlet (soft blooms, peaks)
+     Warm Highlight  #FF6B6B  muted coral-red (light rays, motion)
+     Text / UI Soft  #F5F0F0  warm off-white
+     Muted Secondary #4A2C2C  dusty burgundy (planes, geometry)   */
+  --bg: #0a0a0a;
+  --bg-soft: #110e0e;
+  --panel: #161211;
+  --panel-2: #1c1716;
+  --border: #2a2322;
+  --border-red: #4a2c2c;
+  --text: #f5f0f0;
+  --muted: #b3a6a6;
+  --dim: #7c6e6e;
+  --deep: #1a0505;
+  --blood: #8b0000;
+  --crimson: #c41e3a;
+  --scarlet: #e63946;
+  --coral: #ff6b6b;
+  --dusty: #4a2c2c;
+  --red: var(--scarlet);
+  --red-hi: var(--coral);
+  --red-deep: var(--blood);
+  --red-glow: rgba(230, 57, 70, 0.35);
+  --red-tint: rgba(230, 57, 70, 0.14);
   --ok: #7ee787;
 
   font-family: ui-monospace, "JetBrains Mono", "Cascadia Code", "Fira Code",
@@ -39,8 +54,8 @@ body,
 body {
   margin: 0;
   background:
-    radial-gradient(1100px 520px at 72% -12%, rgba(255, 43, 45, 0.09), transparent 62%),
-    radial-gradient(900px 480px at 4% 110%, rgba(185, 28, 30, 0.07), transparent 60%),
+    radial-gradient(1100px 520px at 72% -12%, rgba(230, 57, 70, 0.1), transparent 62%),
+    radial-gradient(900px 480px at 4% 110%, rgba(139, 0, 0, 0.14), transparent 60%),
     var(--bg);
   color: var(--text);
 }
@@ -72,9 +87,9 @@ a:hover {
   gap: 1.25rem;
   padding: 0 1rem;
   height: 3.25rem;
-  background: linear-gradient(180deg, #101014, #0c0c10);
+  background: linear-gradient(180deg, #141010, #0d0a0a);
   border-bottom: 1px solid var(--border);
-  box-shadow: 0 1px 0 rgba(255, 43, 45, 0.16), 0 8px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 1px 0 rgba(230, 57, 70, 0.16), 0 8px 24px rgba(0, 0, 0, 0.45);
   position: relative;
   z-index: 10;
 }
@@ -89,6 +104,10 @@ a:hover {
   cursor: pointer;
   color: var(--text);
   font-family: inherit;
+  text-decoration: none;
+}
+.brand:hover {
+  text-decoration: none;
 }
 
 .brand-mark {
@@ -139,6 +158,9 @@ a:hover {
   border-color: var(--border-red);
   background: var(--red-tint);
   box-shadow: inset 0 -2px 0 var(--red);
+}
+.tab:hover {
+  text-decoration: none;
 }
 
 .github-link {
@@ -247,10 +269,10 @@ a:hover {
   border: 1px solid var(--red-deep);
   border-radius: 6px;
   color: #fff;
-  background: linear-gradient(180deg, var(--red), var(--red-deep));
+  background: linear-gradient(180deg, var(--scarlet), var(--blood));
   cursor: pointer;
   letter-spacing: 0.02em;
-  box-shadow: 0 0 12px rgba(255, 43, 45, 0.25);
+  box-shadow: 0 0 12px rgba(230, 57, 70, 0.3);
   transition: filter 0.12s ease, box-shadow 0.12s ease;
 }
 
@@ -263,6 +285,26 @@ a:hover {
   font-size: 0.74rem;
   color: var(--dim);
   letter-spacing: 0.02em;
+}
+
+.tour-button {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  width: 1.75rem;
+  height: 1.75rem;
+  line-height: 1;
+  border: 1px solid var(--border-red);
+  border-radius: 50%;
+  color: var(--coral);
+  background: rgba(26, 5, 5, 0.55);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+.tour-button:hover {
+  border-color: var(--scarlet);
+  color: var(--text);
+  box-shadow: 0 0 12px rgba(230, 57, 70, 0.35);
 }
 
 .results-empty {
@@ -333,6 +375,18 @@ a:hover {
 
 .pane.errors .pane-title {
   color: var(--red);
+}
+
+/* ── Responsive top bar ───────────────────────────────────── */
+
+@media (max-width: 720px) {
+  .brand-tag,
+  .github-label {
+    display: none;
+  }
+  .tab {
+    padding: 0.4rem 0.6rem;
+  }
 }
 
 /* ── Docs ────────────────────────────────────────────────── */
