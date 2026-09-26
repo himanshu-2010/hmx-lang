@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cerrno>
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -9,6 +10,11 @@
 #include <vector>
 #include <set>
 #include <algorithm>
+#include <csignal>
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #ifndef HMX_VERSION
 #define HMX_VERSION "0.9.0"
@@ -22,6 +28,59 @@
 #define WEXITSTATUS(s) (((s) >> 8) & 0xFF)
 #endif
 #endif
+
+// Human-readable name for a termination signal (avoids strsignal's dependency
+// on POSIX feature-test macros that vary with the compiler's -std flag).
+static const char* signal_name(int sig) {
+    switch (sig) {
+#ifdef SIGHUP
+        case SIGHUP: return "SIGHUP";
+#endif
+#ifdef SIGINT
+        case SIGINT: return "SIGINT";
+#endif
+#ifdef SIGQUIT
+        case SIGQUIT: return "SIGQUIT";
+#endif
+#ifdef SIGILL
+        case SIGILL: return "SIGILL";
+#endif
+#ifdef SIGABRT
+        case SIGABRT: return "SIGABRT";
+#endif
+#ifdef SIGFPE
+        case SIGFPE: return "SIGFPE";
+#endif
+#ifdef SIGKILL
+        case SIGKILL: return "SIGKILL";
+#endif
+#ifdef SIGSEGV
+        case SIGSEGV: return "SIGSEGV";
+#endif
+#ifdef SIGPIPE
+        case SIGPIPE: return "SIGPIPE";
+#endif
+#ifdef SIGALRM
+        case SIGALRM: return "SIGALRM";
+#endif
+#ifdef SIGTERM
+        case SIGTERM: return "SIGTERM";
+#endif
+#ifdef SIGBUS
+        case SIGBUS: return "SIGBUS";
+#endif
+#ifdef SIGXCPU
+        case SIGXCPU: return "SIGXCPU";
+#endif
+#ifdef SIGXFSZ
+        case SIGXFSZ: return "SIGXFSZ";
+#endif
+#ifdef SIGSYS
+        case SIGSYS: return "SIGSYS";
+#endif
+    }
+    return "unknown signal";
+}
 
 #include "ast.hpp"
 #include "type_resolver.hpp"
@@ -339,12 +398,36 @@ int main(int argc, char* argv[]) {
     }
 
     if (command == "run") {
-        std::string run_cmd = exe_path;
+        int exit_code;
 #ifndef _WIN32
-        run_cmd = "./" + run_cmd;
-#endif
+        // Run the compiled binary directly (fork/exec) so that genuine signal
+        // deaths surface as WIFSIGNALED — a POSIX shell would otherwise bury
+        // them in its own 128+sig exit code and mask the crash.
+        std::string run_cmd = "./" + exe_path;
+        pid_t pid = fork();
+        if (pid == 0) {
+            execlp(run_cmd.c_str(), run_cmd.c_str(), (char*)nullptr);
+            fprintf(stderr, "Error: failed to execute %s\n", run_cmd.c_str());
+            _exit(127);
+        }
+        int status = 0;
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+        if (WIFEXITED(status)) {
+            exit_code = WEXITSTATUS(status);
+        } else if (WIFSIGNALED(status)) {
+            int sig = WTERMSIG(status);
+            fprintf(stderr, "Error: program crashed with signal %d (%s)\n",
+                    sig, signal_name(sig));
+            exit_code = 128 + sig;
+        } else {
+            fprintf(stderr, "Error: program terminated abnormally\n");
+            exit_code = 1;
+        }
+#else
+        std::string run_cmd = exe_path;
         int run_result = system(run_cmd.c_str());
-        int exit_code = WEXITSTATUS(run_result);
+        exit_code = WEXITSTATUS(run_result);
+#endif
         if (!keep_c) {
             remove(c_path.c_str());
         }

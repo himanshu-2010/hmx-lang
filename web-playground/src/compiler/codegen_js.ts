@@ -490,8 +490,13 @@ export class CodeGenJs {
       return `(${this.emitExpr(expr.condition)} ? ${this.emitExpr(expr.then_expr)} : ${this.emitExpr(expr.else_expr)})`;
     }
     if (expr instanceof CastExpr) {
-      if (expr.target_type === TypeKind.Int) return `Math.trunc(${this.emitExpr(expr.operand)})`;
-      return `${this.emitExpr(expr.operand)}`;
+      // `SD.num` converts char (JS string) operands to their code; toChar
+      // wraps like the native `(char)` C cast (mod 256).
+      const src = this.emitExpr(expr.operand);
+      if (expr.target_type === TypeKind.Int) return `Math.trunc(SD.num(${src}))`;
+      if (expr.target_type === TypeKind.Byte) return `SD.toByte(SD.num(${src}))`;
+      if (expr.target_type === TypeKind.Char) return `SD.toChar(${src})`;
+      return `SD.num(${src})`; // decimal
     }
     if (expr instanceof BinaryExpr) {
       const lt = expr.left.resolved_type;
@@ -646,8 +651,18 @@ export class CodeGenJs {
         `${stmt.is_mutable ? "let" : "const"} ${this.mVar(stmt.name)} = ${this.copyIfTuple(stmt.initializer)};`
       );
     } else if (stmt instanceof AssignStmt) {
+      const isByte = stmt.resolved_type === TypeKind.Byte;
       if (stmt.op === "++" || stmt.op === "--") {
-        this.ol(`${this.mVar(stmt.name)}${stmt.op};`);
+        if (isByte) {
+          // uint8 wrap-around, matching the native unsigned char store.
+          this.ol(`${this.mVar(stmt.name)} = (${this.mVar(stmt.name)} ${stmt.op === "++" ? "+" : "-"} 1) & 0xFF;`);
+        } else {
+          this.ol(`${this.mVar(stmt.name)}${stmt.op};`);
+        }
+      } else if (isByte && stmt.op !== "=") {
+        this.ol(
+          `${this.mVar(stmt.name)} = (${this.mVar(stmt.name)} ${stmt.op} ${this.emitExpr(stmt.rhs!)}) & 0xFF;`
+        );
       } else {
         this.ol(`${this.mVar(stmt.name)} ${stmt.op} ${this.copyIfTuple(stmt.rhs)};`);
       }
@@ -814,7 +829,16 @@ export class CodeGenJs {
       return `${stmt.is_mutable ? "let" : "const"} ${this.mVar(stmt.name)} = ${this.copyIfTuple(stmt.initializer)}`;
     }
     if (stmt instanceof AssignStmt) {
-      if (stmt.op === "++" || stmt.op === "--") return `${this.mVar(stmt.name)}${stmt.op}`;
+      const isByte = stmt.resolved_type === TypeKind.Byte;
+      if (stmt.op === "++" || stmt.op === "--") {
+        if (isByte) {
+          return `${this.mVar(stmt.name)} = (${this.mVar(stmt.name)} ${stmt.op === "++" ? "+" : "-"} 1) & 0xFF`;
+        }
+        return `${this.mVar(stmt.name)}${stmt.op}`;
+      }
+      if (isByte && stmt.op !== "=") {
+        return `${this.mVar(stmt.name)} = (${this.mVar(stmt.name)} ${stmt.op} ${this.emitExpr(stmt.rhs!)}) & 0xFF`;
+      }
       return `${this.mVar(stmt.name)} ${stmt.op} ${this.copyIfTuple(stmt.rhs)}`;
     }
     return "";

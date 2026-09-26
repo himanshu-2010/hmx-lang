@@ -2,6 +2,8 @@
 #include "parser.hpp"
 #include <cstdlib>
 #include <cstring>
+#include <cerrno>
+#include <climits>
 %}
 
 %option noyywrap nounput
@@ -59,7 +61,19 @@
 "byte"            { return TYPE_BYTE; }
 
 [0-9]+\.[0-9]+    { yylval.fval = atof(yytext); return DECIMAL; }
-[0-9]+            { yylval.ival = atoi(yytext); return NUMBER; }
+[0-9]+            {
+    errno = 0;
+    char* end = NULL;
+    long long v = strtoll(yytext, &end, 10);
+    if (errno == ERANGE || *end != '\0' || v > 2147483647LL) {
+        fprintf(stderr,
+            "Error [line %d]: integer literal '%s' out of range (max 2147483647)\n",
+            yylineno, yytext);
+        yyterminate();
+    }
+    yylval.ival = (int)v;
+    return NUMBER;
+}
 \"([^"\\]|\\.)*\" {
     int len = strlen(yytext);
     char* str = (char*)malloc(len - 1);

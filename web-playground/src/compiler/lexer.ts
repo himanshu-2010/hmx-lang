@@ -223,7 +223,17 @@ export class Lexer {
         }
         const text = this.src.slice(this.pos, i);
         this.advance(i - this.pos);
-        return { code: T.NUMBER, value: parseInt(text, 10), text, line: this.line };
+        const value = parseInt(text, 10);
+        if (!Number.isSafeInteger(value) || value > 2147483647) {
+          // Mirrors the native lexer: out-of-range int literals are a compile
+          // error instead of silently wrapping (audit finding #7). Like flex's
+          // yyterminate(), return EOF; the lookahead text stays on the literal
+          // so the following "syntax error near '...'" line matches natively.
+          this.emit(`Error [line ${this.line}]: integer literal '${text}' out of range (max 2147483647)\n`);
+          // code 0 = EOF, matching the real EOF token (yyterminate()).
+          return { code: 0, value: null, text, line: this.line };
+        }
+        return { code: T.NUMBER, value, text, line: this.line };
       }
 
       // --- string literal ---

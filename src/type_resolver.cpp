@@ -1144,14 +1144,20 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                 "operator '" + bin->op + "' not defined for type tuple");
         }
         if (lt != rt) {
-            throw err(line(),
-                "type mismatch in binary expression: " +
-                type_to_string(lt) + " " + bin->op + " " + type_to_string(rt));
+            bool byte_numeric_mix =
+                (lt == TypeKind::Byte && (rt == TypeKind::Int || rt == TypeKind::Decimal)) ||
+                (rt == TypeKind::Byte && (lt == TypeKind::Int || lt == TypeKind::Decimal));
+            if (!byte_numeric_mix) {
+                throw err(line(),
+                    "type mismatch in binary expression: " +
+                    type_to_string(lt) + " " + bin->op + " " + type_to_string(rt));
+            }
         }
         switch (bin->kind) {
             case ExprKind::Arithmetic:
                 if (bin->op == "%") {
-                    if (lt != TypeKind::Int) {
+                    if (!((lt == TypeKind::Int || lt == TypeKind::Byte) &&
+                          (rt == TypeKind::Int || rt == TypeKind::Byte))) {
                         throw err(line(),
                             "operator '%' not defined for type " + type_to_string(lt));
                     }
@@ -1163,10 +1169,18 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                     break;
                 }
                 if (lt == TypeKind::Text || lt == TypeKind::Bool ||
-                    lt == TypeKind::Char || lt == TypeKind::Byte) {
+                    lt == TypeKind::Char) {
                     throw err(line(),
                         "operator '" + bin->op + "' not defined for type " +
                         type_to_string(lt));
+                }
+                if (lt == TypeKind::Byte || rt == TypeKind::Byte) {
+                    // byte participates in arithmetic via numeric promotion;
+                    // the result is int (or decimal when a decimal is present).
+                    result = (lt == TypeKind::Decimal || rt == TypeKind::Decimal)
+                                 ? TypeKind::Decimal
+                                 : TypeKind::Int;
+                    break;
                 }
                 result = lt;
                 break;
@@ -1197,11 +1211,15 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         result = TypeKind::Bool;
     } else if (auto* neg = dynamic_cast<NegExpr*>(expr)) {
         TypeKind ot = resolve_expr(neg->operand.get());
-        if (ot != TypeKind::Int && ot != TypeKind::Decimal) {
+        if (ot == TypeKind::Byte) {
+            // Numeric promotion: -(byte) is an int.
+            result = TypeKind::Int;
+        } else if (ot != TypeKind::Int && ot != TypeKind::Decimal) {
             throw err(line(),
                 "operator '-' not defined for type " + type_to_string(ot));
+        } else {
+            result = ot;
         }
-        result = ot;
     }
     expr->resolved_type = result;
     return result;
@@ -1380,7 +1398,8 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         }
         TypeKind var_type = get_type(assign->name);
         if (assign->op == "++" || assign->op == "--") {
-            if (var_type != TypeKind::Int && var_type != TypeKind::Decimal) {
+            if (var_type != TypeKind::Int && var_type != TypeKind::Decimal &&
+                var_type != TypeKind::Byte) {
                 throw err(stmt->line,
                     "operator '" + assign->op + "' requires int or decimal, got " +
                     type_to_string(var_type));
@@ -1419,17 +1438,22 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 }
             }
         } else {
-            if (assign->op == "%=" && var_type != TypeKind::Int) {
+            if (assign->op == "%=" && var_type != TypeKind::Int &&
+                var_type != TypeKind::Byte) {
                 throw err(stmt->line,
                     "operator '%=' requires int, got " + type_to_string(var_type));
             }
-            if (var_type != TypeKind::Int && var_type != TypeKind::Decimal) {
+            if (var_type != TypeKind::Int && var_type != TypeKind::Decimal &&
+                var_type != TypeKind::Byte) {
                 throw err(stmt->line,
                     "operator '" + assign->op + "' requires int or decimal, got " +
                     type_to_string(var_type));
             }
             TypeKind rhs_type = resolve_expr(assign->rhs.get());
-            if (rhs_type != var_type) {
+            bool rhs_ok = rhs_type == var_type ||
+                (var_type == TypeKind::Byte &&
+                 (rhs_type == TypeKind::Int || rhs_type == TypeKind::Byte));
+            if (!rhs_ok) {
                 throw err(stmt->line,
                     "type mismatch in compound assignment: " +
                     type_to_string(var_type) + " " + assign->op + " " +

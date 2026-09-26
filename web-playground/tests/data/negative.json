@@ -2685,6 +2685,76 @@
         "stderr": "Error [line 3]: builtin 'length' expects text or array, got tuple\n",
         "exit": 1
       }
+    },
+    {
+      "name": "int_literal_overflow",
+      "kind": "negative",
+      "source": "fn main() {\n        print(2147483648)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "literal '2147483648' out of range",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: integer literal '2147483648' out of range (max 2147483647)\nParse error [line 2]: syntax error near '2147483648'\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "int_literal_overflow_big",
+      "kind": "negative",
+      "source": "fn main() {\n        print(4000000000)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "literal '4000000000' out of range",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: integer literal '4000000000' out of range (max 2147483647)\nParse error [line 2]: syntax error near '4000000000'\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "byte_annotated_arith_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let b: byte = 5\n        let c: byte = b + 1\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "declared as byte but initialized with int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: type mismatch: variable 'c' declared as byte but initialized with int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "byte_text_mixed_arith",
+      "kind": "negative",
+      "source": "fn main() {\n        let b: byte = 1\n        print(b + \"x\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch in binary expression: byte",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch in binary expression: byte + text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "byte_mod_decimal",
+      "kind": "negative",
+      "source": "fn main() {\n        let b: byte = 5\n        print(b % 0.5)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "operator '%' not defined for type byte",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: operator '%' not defined for type byte\n",
+        "exit": 1
+      }
     }
   ]
 }

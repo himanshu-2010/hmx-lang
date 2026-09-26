@@ -219,10 +219,12 @@ const ruleSigs: RuleSig[] = [
   ["factor", 3], // 150
   ["factor", 3], // 151
   ["factor", 3], // 152
-  ["postfix_index", 4], // 153
-  ["postfix_index", 4], // 154
-  ["args", 3], // 155
-  ["args", 1], // 156
+  ["factor", 3], // 153
+  ["factor", 3], // 154
+  ["postfix_index", 4], // 155
+  ["postfix_index", 4], // 156
+  ["args", 3], // 157
+  ["args", 1], // 158
 ];
 
 // Verify SIG against the extracted tables (lhs name + RHS length per rule).
@@ -265,7 +267,7 @@ function mkProgram(): Program {
 
 type Action = (rhs: unknown[], ctx: LRContext) => unknown;
 
-const A: Action[] = new Array(157).fill(null);
+const A: Action[] = new Array(159).fill(null);
 
 // Rule 0: dummy, never fires.
 A[0] = () => null;
@@ -804,24 +806,28 @@ A[148] = () => {
 A[149] = (rhs) => new ArrayLiteral(rhs[1] as any);
 A[150] = (rhs) => new CastExpr(TypeKind.Int, rhs[0] as any);
 A[151] = (rhs) => new CastExpr(TypeKind.Decimal, rhs[0] as any);
-// r152: '(' args ')'
-A[152] = (rhs) => {
+// r152: factor AS TYPE_BYTE
+A[152] = (rhs) => new CastExpr(TypeKind.Byte, rhs[0] as any);
+// r153: factor AS TYPE_CHAR
+A[153] = (rhs) => new CastExpr(TypeKind.Char, rhs[0] as any);
+// r154: '(' args ')'
+A[154] = (rhs) => {
   const args = rhs[1] as unknown[];
   if (args.length === 1) return args[0];
   return new TupleLiteral(args as Expression[]);
 };
-// r153: postfix_index IDENTIFIER '[' expression ']'
-A[153] = (rhs) => new ArrayIndexExpr(rhs[0] as string, rhs[2] as any);
-// r154: postfix_index postfix_index '[' expression ']'
-A[154] = (rhs) => new ArrayIndexExpr("", rhs[2] as any, rhs[0] as any);
-// r155: args args ',' expression
-A[155] = (rhs) => {
+// r155: postfix_index IDENTIFIER '[' expression ']'
+A[155] = (rhs) => new ArrayIndexExpr(rhs[0] as string, rhs[2] as any);
+// r156: postfix_index postfix_index '[' expression ']'
+A[156] = (rhs) => new ArrayIndexExpr("", rhs[2] as any, rhs[0] as any);
+// r157: args args ',' expression
+A[157] = (rhs) => {
   const list = rhs[0] as unknown[];
   list.push(rhs[2]);
   return list;
 };
-// r156: args expression
-A[156] = (rhs) => [rhs[0]];
+// r158: args expression
+A[158] = (rhs) => [rhs[0]];
 
 // ---------------------------------------------------------------------------
 // Entry point: the verified action table.

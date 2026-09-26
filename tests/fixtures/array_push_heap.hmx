@@ -1,0 +1,20 @@
+fn main() {
+    // Regression: sd_make_array allocated only nbytes instead of
+    // capacity*esize, so any array grown past its initial capacity+16
+    // corrupted the heap (realloc: invalid next size). Push far past it.
+    let arr: [int] = []
+    for (let i = 0; i < 1000; i++) {
+        push(arr, i * 2)
+    }
+    print(length(arr))
+    print(arr[999])
+    print(arr[0])
+    push(arr, -1)
+    print(arr[1000])
+    let strs: [text] = []
+    for (let i = 0; i < 300; i++) {
+        push(strs, "s" + tostr(i))
+    }
+    print(length(strs))
+    print(strs[299])
+}

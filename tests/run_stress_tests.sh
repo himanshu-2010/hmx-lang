@@ -1579,6 +1579,77 @@ test_output "tuple_literal_of_arrays" \
     }' \
     "2 3"
 
+test_output "byte_arithmetic_promotion" \
+    'fn main() {
+        let b: byte = 200
+        print(b + 1)
+        print(b * 2)
+        print(b - 50)
+        print(b / 4)
+        print(b % 7)
+        print(b + 0.5)
+        print(-b)
+        print(b > 100)
+        print(b == 200)
+    }' \
+    "$(printf '201\n400\n150\n50\n4\n200.500000\n-200\n1\n1')"
+
+test_output "byte_wrap_incr" \
+    'fn main() {
+        let b: byte = 255
+        b++
+        print(b)
+        b += 2
+        print(b)
+        b -= 3
+        print(b)
+        b *= 128
+        print(b)
+    }' \
+    "$(printf '0\n2\n255\n128')"
+
+test_output "byte_casts_and_chars" \
+    'fn main() {
+        print(65 as byte)
+        print(255 as byte)
+        print(65 as char)
+        let from_int = 70 as int as byte
+        let from_char = '\''B'\'' as byte
+        print(from_int + from_char)
+    }' \
+    "$(printf '65\n255\nA\n136')"
+
+test_exit_code "byte_cast_out_of_range_high" \
+    'fn main() {
+        print(300 as byte)
+    }' \
+    1
+
+test_exit_code "byte_cast_out_of_range_low" \
+    'fn main() {
+        print((-1) as byte)
+    }' \
+    1
+
+test_exit_code "byte_cast_out_of_range_var" \
+    'fn main() {
+        let x = 400
+        print(x as byte)
+    }' \
+    1
+
+test_output "array_push_heap_regression" \
+    'fn main() {
+        let arr: [int] = []
+        for (let i = 0; i < 1000; i++) {
+            push(arr, i * 2)
+        }
+        print(length(arr))
+        print(arr[999])
+        print(arr[0])
+    }' \
+    "$(printf '1000\n1998\n0')"
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

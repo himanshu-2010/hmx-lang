@@ -30,6 +30,20 @@
       }
     },
     {
+      "name": "array_push_heap",
+      "kind": "fixture",
+      "source": "fn main() {\n    // Regression: sd_make_array allocated only nbytes instead of\n    // capacity*esize, so any array grown past its initial capacity+16\n    // corrupted the heap (realloc: invalid next size). Push far past it.\n    let arr: [int] = []\n    for (let i = 0; i < 1000; i++) {\n        push(arr, i * 2)\n    }\n    print(length(arr))\n    print(arr[999])\n    print(arr[0])\n    push(arr, -1)\n    print(arr[1000])\n    let strs: [text] = []\n    for (let i = 0; i < 300; i++) {\n        push(strs, \"s\" + tostr(i))\n    }\n    print(length(strs))\n    print(strs[299])\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1000\n1998\n0\n-1\n300\ns299\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "arrays",
       "kind": "fixture",
       "source": "fn sum(a: [int]) -> int {\n    let total = 0\n    let i = 0\n    while (i < length(a)) {\n        total += a[i]\n        i++\n    }\n    return total\n}\n\nfn main() {\n    let scores: [int] = [10, 20, 30]\n    print(scores[0])\n    print(scores[2])\n    print(length(scores))\n\n    let names: [text] = [\"alice\", \"bob\"]\n    print(names[1])\n\n    let empty: [int] = []\n    print(length(empty))\n\n    let inferred = [1, 2, 3, 4]\n    print(length(inferred))\n\n    scores[1] = 99\n    print(scores[1])\n\n    let total = sum(scores)\n    print(total)\n\n    const fixed: [int] = [5, 6]\n    print(fixed[0])\n}\n",
@@ -81,6 +95,20 @@
       "pattern": null,
       "expected": {
         "stdout": "0\n1\n0\n0\n1\n0\n1\n1\n0\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "byte_arithmetic",
+      "kind": "fixture",
+      "source": "fn main() {\n    let b: byte = 200\n    print(b + 1)\n    print(b * 2)\n    print(b - 50)\n    print(b / 4)\n    print(b % 7)\n    print(b + 0.5)\n    print(-b)\n    print(b > 100)\n    print(b == 200)\n    let c: byte = 255\n    c++\n    print(c)\n    c += 2\n    print(c)\n    c--\n    print(c)\n    let d: byte = 80\n    d *= 2\n    print(d)\n    d %= 80\n    print(d)\n    let from_int = 65 as int as byte\n    print(from_int)\n    let from_char = 'A' as byte\n    print(from_char)\n    let arr: [byte] = [10 as byte, 20 as byte, 30 as byte]\n    print(arr[0] + arr[2])\n    print(arr[1] > arr[0])\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "201\n400\n150\n50\n4\n200.500000\n-200\n1\n1\n0\n2\n1\n160\n0\n65\n65\n40\n1\n",
         "stderr": "",
         "exit": 0
       }

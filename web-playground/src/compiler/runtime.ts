@@ -60,6 +60,12 @@ export interface SDRuntime {
   // conversions
   ord: (c: string) => number;
   chr: (v: number) => string;
+  /** char (JS string) -> character code, numbers pass through */
+  num: (v: number | string) => number;
+  /** the `as byte` cast: char-aware, range-checked 0..255 */
+  toByte: (v: number | string) => number;
+  /** the `as char` cast: char identity, numbers wrap mod 256 (C `(char)`) */
+  toChar: (v: number | string) => string;
   parseInt: (s: string) => number;
   parseDecimal: (s: string) => number;
   // non-local exit
@@ -115,6 +121,24 @@ export function createRuntime(stdin: string | string[]): SDRuntime {
     fail(msg: string): never {
       err.push(msg, "\n");
       throw new ExitSignal(1);
+    },
+    num(v: number | string): number {
+      // A char value is a JS string; convert it to its character code so casts
+      // mirror the native C semantics (chars are integral).
+      return typeof v === "string" ? v.charCodeAt(0) : v;
+    },
+    toByte(v: number | string): number {
+      const n = sd.num(v);
+      if (n < 0 || n > 255) {
+        sd.fail(`Error: byte cast out of range (${n})`);
+      }
+      return n;
+    },
+    toChar(v: number | string): string {
+      // Mirrors the native `(char)(expr)` C cast, which wraps modulo 256.
+      if (typeof v === "string") return v;
+      const t = Math.trunc(v);
+      return String.fromCharCode(((t % 256) + 256) % 256);
     },
     error(msg: string): void {
       err.push(msg, "\n");

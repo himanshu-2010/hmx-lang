@@ -1288,15 +1288,25 @@ export class TypeResolver {
         throw this.err(this.line(), `operator '${expr.op}' not defined for type tuple`);
       }
       if (lt !== rt) {
-        throw this.err(
-          this.line(),
-          `type mismatch in binary expression: ${typeToString(lt)} ${expr.op} ${typeToString(rt)}`
-        );
+        const byteNumericMix =
+          (lt === TypeKind.Byte && (rt === TypeKind.Int || rt === TypeKind.Decimal)) ||
+          (rt === TypeKind.Byte && (lt === TypeKind.Int || lt === TypeKind.Decimal));
+        if (!byteNumericMix) {
+          throw this.err(
+            this.line(),
+            `type mismatch in binary expression: ${typeToString(lt)} ${expr.op} ${typeToString(rt)}`
+          );
+        }
       }
       switch (expr.ekind) {
         case ExprKind.Arithmetic:
           if (expr.op === "%") {
-            if (lt !== TypeKind.Int) {
+            if (
+              !(
+                (lt === TypeKind.Int || lt === TypeKind.Byte) &&
+                (rt === TypeKind.Int || rt === TypeKind.Byte)
+              )
+            ) {
               throw this.err(this.line(), `operator '%' not defined for type ${typeToString(lt)}`);
             }
             result = TypeKind.Int;
@@ -1306,8 +1316,17 @@ export class TypeResolver {
             result = TypeKind.Text;
             break;
           }
-          if (lt === TypeKind.Text || lt === TypeKind.Bool || lt === TypeKind.Char || lt === TypeKind.Byte) {
+          if (lt === TypeKind.Text || lt === TypeKind.Bool || lt === TypeKind.Char) {
             throw this.err(this.line(), `operator '${expr.op}' not defined for type ${typeToString(lt)}`);
+          }
+          if (lt === TypeKind.Byte || rt === TypeKind.Byte) {
+            // byte participates in arithmetic via numeric promotion; the
+            // result is int (or decimal when a decimal is present).
+            result =
+              lt === TypeKind.Decimal || rt === TypeKind.Decimal
+                ? TypeKind.Decimal
+                : TypeKind.Int;
+            break;
           }
           result = lt;
           break;
@@ -1334,10 +1353,14 @@ export class TypeResolver {
       result = TypeKind.Bool;
     } else if (expr instanceof NegExpr) {
       const ot = this.resolveExpr(expr.operand);
-      if (ot !== TypeKind.Int && ot !== TypeKind.Decimal) {
+      if (ot === TypeKind.Byte) {
+        // Numeric promotion: -(byte) is an int.
+        result = TypeKind.Int;
+      } else if (ot !== TypeKind.Int && ot !== TypeKind.Decimal) {
         throw this.err(this.line(), `operator '-' not defined for type ${typeToString(ot)}`);
+      } else {
+        result = ot;
       }
-      result = ot;
     }
     expr.resolved_type = result;
     return result;
@@ -1519,8 +1542,16 @@ export class TypeResolver {
         throw this.err(stmt.line, `cannot modify immutable variable '${assign.name}'`);
       }
       const varType = this.getType(assign.name);
+      // Stash the target's declared type so codegen can apply byte wrap-around
+      // semantics (uint8) for ++/--/compound stores, mirroring C's unsigned
+      // char. Nothing else reads a statement's resolved_type.
+      assign.resolved_type = varType;
       if (assign.op === "++" || assign.op === "--") {
-        if (varType !== TypeKind.Int && varType !== TypeKind.Decimal) {
+        if (
+          varType !== TypeKind.Int &&
+          varType !== TypeKind.Decimal &&
+          varType !== TypeKind.Byte
+        ) {
           throw this.err(
             stmt.line,
             `operator '${assign.op}' requires int or decimal, got ${typeToString(varType)}`
@@ -1563,17 +1594,28 @@ export class TypeResolver {
           }
         }
       } else {
-        if (assign.op === "%=" && varType !== TypeKind.Int) {
+        if (
+          assign.op === "%=" &&
+          varType !== TypeKind.Int &&
+          varType !== TypeKind.Byte
+        ) {
           throw this.err(stmt.line, `operator '%=' requires int, got ${typeToString(varType)}`);
         }
-        if (varType !== TypeKind.Int && varType !== TypeKind.Decimal) {
+        if (
+          varType !== TypeKind.Int &&
+          varType !== TypeKind.Decimal &&
+          varType !== TypeKind.Byte
+        ) {
           throw this.err(
             stmt.line,
             `operator '${assign.op}' requires int or decimal, got ${typeToString(varType)}`
           );
         }
         const rhsType = this.resolveExpr(assign.rhs!);
-        if (rhsType !== varType) {
+        const rhsOk =
+          rhsType === varType ||
+          (varType === TypeKind.Byte && (rhsType === TypeKind.Int || rhsType === TypeKind.Byte));
+        if (!rhsOk) {
           throw this.err(
             stmt.line,
             `type mismatch in compound assignment: ${typeToString(varType)} ${assign.op} ${typeToString(rhsType)}`

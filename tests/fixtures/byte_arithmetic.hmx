@@ -1,0 +1,31 @@
+fn main() {
+    let b: byte = 200
+    print(b + 1)
+    print(b * 2)
+    print(b - 50)
+    print(b / 4)
+    print(b % 7)
+    print(b + 0.5)
+    print(-b)
+    print(b > 100)
+    print(b == 200)
+    let c: byte = 255
+    c++
+    print(c)
+    c += 2
+    print(c)
+    c--
+    print(c)
+    let d: byte = 80
+    d *= 2
+    print(d)
+    d %= 80
+    print(d)
+    let from_int = 65 as int as byte
+    print(from_int)
+    let from_char = 'A' as byte
+    print(from_char)
+    let arr: [byte] = [10 as byte, 20 as byte, 30 as byte]
+    print(arr[0] + arr[2])
+    print(arr[1] > arr[0])
+}

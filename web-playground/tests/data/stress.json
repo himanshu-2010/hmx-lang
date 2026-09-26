@@ -1635,6 +1635,104 @@
         "stderr": "",
         "exit": 0
       }
+    },
+    {
+      "name": "byte_arithmetic_promotion",
+      "kind": "output",
+      "source": "fn main() {\n        let b: byte = 200\n        print(b + 1)\n        print(b * 2)\n        print(b - 50)\n        print(b / 4)\n        print(b % 7)\n        print(b + 0.5)\n        print(-b)\n        print(b > 100)\n        print(b == 200)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "201\n400\n150\n50\n4\n200.500000\n-200\n1\n1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "byte_wrap_incr",
+      "kind": "output",
+      "source": "fn main() {\n        let b: byte = 255\n        b++\n        print(b)\n        b += 2\n        print(b)\n        b -= 3\n        print(b)\n        b *= 128\n        print(b)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "0\n2\n255\n128\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "byte_casts_and_chars",
+      "kind": "output",
+      "source": "fn main() {\n        print(65 as byte)\n        print(255 as byte)\n        print(65 as char)\n        let from_int = 70 as int as byte\n        let from_char = 'B' as byte\n        print(from_int + from_char)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "65\n255\nA\n136\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "byte_cast_out_of_range_high",
+      "kind": "exit",
+      "source": "fn main() {\n        print(300 as byte)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: byte cast out of range (300)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "byte_cast_out_of_range_low",
+      "kind": "exit",
+      "source": "fn main() {\n        print((-1) as byte)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: byte cast out of range (-1)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "byte_cast_out_of_range_var",
+      "kind": "exit",
+      "source": "fn main() {\n        let x = 400\n        print(x as byte)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: byte cast out of range (400)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_push_heap_regression",
+      "kind": "output",
+      "source": "fn main() {\n        let arr: [int] = []\n        for (let i = 0; i < 1000; i++) {\n            push(arr, i * 2)\n        }\n        print(length(arr))\n        print(arr[999])\n        print(arr[0])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1000\n1998\n0\n",
+        "stderr": "",
+        "exit": 0
+      }
     }
   ]
 }

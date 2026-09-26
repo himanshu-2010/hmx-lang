@@ -167,3 +167,13 @@ prior fixtures, and lands one complete feature.
   first release, **v0.9.0**. External submissions (AUR, Homebrew tap, Scoop
   bucket, winget-pkgs, Launchpad PPA, and the `REPLACE_WITH_TAG_SHA` brew
   revision) are documented in `packaging/` headers and the README.
+- **M11 runtime soundness (audit #1/#2/#7/#8):** allocator overflow guards for
+  array growth; `fork`/`exec`/`waitpid` run path that reports signal deaths
+  (`Error: program crashed with signal N`, exit 128+N) instead of masking them
+  through `system()`; integer-literal range check → compile error on values
+  above 2147483647; `byte` becomes a full arithmetic type (promotes to `int`,
+  `++`/`--`/compound assignments wrap like uint8, runtime bounds-checked
+  `as byte` casts, C-wrap `as char` casts) — mirrored 1:1 in the web compiler
+  (LALR constants now read from `tables.constants`, `SD.num`/`SD.toByte`/
+  `SD.toChar`, char-aware casts). Native 396/396 + web 380/380 green. Details
+  in PROGRESS.md / TESTRESULT.md.

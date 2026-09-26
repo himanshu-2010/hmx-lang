@@ -116,12 +116,15 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
 
     out_ << "static sd_array* sd_make_array(const void* data, size_t nbytes, int length, size_t esize) {\n";
     out_ << "    size_t el = esize ? esize : 1;\n";
+    out_ << "    if (length > INT_MAX - 16) exit(1);\n";
+    out_ << "    size_t cap = (size_t)length + 16;\n";
+    out_ << "    if (el != 0 && cap > ~(size_t)0 / el) { fprintf(stderr, \"Error: array capacity overflow\\n\"); exit(1); }\n";
     out_ << "    sd_array* a = malloc(sizeof(sd_array));\n";
     out_ << "    if (!a) exit(1);\n";
     out_ << "    a->esize = (int)el;\n";
     out_ << "    a->length = length;\n";
-    out_ << "    a->capacity = length + 16;\n";
-    out_ << "    a->data = malloc(nbytes ? nbytes : el);\n";
+    out_ << "    a->capacity = (int)cap;\n";
+    out_ << "    a->data = malloc(cap * el);\n";
     out_ << "    if (!a->data) exit(1);\n";
     out_ << "    if (nbytes) memcpy(a->data, data, nbytes);\n";
     out_ << "    return a;\n";
@@ -129,8 +132,10 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
 
     out_ << "static sd_array* sd_push(sd_array* a, const void* item, size_t esize) {\n";
     out_ << "    if (a->length >= a->capacity) {\n";
-    out_ << "        a->capacity = a->capacity * 2 + 8;\n";
-    out_ << "        a->data = realloc(a->data, (size_t)a->capacity * (size_t)a->esize);\n";
+    out_ << "        size_t cap = (size_t)a->capacity * 2 + 8;\n";
+    out_ << "        if ((size_t)a->esize != 0 && cap > ~(size_t)0 / (size_t)a->esize) { fprintf(stderr, \"Error: array capacity overflow\\n\"); exit(1); }\n";
+    out_ << "        a->capacity = (int)cap;\n";
+    out_ << "        a->data = realloc(a->data, cap * (size_t)a->esize);\n";
     out_ << "        if (!a->data) exit(1);\n";
     out_ << "    }\n";
     out_ << "    memcpy((char*)a->data + (size_t)a->length * (size_t)a->esize, item, esize);\n";
@@ -140,7 +145,11 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
 
     out_ << "static sd_array* sd_ensure_capacity(sd_array* a, int extra) {\n";
     out_ << "    if (a->length + extra > a->capacity) {\n";
-    out_ << "        while (a->length + extra > a->capacity) a->capacity = a->capacity * 2 + 8;\n";
+    out_ << "        while (a->length + extra > a->capacity) {\n";
+    out_ << "            size_t cap = (size_t)a->capacity * 2 + 8;\n";
+    out_ << "            if ((size_t)a->esize != 0 && cap > ~(size_t)0 / (size_t)a->esize) { fprintf(stderr, \"Error: array capacity overflow\\n\"); exit(1); }\n";
+    out_ << "            a->capacity = (int)cap;\n";
+    out_ << "        }\n";
     out_ << "        a->data = realloc(a->data, (size_t)a->capacity * (size_t)a->esize);\n";
     out_ << "        if (!a->data) exit(1);\n";
     out_ << "    }\n";
@@ -171,8 +180,10 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "        memcpy(piece, cur, len);\n";
     out_ << "        piece[len] = '\\0';\n";
     out_ << "        if (a->length >= a->capacity) {\n";
-    out_ << "            a->capacity *= 2;\n";
-    out_ << "            a->data = realloc(a->data, a->capacity * sizeof(char*));\n";
+    out_ << "            size_t cap = (size_t)a->capacity * 2;\n";
+    out_ << "            if (cap > ~(size_t)0 / sizeof(char*)) { fprintf(stderr, \"Error: array capacity overflow\\n\"); exit(1); }\n";
+    out_ << "            a->capacity = (int)cap;\n";
+    out_ << "            a->data = realloc(a->data, cap * sizeof(char*));\n";
     out_ << "            if (!a->data) exit(1);\n";
     out_ << "        }\n";
     out_ << "        ((char**)a->data)[a->length++] = piece;\n";
@@ -196,6 +207,14 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "        exit(1);\n";
     out_ << "    }\n";
     out_ << "    return index;\n";
+    out_ << "}\n\n";
+
+    out_ << "static unsigned char sd_to_byte(double v) {\n";
+    out_ << "    if (v < 0 || v > 255) {\n";
+    out_ << "        fprintf(stderr, \"Error: byte cast out of range (%.0f)\\n\", v);\n";
+    out_ << "        exit(1);\n";
+    out_ << "    }\n";
+    out_ << "    return (unsigned char)v;\n";
     out_ << "}\n\n";
 
     out_ << "typedef struct sd_closure {\n";
@@ -1064,9 +1083,15 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         emit_expr(conditional->else_expr.get());
         out_ << ")";
     } else if (auto* cast = dynamic_cast<CastExpr*>(expr)) {
-        out_ << "(" << type_to_c(cast->target_type) << ")(";
-        emit_expr(cast->operand.get());
-        out_ << ")";
+        if (cast->target_type == TypeKind::Byte) {
+            out_ << "sd_to_byte(";
+            emit_expr(cast->operand.get());
+            out_ << ")";
+        } else {
+            out_ << "(" << type_to_c(cast->target_type) << ")(";
+            emit_expr(cast->operand.get());
+            out_ << ")";
+        }
     } else if (auto* bin = dynamic_cast<BinaryExpr*>(expr)) {
         if (bin->kind == ExprKind::Arithmetic && bin->op == "+" &&
             get_expr_type(bin->left.get()) == TypeKind::Text) {

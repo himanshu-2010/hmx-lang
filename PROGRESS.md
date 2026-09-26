@@ -859,6 +859,46 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - **Docs:** README install table + refreshed CLI section; SYNTAX.md CLI
   reference; TESTRESULT.md re-run report.
 
+### Milestone — Runtime soundness: byte arithmetic/casts, crash reporting, overflow guards (M11) — DONE
+- **Byte arithmetic (finding #8):** byte promotes to `int` (`b+1`→int,
+  `byte+decimal`→decimal, `byte+byte`→int, `-b`→int); `++`/`--` and compound
+  `+= -= *= /= %=` wrap like `uint8` (255→0, 255→128); `byte`+`text` and
+  `byte`+`char` are type mismatches (new negatives); `%` on byte allowed.
+- **Byte casts:** `factor AS TYPE_BYTE / TYPE_CHAR` grammar rules (152/153,
+  conflicts still 6) with runtime bounds-checked `as byte`
+  (`Error: byte cast out of range (N)`, exit 1) via `sd_to_byte(double)` in
+  codegen; `let c: byte = b + 1` stays a compile error (explicit cast needed);
+  compile-time literal range check for `let v: byte = N` stays. `as char`
+  mirrors the C `(char)` cast (wraps mod 256); char operands convert by code.
+- **Crash masking (finding #2):** POSIX run path switched from `system()` to
+  `fork`/`execlp`/`waitpid`; `WIFEXITED`/`WIFSIGNALED` distinguish exits from
+  signal deaths → `Error: program crashed with signal N (SIGSEGV)`, exit
+  `128+N` (hand-rolled `signal_name()`, no strsignal). MSVC keeps the
+  `WEXITSTATUS` fallback.
+- **Integer overflow (finding #7):** lexer `atoi` → `strtoll` + range check →
+  `Error [line N]: integer literal 'X' out of range (max 2147483647)`, exit 1.
+- **Allocation guards (finding #1):** `sd_make_array` allocates `cap*el` with
+  overflow guards; `sd_push`/`sd_ensure_capacity`/`sd_split` growth
+  overflow-guarded.
+- **Tests:** fixtures `byte_arithmetic.hmx`, `array_push_heap.hmx`; negatives
+  `int_literal_overflow`, `int_literal_overflow_big`,
+  `byte_annotated_arith_mismatch`, `byte_text_mixed_arith`,
+  `byte_mod_decimal`; stress `byte_arithmetic_promotion`, `byte_wrap_incr`,
+  `byte_casts_and_chars`, `byte_cast_out_of_range_{high,low,var}`,
+  `array_push_heap_regression`; CLI `crash reports signal + exit 139`.
+- **Web parity (1:1):** `tables.json` regenerated (YYNSTATES 422 / YYLAST 1123
+  / YYPACT_NINF -237 / YYNRULES 158); `lalr.ts` now reads the LALR constants
+  from `tables.constants` (the old hard-code went stale under rule growth —
+  tuple/array/paren/neg parses broke). `actions.ts` renumbered A[152]–
+  A[158] (byte/char casts, parens, postfix, args). Resolver: byte promotion,
+  compound `%=`, `NegExpr`, and AssignStmt byte-wrap annotation; codegen_js:
+  `SD.toByte` + `& 0xFF` wrap; runtime: `SD.num` (char→code), `SD.toByte`
+  (char-aware, range-checked), `SD.toChar` (mod-256 wrap). Lexer overflow
+  path: `T.EOF`-was-undefined bug fixed by returning literal `code: 0`.
+- **Hygiene:** native 396/396 (54 integration / 195 negative / 123 stress / 24
+  CLI); web `tsc -b` + `vite build` + oxlint (0 errors, 11 benign pre-existing
+  warnings) + vitest **380/380**; `gen-data.mts` parity 0 failures.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

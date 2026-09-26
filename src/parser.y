@@ -1310,6 +1310,14 @@ factor
         {
             $$ = new CastExpr(TypeKind::Decimal, ExprPtr($1));
         }
+    | factor AS TYPE_BYTE
+        {
+            $$ = new CastExpr(TypeKind::Byte, ExprPtr($1));
+        }
+    | factor AS TYPE_CHAR
+        {
+            $$ = new CastExpr(TypeKind::Char, ExprPtr($1));
+        }
     | '(' args ')'
         {
             if ($2->size() == 1) {

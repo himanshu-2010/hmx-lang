@@ -1611,6 +1611,39 @@ test_error "tuple_literal_length" \
     }' \
     "builtin 'length' expects text or array, got tuple"
 
+test_error "int_literal_overflow" \
+    'fn main() {
+        print(2147483648)
+    }' \
+    "literal '2147483648' out of range"
+
+test_error "int_literal_overflow_big" \
+    'fn main() {
+        print(4000000000)
+    }' \
+    "literal '4000000000' out of range"
+
+test_error "byte_annotated_arith_mismatch" \
+    'fn main() {
+        let b: byte = 5
+        let c: byte = b + 1
+    }' \
+    "declared as byte but initialized with int"
+
+test_error "byte_text_mixed_arith" \
+    'fn main() {
+        let b: byte = 1
+        print(b + "x")
+    }' \
+    "type mismatch in binary expression: byte"
+
+test_error "byte_mod_decimal" \
+    'fn main() {
+        let b: byte = 5
+        print(b % 0.5)
+    }' \
+    "operator '%' not defined for type byte"
+
 echo "Negative Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"
 [ $FAIL -eq 0 ]

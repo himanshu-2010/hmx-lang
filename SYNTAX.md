@@ -367,6 +367,15 @@ Sequences of digits, non-negative.
 42
 ```
 
+Integer literals must fit in a signed 32-bit range (`0 .. 2147483647`); a larger
+literal is a compile error:
+
+```
+fn main() {
+    print(2147483648)   // ERROR: Error [line 2]: integer literal '2147483648' out of range (max 2147483647)
+}
+```
+
 ### 6.2 Decimal Literals
 
 A fraction of a decimal point. Must have digits on both sides of the point.
@@ -407,8 +416,25 @@ print(initial)
 print(code)
 ```
 
-Byte values must be between `0` and `255`. `char` and `byte` can be explicitly cast
-to numeric types with `as`, but they are not arithmetic operands.
+Byte values must be between `0` and `255`. `byte` is a full arithmetic operand with
+numeric-promotion semantics, and `char` / `byte` can be explicitly cast with `as`:
+
+- **Arithmetic promotion:** `byte` participates in `+ - * / %`; the result type is
+  the promoted operand type — `byte + int` → `int`, `byte + decimal` → `decimal`,
+  `byte + byte` → `int`, and unary `-byte` → `int`. A compile error is emitted if a
+  `byte` is combined with `text` or `char`.
+- **Increment / compound assignment:** `++`, `--`, and `+= -= *= /= %=` on a `byte`
+  wrap around like an unsigned 8-bit value (e.g. `b = 255; b++` → `0`;
+  `b = 255; b *= 128` → `128`).
+- **Declaration check:** `let v: byte = N` requires `0 <= N <= 255` at compile time
+  (literal initializers only — see §7.1).
+- **No implicit truncation:** `let c: byte = b + 1` is a compile error even when the
+  expression would be in range; an explicit `as byte` is required.
+
+`as byte` casts are runtime bounds-checked (`Error: byte cast out of range (N)`,
+exit 1). `as char` casts follow C `(char)` semantics, wrapping modulo 256. Due to the
+unary-minus grammar quirk, `-1 as byte` parses as `-(1 as byte)`; write the
+parenthesized form `(-1) as byte` for a negative cast.
 
 ---
 
@@ -572,13 +598,23 @@ Rules:
 
 ### 7.6 Explicit Numeric Casts
 
-Use `as` for explicit conversion between `int` and `decimal`. There is no implicit
-numeric promotion, and casts involving `text` or `bool` are rejected.
+Use `as` for explicit conversion between the numeric types `int`, `decimal`,
+`byte`, and `char`. There is no implicit numeric promotion, and casts involving
+`text` or `bool` are rejected.
 
 ```hmx
 let precise = 7 as decimal
 let whole = precise as int
+let octet: byte = 65 as byte
+let letter: char = 65 as char          // 'A'
 ```
+
+- `as byte` runtime bounds-checks the value (`Error: byte cast out of range (N)`,
+  exit 1); `as char` wraps modulo 256 like a C `(char)` cast.
+- A `char` operand converts to its character code (`'A' as int` → `65`,
+  `'A' as decimal` → `65.000000`, `'A' as byte` → `65`).
+- `let v: byte = N` / `const v: byte = N` check the literal range `0..255` at
+  compile time (see §6.5).
 
 ---
 
@@ -586,8 +622,10 @@ let whole = precise as int
 
 ### 8.1 Arithmetic Operators
 
-Work on `int` and `decimal` operands. Both operands must be the same type; mixing
-`int` and `decimal` in one operation is a compile error. The `%` operator is `int` only.
+Work on `int`, `decimal`, and `byte` operands. Both operands must be the same type;
+mixing `int` and `decimal` in one operation is a compile error. `byte` combines with
+`int` or `decimal` via promotion (§6.5) and `byte + byte` yields `int`. The `%`
+operator works on `int` and `byte` only.
 
 | Operator | Meaning | Example |
 |---|---|---|

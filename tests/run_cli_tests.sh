@@ -44,6 +44,10 @@ check "run -keep-c leaves .c behind"      0     "hello"           "$BIN" run hel
 [ -f build_temp.c ] && PASS=$((PASS+1)) && echo "PASS (CLI): -keep-c wrote build_temp.c" || { echo "FAIL (CLI): -keep-c wrote build_temp.c"; FAIL=$((FAIL+1)); }
 
 check "exit code propagates"              42    ""                "$BIN" exit42.hmx
+
+# Audit finding #2: a genuine signal death must be diagnosed (not masked).
+printf 'fn f(a: [int], n: int) -> int {\n    if (n == 0) { return 0 }\n    return f(a, n - 1) + a[n %% 5]\n}\nfn main() -> int {\n    let arr: [int] = [1, 2, 3, 4, 5]\n    return f(arr, 5000000)\n}\n' > crash.hmx
+check "crash reports signal + exit 139"   139   "program crashed with signal 11 (SIGSEGV)" "$BIN" run crash.hmx
 check "build produces binary"             0     "Built: hello"    "$BIN" build hello.hmx -o hello_app
 [ -x hello_app ] && PASS=$((PASS+1)) && echo "PASS (CLI): build binary exists & executable" || { echo "FAIL (CLI): build binary exists"; FAIL=$((FAIL+1)); }
 [ "$(./hello_app)" = "hello" ] && PASS=$((PASS+1)) && echo "PASS (CLI): built binary runs" || { echo "FAIL (CLI): built binary runs"; FAIL=$((FAIL+1)); }

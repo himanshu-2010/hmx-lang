@@ -9,16 +9,27 @@
 import tables from "./tables/tables.json";
 import type { LexToken } from "./lexer";
 
-const { yypact, yydefact, yytable, yycheck, yypgoto, yydefgoto, yytranslate, yyr1, yyr2 } = tables;
+const {
+  yypact,
+  yydefact,
+  yytable,
+  yycheck,
+  yypgoto,
+  yydefgoto,
+  yytranslate,
+  yyr1,
+  yyr2,
+  constants,
+} = tables;
 
 const YYEMPTY = -2;
 const YYEOF = 0;
 const YYerror = 256;
-const YYFINAL = 3 as number;
-const YYPACT_NINF = -227 as number;
+const YYFINAL = constants.YYFINAL as number;
+const YYPACT_NINF = constants.YYPACT_NINF as number;
 const YYTABLE_NINF = -1 as number;
-const YYLAST = 1100 as number;
-const YYNTOKENS = 71 as number;
+const YYLAST = constants.YYLAST as number;
+const YYNTOKENS = constants.YYNTOKENS as number;
 const YYSYMBOL_YYerror = 1 as number;
 
 /** Context shared with actions: mirrors the globals yylineno / yytext. */

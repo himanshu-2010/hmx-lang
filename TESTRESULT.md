@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 381 / 381 (52 integration + 190 negative + 116 stress + 23 CLI); web-playground vitest 366 / 366
+**Status:** ALL TESTS PASSED — native 396 / 396 (54 integration + 195 negative + 123 stress + 24 CLI); web-playground vitest 380 / 380 (375 parity + 5 app)
 
 ---
 
@@ -34,8 +34,8 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 337
-> - **Passed:** 337
+> - **Total Test Cases Executed:** 396 (native) + 380 (web) = 776
+> - **Passed:** 776
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -668,5 +668,49 @@ hardening (M9), and the release/packaging work (M10):
   (`index-CQYx8wo9.css` / `index-CZE3Fah3.js`), oxlint 0 errors (11 benign
   warnings). Light-theme rebuild + dark-kept-surface text fixes; headless
   Chrome confirms the cursor follower renders nothing without a fine pointer.
+
+## M11 runtime soundness re-run (2026-09-26)
+
+Full re-verification after the Batch A soundness milestone (audit findings #1,
+#2, #7, #8) — byte arithmetic/casts, integer-literal overflow detection, crash
+reporting, and overflow-guarded array growth, mirrored 1:1 in the web compiler:
+
+- **Native:** integration **54/54**, negative **195/195**, stress & output
+  **123/123**, CLI **24/24** — all green.
+- **Byte semantics:** byte promotes to `int` in arithmetic (`b+1` → int,
+  `byte+decimal` → decimal, `byte+byte` → int, `-b` → int); `++`/`--` and
+  compound assignments wrap like `uint8` (verified `255→0`, `255→128`);
+  runtime bounds-checked `as byte` casts (`Error: byte cast out of range (N)`,
+  exit 1); compile-time literal range check for `let v: byte = N` stays;
+  `let c: byte = b + 1` is a compile error (explicit `as byte` required);
+  mixed `byte`+`text` is a type mismatch. New stress cases:
+  `byte_arithmetic_promotion`, `byte_wrap_incr`, `byte_casts_and_chars`,
+  `byte_cast_out_of_range_{high,low,var}`.
+- **Integer-literal overflow:** `strtoll`-based range check in the lexer →
+  `Error [line N]: integer literal '...' out of range (max 2147483647)` + parse
+  error, exit 1. Negatives: `int_literal_overflow`, `int_literal_overflow_big`.
+- **Crash reporting (finding #2):** `system()` replaced with
+  `fork`/`execlp`/`waitpid` on POSIX; signal deaths are diagnosed
+  (`Error: program crashed with signal 11 (SIGSEGV)`) and surfaced as exit
+  `128+N`, never masked by the shell. New CLI test
+  `crash reports signal + exit 139` (recursive `[int]` indexing stack overflow).
+- **Allocation guards (finding #1):** `sd_make_array` allocates `cap*el` with
+  overflow guards; `sd_push`/`sd_ensure_capacity`/`sd_split` growth is
+  overflow-guarded. Regression fixture `array_push_heap.hmx` +
+  stress `array_push_heap_regression`.
+- **Grammar:** two new `factor AS TYPE_BYTE|CHAR` rules (rules 152–153; parens
+  → 154, postfix 155–156, args 157–158). Bison conflict count still **6** (all
+  by shift). Web `tables.json` regenerated from the new `parser.cpp`; the LALR
+  driver now reads `YYLAST`/`YYPACT_NINF`/`YYFINAL`/`YYNTOKENS` from
+  `tables.constants` (the hard-coded values had gone stale under the bigger
+  grammar → tuple/paren/array/unary-`-` parse failures).
+- **Web casts:** `SD.num` converts char (JS string) operands to their code;
+  `SD.toByte` (range-checked) and `SD.toChar` (C `(char)` wrap mod 256) mirror
+  native exactly — `65 as char` → `A`, `'A' as byte` → `65`,
+  `'B' as byte` → `66`, `300 as char` → `,`.
+- **Web:** vitest **380/380** (375 parity + 5 app), `tsc -b` ✓,
+  `vite build` ✓, oxlint 0 errors (11 benign warnings, all pre-existing UI).
+  Parity data regenerated via `gen-data.mts`:
+  `stress 123 = 0 failures; negative 195 = 0; integration 54 = 0`.
 
 ## Native-only regression report (reference)
