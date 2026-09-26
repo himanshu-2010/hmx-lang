@@ -30,12 +30,12 @@ jobs:
 
       - name: Install deps (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential cmake flex bison
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake flex bison ninja-build
 
       - name: Install deps (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install cmake flex bison
+          brew install cmake flex bison ninja
           echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
 
@@ -53,7 +53,12 @@ jobs:
       - name: Configure & build
         shell: bash
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          # Force the MinGW toolchain: windows-latest defaults to the MSVC
+          # generator, but flex-generated lexer.cpp uses strdup()/POSIX bits
+          # (fine under MinGW, not MSVC). Ninja ships as a dependency of the
+          # mingw-w64-x86_64-cmake package above.
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build
 
       - name: Test (native suites + CLI)
