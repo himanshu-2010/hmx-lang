@@ -21,13 +21,10 @@ jobs:
         include:
           - os: ubuntu-latest
             label: linux-x86_64
-            shell: bash
           - os: macos-14
             label: macos-arm64
-            shell: bash
           - os: windows-latest
             label: windows-x86_64
-            shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
 
@@ -52,13 +49,13 @@ jobs:
             mingw-w64-x86_64-p7zip
 
       - name: Configure & build
-        shell: ${{ matrix.shell }}
+        shell: bash
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build
 
       - name: Test (native suites + CLI)
-        shell: ${{ matrix.shell }}
+        shell: bash
         run: |
           ./tests/run_integration.sh >/dev/null
           ./tests/run_negative_tests.sh >/dev/null
@@ -81,7 +78,7 @@ jobs:
 
       - name: Package zip (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
+        shell: bash
         run: |
           rm -rf stage && cmake --install build --prefix "$PWD/stage"
           (cd stage && 7z a -tzip "../hmx-${GITHUB_REF_NAME#v}-${{ matrix.label }}.zip" bin/hmx.exe)
