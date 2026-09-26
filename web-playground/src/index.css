@@ -737,27 +737,31 @@ a:hover {
    hero stage stay dark in both modes so token colors stay fixed. */
 
 [data-theme="light"] {
-  --bg: #f6f1ef;
+  /* Warm paper canvas — kept in the same burgundy-red family as the
+     dark theme so the brand reads the same, just inverted. Text roles
+     are chosen for WCAG-ish contrast on light surfaces:
+       --text ≈ 13:1 · --muted ≈ 6.5:1 · --dim ≈ 4.5:1 (on --bg). */
+  --bg: #f4efec;
   --bg-soft: #fbf8f6;
   --panel: #ffffff;
-  --panel-2: #efe7e3;
-  --border: #ddd2cd;
-  --border-red: #dfb3b7;
-  --text: #261b18;
-  --muted: #62504b;
-  --dim: #8f7a74;
-  --deep: #f9e9ea;
-  --dusty: #b28388;
+  --panel-2: #f0e8e4;
+  --border: #ddd1cb;
+  --border-red: #e2aeb4;
+  --text: #241a17;
+  --muted: #5d4843;
+  --dim: #8a726c;
+  --deep: #f8e3e5;
+  --dusty: #a8747c;
   --crimson: #c41e3a;
   --scarlet: #e63946;
-  --coral: #ef5a63;
+  --coral: #d73748;          /* warm accent — readable gold to white */
   --blood: #9c1226;
-  --red: #c41e3a;
-  --red-hi: #b3223a;
+  --red: #c0253a;
+  --red-hi: #a0162c;         /* emphasis accents, dark enough for AA */
   --red-deep: #8b0000;
-  --red-glow: rgba(196, 30, 58, 0.3);
-  --red-tint: rgba(196, 30, 58, 0.1);
-  --ok: #1e8e4e;
+  --red-glow: rgba(196, 30, 58, 0.28);
+  --red-tint: rgba(196, 30, 58, 0.09);
+  --ok: #1d7f48;
 }
 
 [data-theme="light"] body {
@@ -774,6 +778,49 @@ a:hover {
 
 [data-theme="light"] .output-body {
   color: #3d2d29;
+}
+
+/* ── Dark-kept surfaces in light mode ───────────────────────
+   Code blocks, the hero terminal and its bars stay dark in both
+   themes, so text INSIDE them must keep light colors — plain token
+   text (var(--muted)/--dim/--ok) flips dark in light mode and would
+   vanish against the dark panes. Pin their light-mode colors here. */
+
+[data-theme="light"] .hero-card-file,
+[data-theme="light"] .sample-code-bar,
+[data-theme="light"] .code-label,
+[data-theme="light"] .code-action {
+  color: #b9a6a6;
+}
+[data-theme="light"] .hero-card-status {
+  color: #8ce69e;
+  border-color: rgba(140, 230, 158, 0.45);
+  background: rgba(140, 230, 158, 0.13);
+}
+[data-theme="light"] .hero-card-foot {
+  color: #a08a88;
+}
+[data-theme="light"] .hero-card-foot .prompt {
+  color: #ff9d8a;
+}
+[data-theme="light"] .code-strip {
+  background: rgba(26, 5, 5, 0.42);
+}
+[data-theme="light"] .code-action {
+  background: rgba(26, 5, 5, 0.55);
+}
+[data-theme="light"] .code-action:hover {
+  color: #ffffff;
+}
+[data-theme="light"] .code-run {
+  color: #ff9d8a;
+  border-color: rgba(230, 57, 70, 0.5);
+  background: rgba(196, 30, 58, 0.2);
+}
+/* docs intro paragraphs were hardcoded light-grey: invisible on a
+   light page — fall back to body-secondary */
+[data-theme="light"] .doc-intro {
+  color: var(--muted);
 }
 
 /* ── Theme toggle ────────────────────────────────────────── */
@@ -805,6 +852,44 @@ a:hover {
 }
 .theme-toggle:hover svg {
   transform: rotate(18deg);
+}
+
+/* ── Mouse follower (desktop only) ───────────────────────── */
+/* Rendered only when (pointer: fine) and (hover: hover); the
+   component itself returns null on touch/reduced-motion/test. */
+
+.cursor-trail {
+  position: fixed;
+  inset: 0;
+  z-index: 40; /* above content, below splash (500) / guide overlay */
+  pointer-events: none;
+}
+.cursor-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--coral);
+  box-shadow: 0 0 12px var(--red-glow);
+  will-change: transform, scale;
+  transition: scale 0.15s ease;
+}
+.cursor-halo {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  border: 1px solid rgba(230, 57, 70, 0.25);
+  background: radial-gradient(circle, rgba(230, 57, 70, 0.14), transparent 66%);
+  will-change: transform;
+}
+[data-theme="light"] .cursor-halo {
+  border-color: rgba(196, 30, 58, 0.18);
+  background: radial-gradient(circle, rgba(196, 30, 58, 0.09), transparent 66%);
 }
 
 /* ── Splash loader (fonts + boot) ────────────────────────── */

@@ -6,6 +6,7 @@ import { HomePage } from "./ui/Home";
 import { PlaygroundPage } from "./ui/PlaygroundPage";
 import { DocsPage } from "./ui/DocsPage";
 import { DarkReaderAlert } from "./ui/DarkReaderAlert";
+import { CursorTrail } from "./ui/CursorTrail";
 
 /** Reset the active scroller when the route changes (home scrolls, others are panes). */
 function ScrollToTop() {
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="*" element={<HomePage />} />
           </Routes>
           <DarkReaderAlert />
+          <CursorTrail />
         </div>
       </RunnerProvider>
     </HashRouter>
