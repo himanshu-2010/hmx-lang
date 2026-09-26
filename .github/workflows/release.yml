@@ -34,7 +34,10 @@ jobs:
 
       - name: Install deps (macOS)
         if: runner.os == 'macOS'
-        run: brew install cmake flex bison
+        run: |
+          brew install cmake flex bison
+          echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
 
       - name: Install deps (Windows / MSYS2 MinGW)
         if: runner.os == 'Windows'
@@ -46,7 +49,6 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-flex
             mingw-w64-x86_64-bison
-            mingw-w64-x86_64-p7zip
 
       - name: Configure & build
         shell: bash
@@ -78,10 +80,12 @@ jobs:
 
       - name: Package zip (Windows)
         if: runner.os == 'Windows'
-        shell: bash
+        shell: pwsh
         run: |
-          rm -rf stage && cmake --install build --prefix "$PWD/stage"
-          (cd stage && 7z a -tzip "../hmx-${GITHUB_REF_NAME#v}-${{ matrix.label }}.zip" bin/hmx.exe)
+          $ver = $env:GITHUB_REF_NAME
+          if ($ver -like 'v*') { $ver = $ver.Substring(1) }
+          cmake --install build --prefix "$PWD/stage"
+          Compress-Archive -Path stage/bin/hmx.exe -DestinationPath "hmx-$ver-${{ matrix.label }}.zip"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
