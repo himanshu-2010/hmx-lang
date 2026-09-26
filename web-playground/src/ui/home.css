@@ -880,6 +880,26 @@
   color: var(--text);
 }
 
+/* Light mode: the code surfaces below stay dark (like the token
+   palette), but base text and the token colors derived from theme
+   variables (--text / --coral) flip to dark ink and vanish against
+   the dark panes. Pin the light-on-dark values for these surfaces. */
+[data-theme="light"] .hero-card pre,
+[data-theme="light"] .feature-code,
+[data-theme="light"] .sample-code-body {
+  color: #f5f0f0;
+}
+[data-theme="light"] .hero-card pre .tok-id,
+[data-theme="light"] .feature-code .tok-id,
+[data-theme="light"] .sample-code-body .tok-id {
+  color: #f5f0f0;
+}
+[data-theme="light"] .hero-card pre .tok-kw,
+[data-theme="light"] .feature-code .tok-kw,
+[data-theme="light"] .sample-code-body .tok-kw {
+  color: #ff6b6b;
+}
+
 /* ── Light theme (home surfaces) ───────────────────────────
    Code panels + the hero terminal stay dark in both themes so
    the token colors hold; surfaces flip via these overrides.  */
