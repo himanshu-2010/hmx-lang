@@ -5,6 +5,7 @@ import { RunnerProvider } from "./ui/runner-context";
 import { HomePage } from "./ui/Home";
 import { PlaygroundPage } from "./ui/PlaygroundPage";
 import { DocsPage } from "./ui/DocsPage";
+import { DarkReaderAlert } from "./ui/DarkReaderAlert";
 
 /** Reset the active scroller when the route changes (home scrolls, others are panes). */
 function ScrollToTop() {
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="/docs" element={<DocsPage />} />
             <Route path="*" element={<HomePage />} />
           </Routes>
+          <DarkReaderAlert />
         </div>
       </RunnerProvider>
     </HashRouter>

@@ -5,7 +5,7 @@
 // in parity.test.ts covers compiler correctness; this covers the UI shell.
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 
 // jsdom + React 19: opt into act(...) semantics for this environment.
@@ -64,20 +64,30 @@ describe("app routes", () => {
   });
 
   it("runs the default program from the playground", async () => {
-    window.location.hash = "#/playground";
-    await renderApp();
-    const runBtn = Array.from(rootEl.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Run"),
-    );
-    expect(runBtn).toBeDefined();
-    await act(async () => {
-      runBtn!.click();
-    });
-    const t = text();
-    // stdio flows through: stdout + exit code are rendered
-    expect(t).toContain("HMX in the browser");
-    expect(t).toContain("sum: 20");
-    expect(t).toContain("exit: 0");
+    vi.useFakeTimers();
+    try {
+      window.location.hash = "#/playground";
+      await renderApp();
+      const runBtn = Array.from(rootEl.querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Run"),
+      );
+      expect(runBtn).toBeDefined();
+      await act(async () => {
+        runBtn!.click();
+      });
+      // The Run action is debounced (250ms) to rate-limit recompiles — flush
+      // the timer inside act so the reducer fires before we assert.
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      const t = text();
+      // stdio flows through: stdout + exit code are rendered
+      expect(t).toContain("HMX in the browser");
+      expect(t).toContain("sum: 20");
+      expect(t).toContain("exit: 0");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renders the docs at #/docs", async () => {

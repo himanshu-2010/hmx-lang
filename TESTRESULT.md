@@ -609,3 +609,34 @@ contract stayed untouched (361 vitest green).
   real in-browser pipeline (`HMX in the browser` / `sum: 20` / `exit: 0`).
 - **Status: 366 vitest green (361 parity + 5 app smoke); `tsc -b`, `vite build`
   and `oxlint` (0 errors) all green.**
+
+## Web Playground — Production UX pass (M7)
+
+**Date:** 2026-09-26. Front-end production hardening: typography roles, a boot
+splash, light/dark themes with system-first defaults, Dark Reader detection, and
+rate-limited interactions. Compiler parity untouched (366 vitest green).
+
+- **Fonts:** Waterlily (handwritten, self-hosted `public/fonts/waterlily.ttf`,
+  free-for-personal-use) for the `HMX` wordmark/hero accent; Outfit
+  (headings, `--font-display`); Inter (body/UI, `--font-body`); JetBrains Mono
+  (code, `--font-code`). Google Fonts preconnect + stylesheet in `index.html`;
+  `@font-face` for Waterlily. All mapped once as
+  `--font-body/display/code/script` tokens.
+- **Boot splash:** brand frame (logo + script `HMX` + progress bar) held until
+  `document.fonts.ready` (min 700ms, hard 2.8s cap), then fades out; skipped in
+  vitest. Confirmed hidden (`.splash-hidden`) in a headless-Chrome DOM dump.
+- **Theme:** system `prefers-color-scheme` wins on first visit, then
+  `localStorage hmx-theme`; applied to `<html data-theme=...>` before first
+  paint. Light palette overrides in `index.css`/`home.css`/`guide.css`; code
+  panels + hero terminal stay dark in both modes. `data-theme="light"` observed
+  on a light-preferring headless Chrome.
+- **Dark Reader:** `darkReaderActive()` detects `data-darkreader-scheme` /
+  `darkreader` classes / injected `style#darkreader*`; themed alert asks to
+  disable per-site, once per session.
+- **Rate limiting:** `useDebouncedCallback(250ms)` wraps the Run action
+  (button + Ctrl/⌘+Enter) and all load-example actions (home samples, docs
+  examples); the smoke test flushes the timer via fake timers.
+- **Status: 366 vitest green; `tsc -b`, `vite build`, `oxlint` (0 errors, 10
+  benign warnings) all green.**
+
+## Native-only regression report (reference)

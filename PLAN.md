@@ -142,3 +142,9 @@ prior fixtures, and lands one complete feature.
   desktop (`matchMedia` pointer:fine + ≥1024px, localStorage-gated, replayable
   from the playground toolbar). Details + verification notes in
   PROGRESS.md / TESTRESULT.md.
+- **M7 production UX pass:** typography roles (Waterlily script self-hosted;
+  Outfit headings; Inter body/UI; JetBrains Mono code), boot splash until
+  webfonts are ready, light/dark theme toggle (system default on first visit,
+  persisted to localStorage), Dark Reader detection + themed disable prompt,
+  and 250ms debounce on every compile-carrying button. Details + verification
+  in PROGRESS.md / TESTRESULT.md.

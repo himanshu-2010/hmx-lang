@@ -880,6 +880,85 @@
   color: var(--text);
 }
 
+/* ── Light theme (home surfaces) ───────────────────────────
+   Code panels + the hero terminal stay dark in both themes so
+   the token colors hold; surfaces flip via these overrides.  */
+
+.script-word {
+  font-family: var(--font-script);
+  color: var(--coral);
+  font-size: 1.22em;
+  letter-spacing: 0.02em;
+}
+
+/* ── Typography roles (home) ───────────────────────────────
+   Big numerals → display face; terminal chromes → code face. */
+
+.stat-value,
+.feature-num {
+  font-family: var(--font-display);
+}
+.hero-card-file,
+.hero-card-status,
+.pipeline-label,
+.sample-code-bar,
+.sample-output-bar {
+  font-family: var(--font-code);
+}
+
+[data-theme="light"] .hero-eyebrow {
+  background: rgba(255, 255, 255, 0.8);
+}
+[data-theme="light"] .hero-vignette {
+  background: radial-gradient(
+    ellipse 120% 90% at 50% 0%,
+    transparent 50%,
+    rgba(246, 241, 239, 0.92)
+  );
+}
+[data-theme="light"] .hero-grid {
+  background-image:
+    linear-gradient(rgba(196, 30, 58, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(196, 30, 58, 0.14) 1px, transparent 1px);
+}
+[data-theme="light"] .blob {
+  opacity: 0.5;
+}
+[data-theme="light"] .stats {
+  background: rgba(196, 30, 58, 0.05);
+}
+[data-theme="light"] .marquee {
+  background: linear-gradient(180deg, rgba(196, 30, 58, 0.06), rgba(246, 241, 239, 0.5));
+}
+[data-theme="light"] .feature-icon {
+  background: rgba(196, 30, 58, 0.12);
+}
+[data-theme="light"] .pipeline-flow .node {
+  background: rgba(196, 30, 58, 0.1);
+}
+[data-theme="light"] .site-footer {
+  background: linear-gradient(180deg, var(--bg-soft), #f8e9ea);
+}
+[data-theme="light"] .cta-banner {
+  background:
+    radial-gradient(520px 260px at 22% 0%, rgba(196, 30, 58, 0.35), transparent 70%),
+    radial-gradient(420px 240px at 85% 110%, rgba(139, 0, 0, 0.5), transparent 70%),
+    linear-gradient(120deg, #2a0508, #170607 55%, #2b070a);
+}
+[data-theme="light"] .cta-banner h2 {
+  color: #f5f0f0;
+}
+[data-theme="light"] .cta-banner p {
+  color: #d9b6b6;
+}
+[data-theme="light"] .cta-banner .btn-ghost {
+  color: #f0e6e4;
+  border-color: #4a2c2c;
+}
+[data-theme="light"] .cta-banner .btn-ghost:hover {
+  border-color: var(--coral);
+}
+
 /* ── Responsive ───────────────────────────────────────────── */
 
 @media (max-width: 980px) {

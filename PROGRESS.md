@@ -763,6 +763,36 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   parity gate unchanged at 361 vitest green. Browser API usage hardened
   (`matchMedia` / `IntersectionObserver` guards).
 
+### Milestone — Production UX pass: fonts, light/dark theme, splash, rate-limited run — DONE
+- **Typography roles** (per the design brief): `Waterlily` (handwritten,
+  self-hosted `web-playground/public/fonts/waterlily.ttf`, free-for-personal-use
+  license noted in `fonts/README.md`) for the `HMX` wordmark / hero accent;
+  `Outfit` 500–700 for headings; `Inter` 300–600 for body/UI; `JetBrains Mono`
+  for code. Loaded via preconnect + Google Fonts CSS (Inter/Outfit/Mono) and an
+  `@font-face` for Waterlily; exposed as `--font-body/display/code/script`
+  tokens so roles map once and everything else inherits.
+- **Boot splash:** `SplashLoader` shows the brand frame (logo, script `HMX`,
+  progress bar) until `document.fonts.ready` resolves — minimum 700ms, hard 2.8s
+  cap so the site never hangs on a blocked font — then fades out. Skipped under
+  vitest (`import.meta.env.MODE === "test"`).
+- **Light/dark theme toggle:** `ThemeToggle` in the top bar (sun/moon). First
+  visit resolves the system `prefers-color-scheme`; afterwards the choice is
+  persisted to `localStorage` (`hmx-theme`) and applied to
+  `<html data-theme="light|dark">` before first paint (no flash). Full light
+  palette overrides in `index.css`/`home.css`/`guide.css`; code panels and the
+  hero terminal intentionally stay dark in both modes so token colors hold.
+- **Dark Reader detection:** `darkReaderActive()` sniffs `data-darkreader-scheme`
+  / `darkreader` classes / injected `style#darkreader*`; if found, a themed
+  `DarkReaderAlert` card asks the user to disable it for this site (once per
+  session via `sessionStorage`, delayed re-checks after first paint).
+- **Rate-filtered interactions:** `useDebouncedCallback(cb, 250)` wraps every
+  compile-carrying action — the playground Run (button + Ctrl/⌘+Enter), the
+  home samples' "open in playground", and the docs' run-example buttons — so
+  double-clicks and key-spam collapse into one compile. Smoke test updated to
+  flush the debounce timer with fake timers.
+- **Hygiene:** `tsc -b` + `vite build` + `oxlint` (0 errors, 10 benign
+  warnings) + vitest **366/366** green.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

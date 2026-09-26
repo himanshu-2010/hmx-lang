@@ -147,3 +147,24 @@
   color: var(--text);
   border-color: var(--border-red);
 }
+
+/* ── Light theme (guide card stays a dark overlay chip) ──── */
+
+[data-theme="light"] .guide-card {
+  background: linear-gradient(180deg, #1a1312, #0f0c0c);
+}
+[data-theme="light"] .guide-card h4 {
+  color: #f5f0f0;
+}
+[data-theme="light"] .guide-card p {
+  color: #b3a6a6;
+}
+[data-theme="light"] .guide-card .guide-progress {
+  color: #8f7f7f;
+}
+[data-theme="light"] .guide-btn-skip {
+  color: #b3a6a6;
+}
+[data-theme="light"] .guide-btn-skip:hover {
+  color: #ffffff;
+}

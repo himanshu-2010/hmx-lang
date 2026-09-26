@@ -3,6 +3,7 @@ import { Editor } from "./Editor";
 import { Output } from "./Output";
 import { ErrorPanel } from "./ErrorPanel";
 import { useRunner } from "./runner-context";
+import { useDebouncedCallback } from "./useDebouncedCallback";
 import {
   PlaygroundGuide,
   isDesktopTour,
@@ -18,16 +19,20 @@ export function PlaygroundPage() {
     if (isDesktopTour() && !hasSeenGuide()) setGuideOpen(true);
   }, []);
 
+  // Run is the only heavy action — debounce it so double-clicks and Ctrl/⌘+Enter
+  // spam collapse into a single compile instead of stampeding the pipeline.
+  const run = useDebouncedCallback(() => dispatch({ type: "run" }), 250);
+
   return (
     <main className="workspace">
       <Editor
         source={state.source}
         onChange={(source) => dispatch({ type: "setSource", source })}
-        onRun={() => dispatch({ type: "run" })}
+        onRun={run}
       />
       <div className="results">
         <div className="results-toolbar">
-          <button className="run-button" onClick={() => dispatch({ type: "run" })}>
+          <button className="run-button" onClick={run}>
             Run ▸
           </button>
           <button

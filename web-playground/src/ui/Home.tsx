@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useRunner } from "./runner-context";
+import { useDebouncedCallback } from "./useDebouncedCallback";
 import { Highlight } from "./Highlight";
 import "./home.css";
 
@@ -221,10 +222,11 @@ export function HomePage() {
   const navigate = useNavigate();
   const [activeSample, setActiveSample] = useState(0);
 
-  const openInPlayground = (code: string) => {
+  // loading an example compiles it — debounce rapid double-clicks.
+  const openInPlayground = useDebouncedCallback((code: string) => {
     dispatch({ type: "loadExample", source: code });
     navigate("/playground");
-  };
+  }, 250);
 
   return (
     <div className="home-scroll">
@@ -240,7 +242,9 @@ export function HomePage() {
 
         <div className="hero-inner">
           <Reveal>
-            <span className="hero-eyebrow">HMX — compiler · web edition</span>
+            <span className="hero-eyebrow">
+              <span className="script-word">HMX</span> — compiler · web edition
+            </span>
           </Reveal>
           <Reveal delay={80}>
             <h1>
