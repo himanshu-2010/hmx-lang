@@ -1,0 +1,20 @@
+fn main() {
+    let a: [int] = [1, 2, 3]
+    let b = a
+    b[0] = 99
+    print(a[0], b[0])
+    let c = slice(a, 1, 3)
+    c[0] = 42
+    print(a[1], c[0], length(c))
+    let t: [text] = ["aa", "bb", "cc"]
+    let u = t
+    u[1] = "BB"
+    print(t[1], u[1])
+    let w = slice(t, 0, 2)
+    w[1] = "XX"
+    print(t[1], w[1])
+    let d: [int] = [7, 8, 9]
+    let e = slice(d, 1, 3)
+    push(e, 10)
+    print(length(e), e[0], e[2], d[1])
+}

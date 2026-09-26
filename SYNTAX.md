@@ -1588,6 +1588,12 @@ print(total + 5)     // prints 15
 returns the half-open range `[start, end)`. Both indexes must be `int`; invalid
 negative, reversed, or out-of-range indexes terminate the generated program.
 
+A `substring` result is a **view** into the source's storage (O(1), no copy):
+the source stays alive as long as the view does. Views are consumed correctly
+by all text built-ins (`length`, `+` concat, `==`/`!=`, `parse_int`,
+`parse_decimal`, `split`, `foreach`) and may be compared, sorted and searched
+inside `[text]` arrays.
+
 ```hmx
 let message = "hello world"
 print(length(message))
@@ -1657,8 +1663,11 @@ scope (`push`, `pop`, and `sort` reject immutable arrays).
   to `int`, `decimal`, `byte`, `char`, or `text` (text sorts lexicographically).
   It returns nothing.
 - `slice(array, start, end)` returns a new array holding the half-open range
-  `[start, end)` of `array`. Duplicate growth: the copy is independent of the
-  source. Out-of-range or reversed bounds terminate the program at runtime.
+  `[start, end)` of `array`. The result is a **view** sharing the source's data
+  buffer; the source stays alive while the view does. Mutating a view (element
+  assignment, `push`, `pop`, `sort`) copies the affected range first
+  (copy-on-write), so the view and source never alias after a mutation.
+  Out-of-range or reversed bounds terminate the program at runtime.
 - `concat(array_a, array_b)` returns a new array holding the elements of
   `array_a` followed by those of `array_b`. Both arrays must share an element
   type; nested-array elements are shared by reference.
@@ -1838,3 +1847,48 @@ are **not** part of the current core spec or compiler. None of them are usable y
 
 > **Note:** as features are confirmed and added, they will be moved from this roadmap
 > into their proper section above and, where relevant, implemented in the compiler.
+
+---
+
+## 16. Memory Model **[Implemented]**
+
+`text`, arrays, tuples containing heap values, and closure environments are
+heap-allocated and **reference-counted**. There is no garbage collector and no
+manual `free`: memory is reclaimed deterministically when the last reference
+to a value is dropped. The web playground implements the same semantics
+(GC-based), so observable behavior is identical on both backends.
+
+### 16.1 Sharing and Aliasing
+
+- A variable **owns** the value it holds. Copying a heap value into a new
+  variable — `let b = a` or `b = a` — *shares* the same object and increments
+  its reference count. Assignments read through the shared value, so mutating
+  `b[0]` is visible through `a` (and vice versa), matching the web backend.
+  Text values are immutable and always behave as expected under sharing.
+- Function **parameters are borrowed**: the callee never releases a
+  parameter's value and, if it returns that value, takes a reference first.
+  Reassigning a parameter inside the callee affects only the callee's local
+  binding — the caller's value is untouched.
+- If a function needs an independent copy for itself, it can build one
+  (`slice`/`substring` for a fresh range, `+` for a fresh text value).
+
+### 16.2 Views and Copy-on-Write
+
+- `substring(text, ...)` and `slice(array, ...)` return **views** — no data is
+  copied, and the source stays alive while the view exists.
+- Arrays: mutating a view (`arr[i] = ...`, `push`, `pop`, `sort`) first
+  **detaches** it (copy-on-write): the view gets a private copy of its range
+  and the two sides no longer share. Unchanged views and sources stay shared.
+- Text views are immutable, so no copy-on-write is needed for them.
+
+### 16.3 Reference-Counting Guarantees
+
+- Dropping the last reference to a `text`/array/closure frees its backing
+  storage. Elements of an array are released when the last struct referencing
+  their buffer is dropped; `push` takes a new reference to heap elements so a
+  pushed value outlives the `push` call.
+- Reference-count errors are prevented at the source (the compiler emits
+  `retain`/`release` pairs around every temporary) and gated in CI: the
+  generated C runs under AddressSanitizer + LeakSanitizer (`HMX_ASAN=1`) and
+  under Valgrind (`tests/run_valgrind_tests.sh`), which reject any leak,
+  double-free, or use-after-free across all fixtures.

@@ -408,7 +408,15 @@ int main(int argc, char* argv[]) {
     c_file << c_source;
     c_file.close();
 
+    // HMX_ASAN=1 builds the generated C with AddressSanitizer (which also
+    // enables LeakSanitizer on Linux/macOS). The CI workflow uses this to
+    // gate refcount errors and leaks in the reference-counted runtime.
     std::string cc_cmd = cc + " -O2 -o " + exe_path + " " + c_path + " 2>&1";
+    const char* asan_env = getenv("HMX_ASAN");
+    if (asan_env && asan_env[0] != '\0' && std::strcmp(asan_env, "0") != 0) {
+        cc_cmd = cc + " -O1 -g -fsanitize=address -fno-omit-frame-pointer -o " +
+                 exe_path + " " + c_path + " 2>&1";
+    }
     int cc_result = system(cc_cmd.c_str());
 
     if (cc_result != 0) {

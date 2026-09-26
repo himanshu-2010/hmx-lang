@@ -1,0 +1,78 @@
+name: ci
+
+# Continuous integration on every push and pull request. Three jobs:
+#   1. build-test   — native compiler + all four suite runners (O2).
+#   2. asan         — every integration/stress fixture built with
+#                     AddressSanitizer + LeakSanitizer (HMX_ASAN=1 hook in
+#                     main.cpp). Catches refcount errors, use-after-free and
+#                     leaks in the M15 reference-counted runtime.
+#   3. valgrind     — valgrind directly on each generated binary (never on the
+#                     compiler) via tests/run_valgrind_tests.sh; rejects any
+#                     definite/indirect/possible leak or memory error.
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: build + native suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake flex bison ninja-build
+
+      - name: Configure & build
+        run: cmake -S . -B build -G Ninja && cmake --build build
+
+      - name: Integration suite
+        run: ./tests/run_integration.sh
+
+      - name: Stress & output suite
+        run: ./tests/run_stress_tests.sh
+
+      - name: Negative tests
+        run: ./tests/run_negative_tests.sh
+
+      - name: CLI tests
+        run: ./tests/run_cli_tests.sh
+
+  asan:
+    name: ASan + LeakSanitizer
+    runs-on: ubuntu-latest
+    env:
+      HMX_ASAN: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake flex bison ninja-build
+
+      - name: Configure & build
+        run: cmake -S . -B build -G Ninja && cmake --build build
+
+      - name: Integration suite (ASan)
+        run: ./tests/run_integration.sh
+
+      - name: Stress & output suite (ASan)
+        run: ./tests/run_stress_tests.sh
+
+  valgrind:
+    name: valgrind ownership matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake flex bison ninja-build valgrind
+
+      - name: Configure & build
+        run: cmake -S . -B build -G Ninja && cmake --build build
+
+      - name: Valgrind ownership checks
+        run: ./tests/run_valgrind_tests.sh --fixtures

@@ -1,0 +1,15 @@
+fn main() {
+    let s = "hello world"
+    let v = substring(s, 6, 11)
+    print(v)
+    print(v == "world")
+    print(substring(s, 0, 5) == "hello")
+    print(substring(s, 0, 5) == "world")
+    print(parse_int(substring("a42b", 1, 3)))
+    let parts = split(substring("x,y,z", 0, 5), ",")
+    print(length(parts), parts[0], parts[1])
+    foreach (ch in substring(s, 0, 5)) { print(ch) }
+    let word = "hello"
+    let v2 = substring(word, 0, 5)
+    print(v2 == word)
+}

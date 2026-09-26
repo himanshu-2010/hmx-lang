@@ -2,11 +2,12 @@
 
 > Log of the v1.0 roadmap, decided 2026-09-26 from a full language/complier audit.
 > Every claim in the audit was verified against the source AND reproduced by
-> execution before planning (see §1). Batches B–F are the log; Batch A is in
-> progress. Standing rules: spec-first in SYNTAX.md (`[Spec]` → `[Implemented]`),
-> fixture/negative/stress/CLI tests per feature, web↔native parity 1:1
-> (regenerate `tests/data/*.json` from native after runtime changes), release
-> via the existing `v*` tag pipeline, PROGRESS/TESTRESULT updated per milestone.
+> execution before planning (see §1). Batches B–F are the log; Batch A (M11–M14)
+> and Batch B (M15) are done. Standing rules: spec-first in SYNTAX.md
+> (`[Spec]` → `[Implemented]`), fixture/negative/stress/CLI tests per feature,
+> web↔native parity 1:1 (regenerate `tests/data/*.json` from native after
+> runtime changes), release via the existing `v*` tag pipeline,
+> PROGRESS/TESTRESULT updated per milestone.
 
 ## 1. Audit findings (all reproduced)
 
@@ -72,8 +73,24 @@
 
 ## 4. Batch B — Memory (v0.10–0.11)
 
-- **M15 Reference-counted allocator**: strings/arrays/closure-envs tracked;
-  slice/concat = shared buffer + refcount; ASan CI job; valgrind-clean stress.
+- **M15 Reference-counted allocator** (#3) — **DONE 2026-09-26**: strings,
+  arrays and closure environments are reference-counted. Preamble runtime
+  rewritten (`sd_str`/`sd_abuf`/`sd_array`/`sd_closure` with retain/release),
+  `sd_str_view`/`sd_array_slice` return shared views pinned by refcount,
+  `sd_detach` gives copy-on-write forks on array mutation, `substring`/
+  `slice`/`concat`/`split` all length-aware (views are not NUL-terminated:
+  `sd_str_equals`/`sd_str_cmp`, `%.*s` printing, NUL-safe parse copies,
+  memcmp-bounded split scanning). Ownership rules: locals own, params are
+  borrowed (callee never releases them; a callee that returns a borrowed value
+  retains) — `let b = a` aliases by sharing the struct (mutations visible,
+  like the web), views/slices retain their range elements so releasing the
+  source never frees live view data, detached buffers move refs without
+  double-counting, `push` retains heap elements, dropped results of
+  statement-builtins (`push`/`sort`) release their internal retain. Gate:
+  `HMX_ASAN=1` hook in `main.cpp` + `.github/workflows/ci.yml` jobs
+  (build-test / ASan+LeakSanitizer / valgrind via
+  `tests/run_valgrind_tests.sh` ownership matrix + all fixtures). Native
+  424/424 + valgrind matrix 66/66 + web 408/408 green (parity verbatim).
 
 ## 5. Batch C — Abstractions
 
@@ -109,4 +126,6 @@
 Scorecard cells at 1/10 (memory) and 2.5/10 (stdlib/tooling) land at ~8:
 leak-free + corruption-free by default, ASan-clean CI, catchable runtime
 errors, structs/generics/Option, file/OS/math/collections stdlib, REPL +
-formatter + LSP, and a real shared IR backend.
+formatter + LSP, and a real shared IR backend. The memory plank is delivered
+by M15 (Batch B): the runtime is refcounted, cleans under ASan/LeakSanitizer,
+and is valgrind-gated in CI.

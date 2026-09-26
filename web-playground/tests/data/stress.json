@@ -1869,6 +1869,48 @@
         "stderr": "",
         "exit": 0
       }
+    },
+    {
+      "name": "m15_refcount_lifecycle",
+      "kind": "output",
+      "source": "fn main() {\n        let acc: [text] = []\n        let ok = 0\n        for (let i = 0; i < 100; i++) {\n            let s = \"n\" + tostr(i)\n            push(acc, s)\n            let tmp: [int] = [i, i + 1]\n            push(tmp, i + 2)\n            if (length(tmp) == 3) { pop(tmp) }\n            let v = substring(s, 0, 1)\n            if (v == \"n\") { ok = ok + 1 }\n            let alias = tmp\n            alias[0] = i * 2\n            if (alias[0] == i * 2) { ok = ok + 1 }\n        }\n        print(ok)\n        print(length(acc))\n        print(acc[0], acc[99])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "200\n100\nn0 n99\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "m15_view_consumers",
+      "kind": "output",
+      "source": "fn main() {\n        let s = \"banana apple cherry\"\n        let views: [text] = [substring(s, 0, 6), substring(s, 7, 12), substring(s, 13, 19)]\n        sort(views)\n        print(views[0], views[1], views[2])\n        print(index_of(views, \"cherry\"))\n        print(contains(views, \"apple\"))\n        let a = substring(\"hello world\", 0, 5)\n        let b = substring(\"hello\", 0, 5)\n        print(a == b)\n        print(substring(\"ab\", 0, 1) + substring(\"cd\", 1, 2))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "apple banana cherry\n2\n1\n1\nad\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "m15_param_borrow",
+      "kind": "output",
+      "source": "fn decorate(t: text) -> text {\n        let saved = t\n        t = t + \"!\"\n        return saved\n    }\n    fn main() {\n        let m = \"hey\"\n        let r = decorate(m)\n        print(r, m)\n        let arr: [int] = [1, 2]\n        let alias = arr\n        alias[0] = 5\n        print(arr[0])\n        let s = slice(arr, 0, 1)\n        s[0] = 50\n        print(arr[0], s[0])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "hey hey\n5\n5 50\n",
+        "stderr": "",
+        "exit": 0
+      }
     }
   ]
 }

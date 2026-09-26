@@ -221,3 +221,25 @@ prior fixtures, and lands one complete feature.
   `mod_state{,_dep,_entry_to_module}` + stress
   `mod_top_state{,_init_order,_dep}` + negative
   `module_top_state_{type_err,dup,forward_ref}`.
+- **M15 reference-counted allocator (audit #3):** the generated runtime now
+  tracks `text`, array and closure-environment heap values by reference count
+  instead of leaking everything. Ownership model: locals own, params borrow
+  (callee never releases a param; a callee returning a borrowed value retains
+  it — fixes `let y = f(g())`), the caller releases fresh argument temps after
+  calls, `return` transfers only bare-identifier owned locals while all other
+  heap returns retain (tuples always retain), and statement-only `push`/`sort`
+  results release their internal retain. `let b = a` alias-shares the struct
+  (mutations visible — web parity), `slice`/`substring` return refcount-pinned
+  **views**, and `sd_detach` copy-on-write forks on array mutation (view
+  structs retain their range elements so releasing the source never frees live
+  view data; detached buffers move refs without double-counting; `sd_push`
+  retains heap elements on the new slot). Views are not NUL-terminated, so all
+  consumers became length-aware (`sd_str_equals`/`sd_str_cmp` via len+memcmp,
+  `%.*s` printing, NUL-copy parsing, memcmp-bounded split scanning). Gates:
+  `HMX_ASAN=1` hook in `main.cpp` + `.github/workflows/ci.yml`
+  (build-test / ASan / valgrind jobs) + `tests/run_valgrind_tests.sh`
+  (valgrind on each generated binary: ownership matrix + all fixtures).
+  Native 424/424 + valgrind 66/66 + web 408/408 green; fixtures
+  `text_views.hmx`, `cow_and_alias.hmx` + stress `m15_refcount_lifecycle`,
+  `m15_view_consumers`, `m15_param_borrow` + negatives
+  `runtime_{split_empty_sep,slice_oob,parse_int_invalid,parse_decimal_invalid}`.

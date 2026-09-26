@@ -1702,6 +1702,34 @@ test_error "byte_mod_decimal" \
     }' \
     "operator '%' not defined for type byte"
 
+# M15 runtime error paths (reference-counted runtime diagnostics).
+test_error "runtime_split_empty_sep" \
+    'fn main() {
+        let p = split("a,b", "")
+        print(length(p))
+    }' \
+    "split separator must not be empty"
+
+test_error "runtime_slice_oob" \
+    'fn main() {
+        let a: [int] = [1, 2]
+        let b = slice(a, 1, 5)
+        print(length(b))
+    }' \
+    "slice out of bounds"
+
+test_error "runtime_parse_int_invalid" \
+    'fn main() {
+        print(parse_int("abc"))
+    }' \
+    "parse_int: invalid int 'abc'"
+
+test_error "runtime_parse_decimal_invalid" \
+    'fn main() {
+        print(parse_decimal("abc"))
+    }' \
+    "parse_decimal: invalid decimal 'abc'"
+
 echo "Negative Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"
 [ $FAIL -eq 0 ]

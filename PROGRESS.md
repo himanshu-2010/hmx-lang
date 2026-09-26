@@ -1011,6 +1011,57 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   + vitest **399/399** (394 parity + 5 app); `gen-data.mts` parity 0 failures
   (132/199/60).
 
+### Milestone — Reference-counted allocator (M15) — DONE
+- **Audit #3 fixed (no deallocation anywhere):** the generated C runtime now
+  reference-counts every heap value — `sd_str`, `sd_array` (via `sd_abuf`
+  buffers), tuple members and `sd_closure` environments — with paired
+  `retain`/`release` helpers (`sd_ret_*`/`sd_rel_*` per type slot) emitted by
+  codegen around every temporary, binding and call.
+- **Ownership rules (locked in SYNTAX.md §16):** locals own; params are
+  borrowed (callee never releases; a callee that returns a borrowed value
+  retains — fixes `let y = f(g())`); the caller releases fresh argument
+  temporaries after each call; `return` transfers only bare-identifier owned
+  locals, all other heap returns retain (tuples always retain); scope exits
+  and returns release owned locals; statement-only `push`/`sort` release the
+  retained argument result they hold (ExprStmt special-cases them).
+- **Sharing + views:** `let b = a` / `b = a` alias-share the struct pointer
+  (mutations visible — web parity); `substring`/`slice` return O(1) **views**
+  pinned by refcount; `sd_array_slice` retains its range's elements; `pop`
+  transfers the popped element; `sd_push` retains heap elements on the new slot
+  and the push emission releases its held temp. `sd_detach` copy-on-write
+  forks a private copy of the *view's* range (`a->data`, view-offset aware)
+  and **moves** element refs rather than double-counting them; the grow path in
+  `sd_push` copies from `a->data` too, so pushing onto a view is safe even
+  after the source died.
+- **NUL-safety (views are not NUL-terminated):** `sd_str_equals`/`sd_str_cmp`
+  compare by length + memcmp (sort/find/index_of/`==`/`!=` lowered to them),
+  printing uses `%.*s` + `(int)len`, `sd_parse_int`/`sd_parse_decimal` parse
+  NUL-copies and report `%.*s` errors, and `sd_split` bounds every memcmp scan
+  with `hay_end = data + len`; `sd_concat` copies `b->len` bytes and NUL-terminates.
+- **Gates added:** `HMX_ASAN=1` environment hook in `main.cpp` appends
+  `-O1 -g -fsanitize=address -fno-omit-frame-pointer` to the gcc command
+  (ASan aborts on UAF/overflow; LSan exits 23 on leaks — the stress runner's
+  `2>&1` comparison only diverges when a real error prints). New
+  `.github/workflows/ci.yml` runs **build-test** (4 native suites),
+  **asan** (integration + stress under `HMX_ASAN=1`), and **valgrind**
+  (new `tests/run_valgrind_tests.sh`: `hmx build` then valgrind **directly on
+  the generated binary** — never the compiler — with
+  `--quiet --error-exitcode=99 --leak-check=full
+  --errors-for-leak-kinds=definite,indirect,possible`).
+- **Tests:** fixtures `text_views.hmx` (view consumers: `==`/`parse`/`split`/
+  `foreach`) and `cow_and_alias.hmx` (alias visibility + COW isolation + push
+  on a view); stress `m15_refcount_lifecycle` (100-iteration create/discard
+  churn — leak gate under ASan), `m15_view_consumers` (sort/index_of/contains/
+  `==`/concat over shared views), `m15_param_borrow` (param reassignment leaves
+  the caller's value intact + alias/COW); negatives `runtime_split_empty_sep`,
+  `runtime_slice_oob`, `runtime_parse_int_invalid`,
+  `runtime_parse_decimal_invalid` (byte-identical stderr on web).
+- **Hygiene:** native **424/424** (62 integration / 203 negative / 135 stress /
+  24 CLI), ASan-clean integration + stress + negative; valgrind matrix
+  **66/66**; web `tsc -b` + `vite build` + oxlint (0 errors, 11 benign
+  warnings) + vitest **408/408** (403 parity + 5 app); `gen-data.mts` parity
+  0 failures (135/203/62).
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

@@ -2821,6 +2821,62 @@
         "stderr": "Error [line 3]: operator '%' not defined for type byte\n",
         "exit": 1
       }
+    },
+    {
+      "name": "runtime_split_empty_sep",
+      "kind": "negative",
+      "source": "fn main() {\n        let p = split(\"a,b\", \"\")\n        print(length(p))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "split separator must not be empty",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: split separator must not be empty\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "runtime_slice_oob",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [int] = [1, 2]\n        let b = slice(a, 1, 5)\n        print(length(b))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "slice out of bounds",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: slice out of bounds (1, 5)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "runtime_parse_int_invalid",
+      "kind": "negative",
+      "source": "fn main() {\n        print(parse_int(\"abc\"))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "parse_int: invalid int 'abc'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: parse_int: invalid int 'abc'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "runtime_parse_decimal_invalid",
+      "kind": "negative",
+      "source": "fn main() {\n        print(parse_decimal(\"abc\"))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "parse_decimal: invalid decimal 'abc'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: parse_decimal: invalid decimal 'abc'\n",
+        "exit": 1
+      }
     }
   ]
 }

@@ -1811,6 +1811,67 @@ test_output "array_push_heap_regression" \
     }' \
     "$(printf '1000\n1998\n0')"
 
+# M15 reference-counting: heavy create/discard traffic. Runs clean under the
+# ASan/LeakSanitizer CI job; a leaked refcount here fails the stress gate.
+test_output "m15_refcount_lifecycle" \
+    'fn main() {
+        let acc: [text] = []
+        let ok = 0
+        for (let i = 0; i < 100; i++) {
+            let s = "n" + tostr(i)
+            push(acc, s)
+            let tmp: [int] = [i, i + 1]
+            push(tmp, i + 2)
+            if (length(tmp) == 3) { pop(tmp) }
+            let v = substring(s, 0, 1)
+            if (v == "n") { ok = ok + 1 }
+            let alias = tmp
+            alias[0] = i * 2
+            if (alias[0] == i * 2) { ok = ok + 1 }
+        }
+        print(ok)
+        print(length(acc))
+        print(acc[0], acc[99])
+    }' \
+    "$(printf '200\n100\nn0 n99')"
+
+# M15 text views: sort/find/equality/concat over shared substring views.
+test_output "m15_view_consumers" \
+    'fn main() {
+        let s = "banana apple cherry"
+        let views: [text] = [substring(s, 0, 6), substring(s, 7, 12), substring(s, 13, 19)]
+        sort(views)
+        print(views[0], views[1], views[2])
+        print(index_of(views, "cherry"))
+        print(contains(views, "apple"))
+        let a = substring("hello world", 0, 5)
+        let b = substring("hello", 0, 5)
+        print(a == b)
+        print(substring("ab", 0, 1) + substring("cd", 1, 2))
+    }' \
+    "$(printf 'apple banana cherry\n2\n1\n1\nad')"
+
+# M15 borrowed params: callee reassignment must not disturb the caller's value.
+test_output "m15_param_borrow" \
+    'fn decorate(t: text) -> text {
+        let saved = t
+        t = t + "!"
+        return saved
+    }
+    fn main() {
+        let m = "hey"
+        let r = decorate(m)
+        print(r, m)
+        let arr: [int] = [1, 2]
+        let alias = arr
+        alias[0] = 5
+        print(arr[0])
+        let s = slice(arr, 0, 1)
+        s[0] = 50
+        print(arr[0], s[0])
+    }' \
+    "$(printf 'hey hey\n5\n5 50')"
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

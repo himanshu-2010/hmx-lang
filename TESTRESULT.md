@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 415 / 415 (60 integration + 199 negative + 132 stress + 24 CLI); web-playground vitest 399 / 399 (394 parity + 5 app)
+**Status:** ALL TESTS PASSED — native 424 / 424 (62 integration + 203 negative + 135 stress + 24 CLI); web-playground vitest 408 / 408 (403 parity + 5 app); valgrind ownership matrix 66/66
 
 ---
 
@@ -31,11 +31,12 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 20. **Nested tuple type support**: `((int, int), int)` annotations and `[(int, int)]` arrays now work via structural tuple typedef names, dependency-ordered struct emission, and recursive deep registration of tuple types.
 21. **Dynamic tuple indexing**: `t[i]` with a runtime `int` index works when every tuple member has the same type (the result has that type); the index is bounds-checked at runtime (`sd_check_tuple_index`, exit code 1 on out of range). Constant `t[0]` indexing is unchanged, heterogeneous tuples with a non-constant index are a compile error, and non-`int` indexes are rejected.
 22. **Currying**: anonymous **lambda expressions** (`lambda(x: int) -> int { ... }`, plus zero-arg and void variants, with the full `fn` parameter syntax incl. defaults/variadic) and **partial application** — calling a named function or function value with `1 <= args < arity` (no defaults, no variadic) returns a closure over the prefix arguments that waits for the rest. Both combine: lambdas capture enclosing scopes by snapshot, partials compose/chain via higher-order calls, and everything lower through the existing closure machinery.
+23. **Reference-counted memory (M15)**: `text`, arrays and closure environments are refcounted; `substring`/`slice` return shared immutable views pinned by refcount; array mutation forks copy-on-write; locals own, params borrow, and every generated temporary is paired with an exact `retain`/`release`. All 424 native + 408 web + 66 valgrind cases run clean under AddressSanitizer + LeakSanitizer.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 396 (native) + 380 (web) = 776
-> - **Passed:** 776
+> - **Total Test Cases Executed:** 424 (native) + 408 (web) = 832
+> - **Passed:** 832
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -54,7 +55,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (52/52 Passed)
+### 1. Integration Fixtures (62/62 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -107,10 +108,12 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `destructure_nested.hmx` | **[NEW]** Nested Destructure | Deep tuple nesting, array of tuples with group+rest, rest inside a nested array group, nested patterns on text elements, nested multi-assign | **PASS** |
 | `tuple_dynamic_index.hmx` | **[NEW]** Dynamic Tuple Index | Variable/expression indexes on homogeneous tuples, chained array-of-homogeneous-tuples, nested homogeneous tuples feeding destructuring, closure capture | **PASS** |
 | `currying.hmx` | **[NEW]** Currying | Named/value partials in HOFs, lambda capture across an enclosing fn, lambda-returning-lambda, direct lambda argument, void lambda | **PASS** |
+| `text_views.hmx` | **[NEW]** Text Views | `substring` views consumed by `==`/`parse_int`/`split`/`foreach`; view-vs-owner equality; view stays valid while source and view both live | **PASS** |
+| `cow_and_alias.hmx` | **[NEW]** COW + Alias | `let b = a` alias share (mutations visible); `slice` views fork on mutation (COW); push on a view after its source is alive; int + text element arrays | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (190/190 Passed)
+### 2. Negative & Error Handling Suite (203/203 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -286,7 +289,7 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (116/116 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (135/135 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -395,7 +398,7 @@ These tests verify exact runtime output matching and process exit code propagati
 
 ---
 
-### 4. CLI Driver Suite (23 CLI tests via `tests/run_cli_tests.sh`)
+### 4. CLI Driver Suite (24 CLI tests via `tests/run_cli_tests.sh`)
 
 | Test | Command | Expected Result | Status |
 | :--- | :--- | :--- | :---: |
@@ -833,6 +836,63 @@ top-level state is real program state.
   regenerated via `gen-data.mts`:
   `stress 132 = 0 failures; negative 199 = 0; integration 60 = 0`.
 - **Web:** vitest **399/399** (394 parity + 5 app), `tsc -b` ✓,
+  `vite build` ✓, oxlint 0 errors (11 benign warnings, all pre-existing UI).
+
+## M15 reference-counted allocator re-run (2026-09-26)
+
+Full re-verification after the Batch B memory milestone (audit finding #3):
+the generated runtime previously freed nothing — every `text`, array and
+closure environment leaked, and `push` could heap-corrupt
+(`sd_make_array` sized `capacity = length + 16` but malloc'd only
+`nbytes`). Now heap values are reference-counted and the runtime is
+leak-free + corruption-free.
+
+- **Before:** `sd_concat`/`sd_make_array` leaked every allocation; `push`
+  on a grown array → `realloc(): invalid next size`; no deallocation anywhere
+  in the generated C.
+- **After (native + web mirrored):**
+  - Preamble runtime rewritten around `sd_str`, `sd_abuf`, `sd_array` and
+    `sd_closure` with paired `retain`/`release` and forward-declared
+    `sd_ret_*`/`sd_rel_*` slot helpers. Every local owns its value; params are
+    borrowed (callee never releases them, and retains when returning a
+    borrowed value, fixing `let y = f(g())`); caller releases fresh argument
+    temporaries after calls; `return` transfers only bare-identifier owned
+    locals, all other heap returns retain (tuples always retain).
+  - `let b = a` / `b = a` **alias-share** the same struct (mutations visible,
+    matching the web); `slice`/`substring` return **views** pinned by refcount;
+    `sd_detach` gives **copy-on-write** forks on array mutation; `sd_push`
+    retains heap elements; statement-only `push`/`sort` release their held
+    argument results.
+  - Views are not NUL-terminated, so every consumer is length-aware:
+    `sd_str_equals`/`sd_str_cmp` (len + memcmp), `%.*s` / `(int)len` printing,
+    `sd_parse_int`/`sd_parse_decimal` parse NUL-copies with `%.*s` errors, and
+    `sd_split` bounds every memcmp scan by `hay_end`.
+  - **Gates:** `HMX_ASAN=1` hook in `main.cpp` (adds `-fsanitize=address` to
+    the gcc command) exercised in CI; new `.github/workflows/ci.yml` jobs
+    (build-test / ASan+LeakSanitizer / valgrind) run on every push and PR;
+    new `tests/run_valgrind_tests.sh` runs valgrind **directly on each
+    generated binary** (ownership matrix + all fixtures), rejecting any
+    definite/indirect/possible leak or memory error.
+- **Verified scope:** view consumers (sort/find/`==`/`parse`/`split`/`foreach`
+  over shared substrings), COW isolation vs alias visibility for int and text
+  element arrays, push/pop of heap rows and text, destructure `...rest`
+  (use-after-free previously), param reassignment with caller value intact,
+  closure captures of text/array state, 100-iteration create/discard churn
+  (leak gate), and the four M15 runtime error paths.
+- **Errors:** new runtime diagnostics covered by negatives — `split separator
+  must not be empty`, `slice out of bounds (1, 5)`,
+  `parse_int: invalid int 'abc'`, `parse_decimal: invalid decimal 'abc'` —
+  all byte-identical on the web (`runtime.ts sd.fail`).
+- **Tests:** fixtures `text_views.hmx`, `cow_and_alias.hmx`; stress
+  `m15_refcount_lifecycle`, `m15_view_consumers`, `m15_param_borrow`;
+  negatives `runtime_split_empty_sep`, `runtime_slice_oob`,
+  `runtime_parse_int_invalid`, `runtime_parse_decimal_invalid`.
+- **Native:** integration **62/62**, negative **203/203**, stress & output
+  **135/135**, CLI **24/24** — all green (424/424), ASan-clean in the ASan CI
+  run; valgrind matrix **66/66**.
+- **Web parity (1:1):** parity data regenerated via `gen-data.mts`:
+  `stress 135 = 0 failures; negative 203 = 0; integration 62 = 0`.
+- **Web:** vitest **408/408** (403 parity + 5 app), `tsc -b` ✓,
   `vite build` ✓, oxlint 0 errors (11 benign warnings, all pre-existing UI).
 
 ## Native-only regression report (reference)
