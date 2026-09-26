@@ -177,6 +177,38 @@ identifier  : [a-zA-Z_][a-zA-Z0-9_]*            (ASCII identifiers)
 - Unicode identifiers are treated as opaque UTF-8: no normalization or case folding.
   They are emitted verbatim into the generated C (gcc accepts them verbatim too).
 - Cannot be a reserved keyword (§2).
+- User identifiers are **safe-mangled** when lowered to C (§3.1): any name that is
+  a C keyword, a `_`/`__`-prefixed reserved name, or an `sd_*` runtime helper name
+  can still be used freely in HMX; the compiler rewrites it so the generated C is
+  always valid.
+
+### 3.1 Identifier mangling
+
+When a program is lowered to C, every user identifier is emitted with a `hmx_`
+prefix, so it can never collide with a C keyword, a `_`/`__`-reserved name, or the
+compiler's own `sd_*` runtime helpers:
+
+- `let static = 5` lowers to `const? int hmx_static = 5;`
+- Function / parameter names are mangled the same way (`fn double(x: int)` →
+  `int hmx_double(void* _sd_env, int hmx_x)`).
+- Captured variables inside closure environment structs (fields and struct tags)
+  are mangled consistently, as are destructuring bindings, `foreach` index/value
+  names, and `for`-loop components.
+- `fn main()` stays C `main()` — the runtime entry point. The `hmx_` mapping is
+  injective: two different user names can never lower to the same C identifier.
+- Compiler-synthesized names (`__lam_*` lambdas, `sd_papp_*` partial-application
+  helpers, `sd_env_*` closure structs, `tup_*` structs) are never double-mangled.
+
+Mangling is purely a lowering detail: error messages and `#line` directives still
+refer to the original `.hmx` source, and the HMX program is entirely unaware of it.
+
+```hmx
+let static = 5          // C name: hmx_static (was a gcc error pre-v0.10)
+fn double(x: int) -> int { return x * 2 }
+fn main() {
+    print(double(static))
+}
+```
 
 ```hmx
 let count = 5

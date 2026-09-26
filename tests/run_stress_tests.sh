@@ -1638,6 +1638,39 @@ test_exit_code "byte_cast_out_of_range_var" \
     }' \
     1
 
+test_output "keyword_var_and_fn_names" \
+    'fn double(x: int) -> int { return x * 2 }
+     fn main() {
+         let static = 5
+         let class = 7
+         print(static + class)
+         print(double(static))
+         let unsigned = 3
+         let volatile = 4
+         print(unsigned * volatile)
+         fn inner(struct: int) -> int { return struct + 1 }
+         print(inner(unsigned))
+     }' \
+    "$(printf '12\n10\n12\n4')"
+
+test_output "keyword_closure_loop_destruct" \
+    'fn main() {
+         let register = 10
+         fn uses_capture() -> int { return register * 2 }
+         print(uses_capture())
+         let typedef: [int] = [1, 2, 3]
+         typedef[1] = 9
+         print(typedef[1])
+         foreach (double, x in typedef) { print(x) }
+         for (let goto = 0; goto < 3; goto++) { print(goto) }
+         let (extern, union) = (30, 40)
+         print(extern + union)
+         let (rest_head, ...rest_tail) = [5, 6, 7]
+         print(rest_head)
+         print(rest_tail[0] + rest_tail[1])
+     }' \
+    "$(printf '20\n9\n1\n9\n3\n0\n1\n2\n70\n5\n13')"
+
 test_output "array_push_heap_regression" \
     'fn main() {
         let arr: [int] = []

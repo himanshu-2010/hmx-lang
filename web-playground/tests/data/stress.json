@@ -1721,6 +1721,34 @@
       }
     },
     {
+      "name": "keyword_var_and_fn_names",
+      "kind": "output",
+      "source": "fn double(x: int) -> int { return x * 2 }\n     fn main() {\n         let static = 5\n         let class = 7\n         print(static + class)\n         print(double(static))\n         let unsigned = 3\n         let volatile = 4\n         print(unsigned * volatile)\n         fn inner(struct: int) -> int { return struct + 1 }\n         print(inner(unsigned))\n     }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "12\n10\n12\n4\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "keyword_closure_loop_destruct",
+      "kind": "output",
+      "source": "fn main() {\n         let register = 10\n         fn uses_capture() -> int { return register * 2 }\n         print(uses_capture())\n         let typedef: [int] = [1, 2, 3]\n         typedef[1] = 9\n         print(typedef[1])\n         foreach (double, x in typedef) { print(x) }\n         for (let goto = 0; goto < 3; goto++) { print(goto) }\n         let (extern, union) = (30, 40)\n         print(extern + union)\n         let (rest_head, ...rest_tail) = [5, 6, 7]\n         print(rest_head)\n         print(rest_tail[0] + rest_tail[1])\n     }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "20\n9\n1\n9\n3\n0\n1\n2\n70\n5\n13\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "array_push_heap_regression",
       "kind": "output",
       "source": "fn main() {\n        let arr: [int] = []\n        for (let i = 0; i < 1000; i++) {\n            push(arr, i * 2)\n        }\n        print(length(arr))\n        print(arr[999])\n        print(arr[0])\n    }",

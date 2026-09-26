@@ -44,6 +44,11 @@ private:
     void register_desc_types(const TypeDesc& d);
     void register_tuple_types_deep(const TypeDesc& d);
     bool is_capture(const FunctionDecl* fn, const std::string& name) const;
+    // M12 identifier safety: every user identifier is prefixed with `hmx_` so
+    // it can never collide with a C keyword, `_`-prefixed reserved name, or the
+    // `sd_*` runtime helpers. `main` stays `main` (C entry point); resolver-
+    // synthesized `__lam_*` names pass through (decl + ref emit verbatim).
+    std::string safe_name(const std::string& name) const;
     void emit_identifier_value(const std::string& name);
     void emit_env_arg(const FunctionDecl* callee);
     void emit_env_heap_arg(const FunctionDecl* callee);

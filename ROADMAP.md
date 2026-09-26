@@ -29,7 +29,7 @@
 - **Language identity:** IR layer + shared native/web VM (M26) — the compiler
   becomes frontend → IR → backends {C, bytecode VM, [LLVM later]}.
 
-## 3. Batch A — Soundness (M11 done; target v0.10.0)
+## 3. Batch A — Soundness (M11–M12 done; target v0.10.0)
 
 - **M11 Runtime correctness** (#1, #2, #7, #8) — **DONE 2026-09-26**:
   `sd_make_array` allocation + overflow-guarded growth; `fork`/`execlp`/
@@ -40,8 +40,14 @@
   Mirrored 1:1 in the web compiler (`SD.num`/`SD.toByte`/`SD.toChar`, byte
   wrap in codegen_js, regenerated LALR tables + constants from
   `tables.constants`). Native 396/396 + web 380/380 green.
-- **M12 Identifier safety** (#6): global mangling pass for all user identifiers
-  → no C keyword/`_` collisions; `#line` keeps errors on `.hmx` lines.
+- **M12 Identifier safety** (#6) — **DONE 2026-09-26**: every user identifier
+  lowers through one `safe_name()` helper (`hmx_<name>`; `main` → C `main`;
+  synthesized `__lam_*` pass through) at all emission sites (env structs, fn
+  signatures/params, closure refs, calls, declarations, destructuring,
+  `foreach`/`for` components), so no C keyword/`_`/`sd_*` collision is
+  possible; `#line` keeps errors on `.hmx` lines. Web side already mangled
+  (`v_<name>`/`f_<name>`/`_sd_entry`) — no web code change. Native 399/399 +
+  web 383/383 green.
 - **M13 Closures: transitive captures** (#4): capture threading through every
   enclosing chain function in resolver + codegen env structs.
 - **M14 Modules: top-level state** (#5): ordered module init sections before

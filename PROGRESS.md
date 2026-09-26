@@ -899,6 +899,37 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   CLI); web `tsc -b` + `vite build` + oxlint (0 errors, 11 benign pre-existing
   warnings) + vitest **380/380**; `gen-data.mts` parity 0 failures.
 
+### Milestone — Identifier safety: global `hmx_` mangling (M12) — DONE
+- **Audit #6 fixed:** the repro `let static = 5; print(static)` previously
+  emitted raw `static` into C → `gcc: error: expected identifier or '(' before
+  '='`; any user identifier that happened to be a C keyword (or collided with a
+  `_`/`sd_*` runtime name) broke the build.
+- **`safe_name()` lowering rule:** every user identifier is emitted into the
+  generated C as `hmx_<name>` (injective — two user names can never collide
+  with each other or with C keywords, `_`/`__`-reserved names, or the `sd_*`
+  runtime helpers). `fn main()` stays C `main()`; resolver-synthesized
+  `__lam_*` names pass through unmangled. `#line` directives keep compiler
+  errors pointing at the original `.hmx` lines.
+- **Every emission site converted** (single helper, so decls + refs match by
+  construction): env-struct typedef tags/fields for closures, function
+  signatures + parameter names, `emit_env_arg`/`emit_env_heap_arg`, closure
+  refs `sd_make_closure((void*)...)`, direct call sites, `VarDecl`/`AssignStmt`/
+  `ArrayAssignStmt`, destructuring bindings (`emit_binding`, array/text rest
+  slots), `foreach` index/value names, and `for`-loop init/update components.
+  Lambda `__lam_*` decls stay in sync with their ref sites; papp helpers call
+  the original only through `orig.fn` function pointers (never raw names), so
+  they need no change.
+- **Web side already safe:** the web codegen has always mangled (`v_<name>` for
+  variables, `f_<name>` for functions, `_sd_entry` for `main`) — verified the
+  keyword programs already ran identically on the web; no web code change
+  needed for M12.
+- **Tests:** fixture `c_keyword_names.hmx` (integration); stress
+  `keyword_var_and_fn_names`, `keyword_closure_loop_destruct` (exact stdout).
+- **Hygiene:** native **399/399** (55 integration / 195 negative / 125 stress /
+  24 CLI); web `tsc -b` + `vite build` + oxlint (0 errors, 11 benign warnings)
+  + vitest **383/383** (378 parity + 5 app); `gen-data.mts` parity 0 failures
+  (125/195/55).
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

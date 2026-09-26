@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 396 / 396 (54 integration + 195 negative + 123 stress + 24 CLI); web-playground vitest 380 / 380 (375 parity + 5 app)
+**Status:** ALL TESTS PASSED — native 399 / 399 (55 integration + 195 negative + 125 stress + 24 CLI); web-playground vitest 383 / 383 (378 parity + 5 app)
 
 ---
 
@@ -712,5 +712,36 @@ reporting, and overflow-guarded array growth, mirrored 1:1 in the web compiler:
   `vite build` ✓, oxlint 0 errors (11 benign warnings, all pre-existing UI).
   Parity data regenerated via `gen-data.mts`:
   `stress 123 = 0 failures; negative 195 = 0; integration 54 = 0`.
+
+## M12 identifier safety re-run (2026-09-26)
+
+Full re-verification after the Batch A identifier-safety milestone (audit
+finding #6): user identifiers are globally mangled with a `hmx_` prefix when
+lowered to C so they can never collide with C keywords, `_`/`__`-reserved
+names, or the `sd_*` runtime helpers.
+
+- **Before:** `let static = 5; print(static)` → gcc
+  `error: expected identifier or '(' before '='` at the usage site, exit 1.
+- **After:** every user identifier lowers through one `safe_name()` helper
+  (`hmx_<name>`; `main` stays C `main`; synthesized `__lam_*` pass through),
+  applied at all emission sites — closure env struct tags/fields, function
+  signatures + params, env args, `sd_make_closure((void*)...)` refs, direct
+  calls, `VarDecl`/`AssignStmt`/`ArrayAssignStmt`, destructuring bindings
+  (incl. array/text `...rest`), `foreach` index/value names, and `for`-loop
+  components. `#line` directives still point errors at the `.hmx` lines.
+- **Native:** integration **55/55**, negative **195/195**, stress & output
+  **125/125**, CLI **24/24** — all green.
+- **Keyword-name coverage verified:** variables (`static`, `class`, `unsigned`,
+  `volatile`, `register`, `typedef`, `goto`, `extern`, `union`), function names
+  (`fn double`), parameters, closure captures of keyword-named variables,
+  keyword-named arrays + `foreach`, `for`-loop components, and destructuring
+  bindings all compile and run. New: fixture `c_keyword_names.hmx`; stress
+  `keyword_var_and_fn_names`, `keyword_closure_loop_destruct`.
+- **Web parity (1:1):** the web codegen already mangled (`v_<name>`,
+  `f_<name>`, `_sd_entry`) — keyword programs ran identically with no web code
+  change. Parity data regenerated via `gen-data.mts`:
+  `stress 125 = 0 failures; negative 195 = 0; integration 55 = 0`.
+- **Web:** vitest **383/383** (378 parity + 5 app), `tsc -b` ✓,
+  `vite build` ✓, oxlint 0 errors (11 benign warnings, all pre-existing UI).
 
 ## Native-only regression report (reference)

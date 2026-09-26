@@ -177,3 +177,15 @@ prior fixtures, and lands one complete feature.
   (LALR constants now read from `tables.constants`, `SD.num`/`SD.toByte`/
   `SD.toChar`, char-aware casts). Native 396/396 + web 380/380 green. Details
   in PROGRESS.md / TESTRESULT.md.
+- **M12 identifier safety (audit #6):** all user identifiers now lower through
+  one `safe_name()` helper (`hmx_<name>`; `main` → C `main`; synthesized
+  `__lam_*` pass through) applied at every C-emission site in codegen.cpp
+  (closure env struct tags/fields, function signatures + params, env args,
+  `sd_make_closure` refs, direct calls, `VarDecl`/`AssignStmt`/`ArrayAssignStmt`,
+  destructuring bindings incl. `...rest`, `foreach` index/value names,
+  `for`-loop components) — C keywords (`static`, `class`, `double`, ...) and
+  `sd_*`/`_`-prefixed values are now legal identifiers, and `#line` keeps
+  errors on `.hmx` lines. Web codegen already mangled (`v_`/`f_`/`_sd_entry`),
+  no web change needed. Native 399/399 + web 383/383 green; fixture
+  `c_keyword_names.hmx` + stress `keyword_var_and_fn_names`,
+  `keyword_closure_loop_destruct`.

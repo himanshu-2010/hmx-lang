@@ -114,6 +114,20 @@
       }
     },
     {
+      "name": "c_keyword_names",
+      "kind": "fixture",
+      "source": "fn double(x: int) -> int { return x * 2 }\n\nfn main() {\n    let static = 5\n    let class = 7\n    print(static + class)\n    print(double(static))\n\n    let unsigned = 3\n    let volatile = 4\n    print(unsigned * volatile)\n\n    fn inner(struct: int) -> int { return struct + 1 }\n    print(inner(unsigned))\n\n    let register = 10\n    fn uses_capture() -> int { return register * 2 }\n    print(uses_capture())\n\n    let typedef: [int] = [1, 2, 3]\n    typedef[1] = 9\n    print(typedef[1])\n    foreach (double, x in typedef) {\n        print(x)\n    }\n\n    for (let goto = 0; goto < 3; goto++) {\n        print(goto)\n    }\n\n    let (extern, union) = (30, 40)\n    print(extern + union)\n\n    let (rest_head, ...rest_tail) = [5, 6, 7]\n    print(rest_head)\n    print(rest_tail[0] + rest_tail[1])\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "12\n10\n12\n4\n20\n9\n1\n9\n3\n0\n1\n2\n70\n5\n13\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "calls",
       "kind": "fixture",
       "source": "fn greet(name: text) {\n    print(name)\n}\n\nfn add(a: int, b: int) -> int {\n    return a + b\n}\n\nfn double_it(x: int) -> int {\n    return x * 2\n}\n\nfn main() {\n    greet(\"Boss\")\n    let sum: int = add(3, 4)\n    print(sum)\n    print(double_it(21))\n    let total: int = add(add(1, 2), 3)\n    print(total)\n    if (double_it(2) == 4) {\n        print(\"doubled ok\")\n    }\n}\n",

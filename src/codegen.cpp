@@ -273,11 +273,11 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
 
     for (auto* fn : all_functions_) {
         if (fn->name != "main" && !fn->captures.empty()) {
-            out_ << "typedef struct sd_env_" << fn->name << " {\n";
+            out_ << "typedef struct sd_env_" << safe_name(fn->name) << " {\n";
             for (auto& c : fn->captures) {
-                out_ << "    " << c_type_for_desc(c.desc) << " " << c.name << ";\n";
+                out_ << "    " << c_type_for_desc(c.desc) << " " << safe_name(c.name) << ";\n";
             }
-            out_ << "} sd_env_" << fn->name << ";\n\n";
+            out_ << "} sd_env_" << safe_name(fn->name) << ";\n\n";
         }
     }
 
@@ -541,12 +541,12 @@ std::string CodeGen::emit_function_signature(FunctionDecl* fn) {
     } else {
         s += "void";
     }
-    s += " " + fn->name + "(";
+    s += " " + safe_name(fn->name) + "(";
     if (fn->name != "main") s += "void* _sd_env";
     if (fn->name != "main" && fn->has_nonlocal) s += ", void* _sd_nl";
     for (size_t i = 0; i < fn->params.size(); i++) {
         if (i > 0 || fn->name != "main") s += ", ";
-        s += c_type_for_desc(codegen_param_desc(fn->params[i])) + " " + fn->params[i].name;
+        s += c_type_for_desc(codegen_param_desc(fn->params[i])) + " " + safe_name(fn->params[i].name);
     }
     s += ")";
     return s;
@@ -582,7 +582,7 @@ void CodeGen::emit_env_arg(const FunctionDecl* callee) {
         out_ << "((void*)0)";
         return;
     }
-    out_ << "(void*)&(sd_env_" << callee->name << "){";
+    out_ << "(void*)&(sd_env_" << safe_name(callee->name) << "){";;
     for (size_t i = 0; i < callee->captures.size(); i++) {
         if (i > 0) out_ << ", ";
         emit_identifier_value(callee->captures[i].name);
@@ -595,19 +595,25 @@ void CodeGen::emit_env_heap_arg(const FunctionDecl* callee) {
         out_ << "((void*)0)";
         return;
     }
-    out_ << "sd_copy_env(&(sd_env_" << callee->name << "){";
+    out_ << "sd_copy_env(&(sd_env_" << safe_name(callee->name) << "){";
     for (size_t i = 0; i < callee->captures.size(); i++) {
         if (i > 0) out_ << ", ";
         emit_identifier_value(callee->captures[i].name);
     }
-    out_ << "}, sizeof(sd_env_" << callee->name << "))";
+    out_ << "}, sizeof(sd_env_" << safe_name(callee->name) << "))";
+}
+
+std::string CodeGen::safe_name(const std::string& name) const {
+    if (name == "main") return name;
+    if (name.rfind("__lam_", 0) == 0) return name;  // resolver-synthesized lambdas
+    return "hmx_" + name;
 }
 
 void CodeGen::emit_identifier_value(const std::string& name) {
     if (current_fn_ && is_capture(current_fn_, name)) {
-        out_ << "((sd_env_" << current_fn_->name << "*) _sd_env)->" << name;
+        out_ << "((sd_env_" << safe_name(current_fn_->name) << "*) _sd_env)->" << safe_name(name);
     } else {
-        out_ << name;
+        out_ << safe_name(name);
     }
 }
 
@@ -753,7 +759,7 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         if (id->is_function_reference) {
             auto it = functions_by_name_.find(id->name);
             if (it != functions_by_name_.end()) {
-                out_ << "sd_make_closure((void*)" << id->name << ", ";
+                out_ << "sd_make_closure((void*)" << safe_name(id->name) << ", ";
                 emit_env_heap_arg(it->second);
                 out_ << ")";
             } else {
@@ -909,7 +915,7 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                 if (it == functions_by_name_.end()) {
                     throw std::runtime_error("internal error: unknown function '" + call->name + "'");
                 }
-                out_ << "sd_make_closure((void*)" << call->name << ", ";
+                out_ << "sd_make_closure((void*)" << safe_name(call->name) << ", ";
                 emit_env_heap_arg(it->second);
                 out_ << ")";
             }
@@ -945,7 +951,7 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                     if (callee->params[i].variadic) { variadic_index = i; break; }
                 }
                 size_t fixed = (variadic_index == (size_t)-1) ? callee->params.size() : variadic_index;
-                out_ << call->name << "(";
+                out_ << safe_name(call->name) << "(";
                 emit_env_arg(callee);
                 if (callee->has_nonlocal) {
                     out_ << ", (void*)_sd_nl_buf" << callee->nl_target_loop_id;
@@ -979,7 +985,7 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
                 }
                 out_ << ")";
             } else {
-                out_ << call->name << "(";
+                out_ << safe_name(call->name) << "(";
                 for (size_t i = 0; i < call->args.size(); i++) {
                     if (i > 0) out_ << ", ";
                     emit_expr(call->args[i].get());
@@ -1129,9 +1135,9 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
 void CodeGen::emit_binding(const DestructPattern& slot, const std::string& rhs,
                            const TypeDesc& vd, bool declare) {
     if (declare) {
-        out_ << "    " << c_type_for_desc(vd) << " " << slot.name << " = " << rhs << ";\n";
+        out_ << "    " << c_type_for_desc(vd) << " " << safe_name(slot.name) << " = " << rhs << ";\n";
     } else {
-        out_ << "    " << slot.name << " = " << rhs << ";\n";
+        out_ << "    " << safe_name(slot.name) << " = " << rhs << ";\n";
     }
 }
 
@@ -1160,7 +1166,7 @@ void CodeGen::emit_destruct_level(const std::vector<DestructPattern>& slots,
         for (size_t i = 0; i < slots.size(); i++) {
             const DestructPattern& slot = slots[i];
             if (slot.is_rest) {
-                out_ << (declare ? "    sd_array* " : "    ") << slot.name
+                out_ << (declare ? "    sd_array* " : "    ") << safe_name(slot.name)
                      << " = sd_array_slice(" << src << ", " << n << ", "
                      << src << "->length);\n";
                 continue;
@@ -1186,7 +1192,7 @@ void CodeGen::emit_destruct_level(const std::vector<DestructPattern>& slots,
     for (size_t i = 0; i < slots.size(); i++) {
         const DestructPattern& slot = slots[i];
         if (slot.is_rest) {
-            out_ << (declare ? "    char* " : "    ") << slot.name
+            out_ << (declare ? "    char* " : "    ") << safe_name(slot.name)
                  << " = sd_substring(" << src << ", " << n << ", "
                  << "(int)strlen(" << src << "));\n";
             continue;
@@ -1208,12 +1214,12 @@ void CodeGen::emit_stmt(Statement* stmt) {
         } else {
             out_ << type_to_c(var->annotation);
         }
-        out_ << " " << var->name << " = ";
+        out_ << " " << safe_name(var->name) << " = ";
         emit_expr(var->initializer.get());
         out_ << ";\n";
     } else if (auto* assign = dynamic_cast<AssignStmt*>(stmt)) {
         emit_line_directive(assign->line, line_file_);
-        out_ << "    " << assign->name;
+        out_ << "    " << safe_name(assign->name);
         if (assign->op == "++" || assign->op == "--") {
             out_ << assign->op << ";\n";
         } else {
@@ -1224,8 +1230,8 @@ void CodeGen::emit_stmt(Statement* stmt) {
     } else if (auto* aa = dynamic_cast<ArrayAssignStmt*>(stmt)) {
         emit_line_directive(aa->line, line_file_);
         TypeKind elem_type = get_expr_type(aa->rhs.get());
-        out_ << "    ((" << type_to_c(elem_type) << "*)" << aa->name << "->data)";
-        out_ << "[sd_check_index(" << aa->name << "->length, ";
+        out_ << "    ((" << type_to_c(elem_type) << "*)" << safe_name(aa->name) << "->data)";
+        out_ << "[sd_check_index(" << safe_name(aa->name) << "->length, ";
         emit_expr(aa->index.get());
         out_ << ")] = ";
         emit_expr(aa->rhs.get());
@@ -1325,7 +1331,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
     } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
         emit_line_directive(fe->line, line_file_);
         TypeKind itype = get_expr_type(fe->iterable.get());
-        std::string idx = fe->index_name.empty() ? "_fe" : fe->index_name;
+        std::string idx = fe->index_name.empty() ? "_fe" : safe_name(fe->index_name);
         if (fe->nl_target) {
             out_ << "    jmp_buf _sd_nl_buf" << fe->nl_id << ";\n";
         }
@@ -1348,7 +1354,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
             emit_expr(fe->iterable.get());
             out_ << "->length; " << idx << "++) {\n";
             nl_arm();
-            out_ << "        " << ct << " " << fe->value_name
+            out_ << "        " << ct << " " << safe_name(fe->value_name)
                  << " = ((" << ct << "*)";
             emit_expr(fe->iterable.get());
             out_ << "->data)[" << idx << "];\n";
@@ -1360,7 +1366,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
             emit_expr(fe->iterable.get());
             out_ << "); " << idx << "++) {\n";
             nl_arm();
-            out_ << "        char " << fe->value_name << " = " << idx << "[" ;
+            out_ << "        char " << safe_name(fe->value_name) << " = " << idx << "[" ;
             emit_expr(fe->iterable.get());
             out_ << "];\n";
             for (auto& body_stmt : fe->body) emit_stmt(body_stmt.get());
@@ -1513,10 +1519,10 @@ void CodeGen::emit_for_component(Statement* stmt) {
         } else {
             out_ << type_to_c(var->annotation);
         }
-        out_ << " " << var->name << " = ";
+        out_ << " " << safe_name(var->name) << " = ";
         emit_expr(var->initializer.get());
     } else if (auto* assign = dynamic_cast<AssignStmt*>(stmt)) {
-        out_ << assign->name;
+        out_ << safe_name(assign->name);
         if (assign->op == "++" || assign->op == "--") {
             out_ << assign->op;
         } else {
