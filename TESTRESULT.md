@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 381 / 381 (52 integration + 190 negative + 116 stress + 23 CLI); web-playground vitest 366 / 366
+**Status:** ALL TESTS PASSED — native 381 / 381 (52 integration + 190 negative + 116 stress + 23 CLI); web-playground vitest 386 / 386 (361 parity + 5 app smoke + 20 hero-terminal commands)
 
 ---
 
