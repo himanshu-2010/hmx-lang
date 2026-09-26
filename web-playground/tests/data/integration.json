@@ -618,6 +618,20 @@
       }
     },
     {
+      "name": "transitive_capture",
+      "kind": "fixture",
+      "source": "// M13: transitive closure captures (audit #4) — a variable captured from a\n// function two or more levels up threads through every intermediate function,\n// for lambdas, named nested functions, and function values.\n\n// 3-level capture chain: lambda reads grandparent local `x`\nfn level3() -> int {\n    let x = 10\n    fn mid3() -> fn() -> int {\n        return lambda () -> int { return x * 3 }\n    }\n    let f = mid3()\n    return f()\n}\n\n// two intermediates: l3 reads the great-grandparent local `y`, threaded\n// through l2 and l1 and delivered as a returned function value\nfn level4() -> int {\n    let y = 7\n    fn l1() -> fn() -> int {\n        fn l2() -> fn() -> int {\n            fn l3() -> int { return y + 100 }\n            return l3\n        }\n        return l2()\n    }\n    let f = l1()\n    return f()\n}\n\n// grandparent PARAMETER capture\nfn param_chain(base: int) -> fn() -> int {\n    fn midp() -> fn() -> int {\n        return lambda () -> int { return base + 5 }\n    }\n    return midp()\n}\n\n// array-valued transitive capture (element access + foreach inside a 2-level lambda)\nfn array_chain() -> int {\n    let nums: [int] = [1, 2, 3]\n    fn mida() -> fn() -> int {\n        return lambda () -> int {\n            let total = 0\n            foreach (i, n in nums) {\n                total += n\n            }\n            return total\n        }\n    }\n    let f = mida()\n    return f()\n}\n\n// text-valued transitive capture (runtime concatenation inside a 2-level lambda)\nfn text_chain() -> text {\n    let msg = \"hi\"\n    fn midt() -> fn() -> text {\n        return lambda () -> text { return msg + \"!\" }\n    }\n    let f = midt()\n    return f()\n}\n\nfn main() {\n    print(level3())\n    print(level4())\n    let p = param_chain(40)\n    print(p())\n    print(array_chain())\n    print(text_chain())\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "30\n107\n45\n6\nhi!\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "tuple_dynamic_index",
       "kind": "fixture",
       "source": "fn triple(a: int, b: int, c: int) -> (int, int, int) {\n    return a, b, c\n}\nfn mk(a: int) -> (int, int) {\n    return a, a * 10\n}\nfn mk_pair(a: int) -> (int, int) {\n    return a, a + 1\n}\nfn nested() -> ((int, int), (int, int)) {\n    return mk_pair(1), mk_pair(5)\n}\nfn make_getter() -> fn() -> int {\n    let t = mk(7)\n    fn inner() -> int {\n        let i = 1\n        return t[i]\n    }\n    return inner\n}\nfn main() {\n    // plain homogeneous tuple, variable index\n    let t = triple(10, 20, 30)\n    let i = 1\n    print(t[i])\n    // expression index\n    print(t[i + 1])\n    // chained: array of homogeneous tuples\n    let grid: [(int, int)] = [mk(1), mk(2), mk(3)]\n    let j = 0\n    print(grid[2][j])\n    print(grid[2][j + 1])\n    // nested homogeneous tuple\n    let nt = nested()\n    print(nt[1][0], nt[1][1])\n    // dynamic index result feeds destructuring\n    let (x, y) = nt[0]\n    print(x, y)\n    // closure capture\n    let f = make_getter()\n    print(f())\n}",

@@ -1749,6 +1749,62 @@
       }
     },
     {
+      "name": "transitive_capture_lambda",
+      "kind": "output",
+      "source": "fn outer() -> int {\n         let a = 5\n         fn middle() -> fn() -> int {\n             return lambda () -> int { return a * 2 }\n         }\n         let f = middle()\n         return f()\n     }\n     fn main() {\n         print(outer())\n     }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "10\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "transitive_capture_three_level",
+      "kind": "output",
+      "source": "fn outer() -> int {\n         let x = 10\n         fn mid() -> fn() -> int {\n             return lambda () -> int { return x * 3 }\n         }\n         let f = mid()\n         return f()\n     }\n     fn main() {\n         print(outer())\n     }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "30\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "transitive_capture_function_value",
+      "kind": "output",
+      "source": "fn outer() -> int {\n         let y = 7\n         fn l1() -> fn() -> int {\n             fn l2() -> fn() -> int {\n                 fn l3() -> int { return y + 100 }\n                 return l3\n             }\n             return l2()\n         }\n         let f = l1()\n         return f()\n     }\n     fn main() {\n         print(outer())\n     }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "107\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "transitive_capture_param_and_text",
+      "kind": "output",
+      "source": "fn param_chain(base: int) -> fn() -> int {\n         fn midp() -> fn() -> int {\n             return lambda () -> int { return base + 5 }\n         }\n         return midp()\n     }\n     fn text_chain() -> text {\n         let msg = \"hi\"\n         fn midt() -> fn() -> text {\n             return lambda () -> text { return msg + \"!\" }\n         }\n         let f = midt()\n         return f()\n     }\n     fn main() {\n         let p = param_chain(40)\n         print(p())\n         print(text_chain())\n     }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "45\nhi!\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "array_push_heap_regression",
       "kind": "output",
       "source": "fn main() {\n        let arr: [int] = []\n        for (let i = 0; i < 1000; i++) {\n            push(arr, i * 2)\n        }\n        print(length(arr))\n        print(arr[999])\n        print(arr[0])\n    }",

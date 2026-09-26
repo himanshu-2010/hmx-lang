@@ -2004,6 +2004,20 @@
       }
     },
     {
+      "name": "closures_transitive_capture_not_in_scope",
+      "kind": "negative",
+      "source": "fn holder() {\n        let secret = 42\n        fn maker() -> fn() -> int {\n            return lambda () -> int { return secret }\n        }\n    }\n    fn main() {\n        let f = maker()\n        print(f())\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "captured variable 'secret' is not in scope",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 9]: cannot call 'maker' from here: captured variable 'secret' is not in scope\n",
+        "exit": 1
+      }
+    },
+    {
       "name": "closures_forward_ref_value",
       "kind": "negative",
       "source": "fn main() {\n        let f: fn(int) -> int = g\n        fn g(n: int) -> int { return n }\n    }",

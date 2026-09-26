@@ -930,6 +930,43 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   + vitest **383/383** (378 parity + 5 app); `gen-data.mts` parity 0 failures
   (125/195/55).
 
+### Milestone — Closures: transitive captures (M13) — DONE
+- **Audit #4 fixed:** a nested function or lambda that references a variable
+  from a grandparent (or higher) function previously registered the capture only
+  on itself. When the intermediate function built/returned the inner closure as
+  a function value, codegen emitted a bare identifier that didn't exist there →
+  native `error: 'a' undeclared` in `hmx_middle` (gcc stage, exit 1) and web
+  `ReferenceError: v_a is not defined`. Named nested-fn chains that were called
+  directly happened to work because `require_capture_visibility` re-registered
+  the capture at the call site; value-returned lambdas had no call site.
+- **Fix:** `find_outer_symbol` now also threads the capture through every
+  intermediate function between the referencing function and the owner of the
+  variable. A new `outer_fns_` stack — aligned 1:1 with `outer_scope_stack_` —
+  maps each enclosing function's scope group to its owning `FunctionDecl`;
+  `thread_capture(name, sym, reverse_index)` registers the capture on entries
+  `[N - r, N-1]`, i.e. each function in between (never the owner, which already
+  owns the variable). `register_capture` was split into
+  `register_capture_on(fn, ...)` so a given function (not just `current_fn_`)
+  receives the capture. Codegen needed no changes — it was already driven by the
+  `captures` lists (`is_capture` resolves the value out of the intermediate's env
+  when it builds the inner closure's environment). Mirrored 1:1 in the web
+  resolver (`outer_fns_`, `threadCapture`, `registerCaptureOn`).
+- **Verified scope:** 3-level lambda capture, a function value threaded through
+  two intermediates (l3→l2→l1), grandparent **parameter** capture, array-valued
+  transitive captures (element index + `foreach`), text-valued captures (runtime
+  concatenation), and 2→3 level named-fn chains.
+- **Semantics unchanged:** still by-value snapshots, still read-only; a transitive
+  capture that a use site cannot satisfy is now a proper compile error
+  (`cannot call 'maker' from here: captured variable 'secret' is not in scope`)
+  instead of a bogus gcc/JS runtime failure.
+- **Tests:** fixture `transitive_capture.hmx` (integration); stress
+  `transitive_capture_{lambda,three_level,function_value,param_and_text}`;
+  negative `closures_transitive_capture_not_in_scope`.
+- **Hygiene:** native **405/405** (56 integration / 196 negative / 129 stress /
+  24 CLI); web `tsc -b` + `vite build` + oxlint (0 errors, 11 benign warnings)
+  + vitest **389/389** (384 parity + 5 app); `gen-data.mts` parity 0 failures
+  (129/196/56).
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

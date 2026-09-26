@@ -1671,6 +1671,74 @@ test_output "keyword_closure_loop_destruct" \
      }' \
     "$(printf '20\n9\n1\n9\n3\n0\n1\n2\n70\n5\n13')"
 
+test_output "transitive_capture_lambda" \
+    'fn outer() -> int {
+         let a = 5
+         fn middle() -> fn() -> int {
+             return lambda () -> int { return a * 2 }
+         }
+         let f = middle()
+         return f()
+     }
+     fn main() {
+         print(outer())
+     }' \
+    "$(printf '10')"
+
+test_output "transitive_capture_three_level" \
+    'fn outer() -> int {
+         let x = 10
+         fn mid() -> fn() -> int {
+             return lambda () -> int { return x * 3 }
+         }
+         let f = mid()
+         return f()
+     }
+     fn main() {
+         print(outer())
+     }' \
+    "$(printf '30')"
+
+test_output "transitive_capture_function_value" \
+    'fn outer() -> int {
+         let y = 7
+         fn l1() -> fn() -> int {
+             fn l2() -> fn() -> int {
+                 fn l3() -> int { return y + 100 }
+                 return l3
+             }
+             return l2()
+         }
+         let f = l1()
+         return f()
+     }
+     fn main() {
+         print(outer())
+     }' \
+    "$(printf '107')"
+
+test_output "transitive_capture_param_and_text" \
+    'fn param_chain(base: int) -> fn() -> int {
+         fn midp() -> fn() -> int {
+             return lambda () -> int { return base + 5 }
+         }
+         return midp()
+     }
+     fn text_chain() -> text {
+         let msg = "hi"
+         fn midt() -> fn() -> text {
+             return lambda () -> text { return msg + "!" }
+         }
+         let f = midt()
+         return f()
+     }
+     fn main() {
+         let p = param_chain(40)
+         print(p())
+         print(text_chain())
+     }' \
+    "$(printf '45\nhi!')"
+
 test_output "array_push_heap_regression" \
     'fn main() {
         let arr: [int] = []

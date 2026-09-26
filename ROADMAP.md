@@ -29,7 +29,7 @@
 - **Language identity:** IR layer + shared native/web VM (M26) — the compiler
   becomes frontend → IR → backends {C, bytecode VM, [LLVM later]}.
 
-## 3. Batch A — Soundness (M11–M12 done; target v0.10.0)
+## 3. Batch A — Soundness (M11–M13 done; M14 in progress; target v0.10.0)
 
 - **M11 Runtime correctness** (#1, #2, #7, #8) — **DONE 2026-09-26**:
   `sd_make_array` allocation + overflow-guarded growth; `fork`/`execlp`/
@@ -48,10 +48,16 @@
   possible; `#line` keeps errors on `.hmx` lines. Web side already mangled
   (`v_<name>`/`f_<name>`/`_sd_entry`) — no web code change. Native 399/399 +
   web 383/383 green.
-- **M13 Closures: transitive captures** (#4): capture threading through every
-  enclosing chain function in resolver + codegen env structs.
-- **M14 Modules: top-level state** (#5): ordered module init sections before
-  `main`; module `let`/`const` visible to functions.
+- **M13 Closures: transitive captures** (#4) — **DONE 2026-09-26**: when a
+  nested function or lambda references a variable from a grandparent (or
+  higher) function, `find_outer_symbol` now threads the capture through every
+  intermediate function via a new `outer_fns_` stack aligned with
+  `outer_scope_stack_` (`thread_capture` / `register_capture_on` in resolver,
+  mirrored in web `resolver.ts`). Codegen unchanged — env structs/args already
+  follow the `captures` lists, so intermediates forward the by-value snapshot
+  when they build the inner closure. Value-returned lambdas and function values
+  now work at any depth; unsatisfiable transitive captures are proper compile
+  errors. Native 405/405 + web 389/389 green.
 
 ## 4. Batch B — Memory (v0.10–0.11)
 

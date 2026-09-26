@@ -1,0 +1,71 @@
+// M13: transitive closure captures (audit #4) — a variable captured from a
+// function two or more levels up threads through every intermediate function,
+// for lambdas, named nested functions, and function values.
+
+// 3-level capture chain: lambda reads grandparent local `x`
+fn level3() -> int {
+    let x = 10
+    fn mid3() -> fn() -> int {
+        return lambda () -> int { return x * 3 }
+    }
+    let f = mid3()
+    return f()
+}
+
+// two intermediates: l3 reads the great-grandparent local `y`, threaded
+// through l2 and l1 and delivered as a returned function value
+fn level4() -> int {
+    let y = 7
+    fn l1() -> fn() -> int {
+        fn l2() -> fn() -> int {
+            fn l3() -> int { return y + 100 }
+            return l3
+        }
+        return l2()
+    }
+    let f = l1()
+    return f()
+}
+
+// grandparent PARAMETER capture
+fn param_chain(base: int) -> fn() -> int {
+    fn midp() -> fn() -> int {
+        return lambda () -> int { return base + 5 }
+    }
+    return midp()
+}
+
+// array-valued transitive capture (element access + foreach inside a 2-level lambda)
+fn array_chain() -> int {
+    let nums: [int] = [1, 2, 3]
+    fn mida() -> fn() -> int {
+        return lambda () -> int {
+            let total = 0
+            foreach (i, n in nums) {
+                total += n
+            }
+            return total
+        }
+    }
+    let f = mida()
+    return f()
+}
+
+// text-valued transitive capture (runtime concatenation inside a 2-level lambda)
+fn text_chain() -> text {
+    let msg = "hi"
+    fn midt() -> fn() -> text {
+        return lambda () -> text { return msg + "!" }
+    }
+    let f = midt()
+    return f()
+}
+
+fn main() {
+    print(level3())
+    print(level4())
+    let p = param_chain(40)
+    print(p())
+    print(array_chain())
+    print(text_chain())
+}

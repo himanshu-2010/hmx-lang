@@ -1376,6 +1376,25 @@ Capture rules:
   value at creation time. A closure stored in a variable or returned from a
   function survives long after the enclosing function returns; a closure called
   directly (never stored) reads the variable's current value.
+- **Transitive captures (multi-level):** when a nested function or lambda
+  references a variable from a grandparent (or higher) function, every
+  enclosing function in between also captures it, so the by-value snapshot
+  threads through the chain automatically. An intermediate function that merely
+  creates or forwards the inner closure is compiled with the same hidden
+  environment parameter and reads the value out of its own snapshot when
+  building the inner closure's environment.
+
+  ```hmx
+  fn outer() -> int {
+      let a = 5
+      fn middle() -> fn() -> int {
+          return lambda () -> int { return a * 2 }   // a is 2 levels up
+      }
+      let f = middle()
+      return f()
+  }
+  // middle captures `a` too, so `f` sees a snapshot of it (prints 10)
+  ```
 - Captured variables are **read-only** inside the capturing function; assigning
   to a captured variable is a compile error
   (`cannot assign to captured variable 'x'`).

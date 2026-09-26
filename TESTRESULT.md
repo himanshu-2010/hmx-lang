@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 399 / 399 (55 integration + 195 negative + 125 stress + 24 CLI); web-playground vitest 383 / 383 (378 parity + 5 app)
+**Status:** ALL TESTS PASSED — native 405 / 405 (56 integration + 196 negative + 129 stress + 24 CLI); web-playground vitest 389 / 389 (384 parity + 5 app)
 
 ---
 
@@ -742,6 +742,46 @@ names, or the `sd_*` runtime helpers.
   change. Parity data regenerated via `gen-data.mts`:
   `stress 125 = 0 failures; negative 195 = 0; integration 55 = 0`.
 - **Web:** vitest **383/383** (378 parity + 5 app), `tsc -b` ✓,
+  `vite build` ✓, oxlint 0 errors (11 benign warnings, all pre-existing UI).
+- **Parity data:** `stress 125 = 0 failures; negative 195 = 0; integration 55 = 0`.
+
+## M13 transitive captures re-run (2026-09-26)
+
+Full re-verification after the Batch A transitive-capture milestone (audit
+finding #4): variables captured from a grandparent (or higher) function now
+thread through every intermediate function, so lambdas and function values work
+at any nesting depth.
+
+- **Before:** `fn middle() -> fn() -> int { return lambda () -> int { return a*2 } }`
+  (where `a` is `outer`'s local) → `error: 'a' undeclared` in `hmx_middle`
+  (native gcc) / `ReferenceError: v_a is not defined` (web). The lambda
+  registered its own capture but no intermediate function did.
+- **After:** captures registered through `find_outer_symbol` also propagate to
+  every intermediate function between the referencing function and the owner of
+  the variable. A parallel `outer_fns_` stack (aligned 1:1 with
+  `outer_scope_stack_`) maps each enclosing scope group to its owning
+  `FunctionDecl`, so the resolver knows exactly which functions sit between the
+  reference and the variable's owner. Verified across: 3-level lambda capture
+  (`let x; fn mid; lambda { x*3 }`), a function value threaded through two
+  intermediates (l3 → l2 → l1), grandparent **parameter** capture, array-valued
+  transitive captures (`foreach` over a 2-level capture), and text-valued
+  captures (runtime concatenation). Named nested-fn chains (which already
+  worked via call-site `require_capture_visibility`) are unchanged.
+- **Semantics preserved:** transitive captures are still by-value snapshots and
+  still read-only; a transitive capture that cannot be satisfied at a use site
+  is rejected at compile time with the existing error:
+  `cannot call 'maker' from here: captured variable 'secret' is not in scope`
+  (newly applicable to value-threaded closures — previously the output was a
+  bogus gcc/JS runtime failure).
+- **Tests:** fixture `transitive_capture.hmx`; stress
+  `transitive_capture_{lambda,three_level,function_value,param_and_text}`;
+  negative `closures_transitive_capture_not_in_scope`.
+- **Native:** integration **56/56**, negative **196/196**, stress & output
+  **129/129**, CLI **24/24** — all green (405/405).
+- **Web parity (1:1):** identical resolver change mirrored in `resolver.ts`
+  (`outer_fns_`, `threadCapture`); parity data regenerated via `gen-data.mts`:
+  `stress 129 = 0 failures; negative 196 = 0; integration 56 = 0`.
+- **Web:** vitest **389/389** (384 parity + 5 app), `tsc -b` ✓,
   `vite build` ✓, oxlint 0 errors (11 benign warnings, all pre-existing UI).
 
 ## Native-only regression report (reference)

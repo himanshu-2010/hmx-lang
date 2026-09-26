@@ -71,11 +71,16 @@ const Symbol* TypeResolver::find_symbol(const std::string& name) const {
 }
 
 const Symbol* TypeResolver::find_outer_symbol(const std::string& name) {
-    for (auto it = outer_scope_stack_.rbegin(); it != outer_scope_stack_.rend(); ++it) {
+    // reverse_index r: 0 => the variable lives in the immediately enclosing
+    // function; larger r => it lives further out in the lexical chain.
+    size_t reverse_index = 0;
+    for (auto it = outer_scope_stack_.rbegin(); it != outer_scope_stack_.rend();
+         ++it, ++reverse_index) {
         for (auto m = it->rbegin(); m != it->rend(); ++m) {
             auto found = m->find(name);
             if (found != m->end()) {
                 register_capture(name, found->second);
+                thread_capture(name, found->second, reverse_index);
                 return &found->second;
             }
         }
@@ -93,8 +98,13 @@ bool TypeResolver::is_in_outer_scopes(const std::string& name) const {
 }
 
 void TypeResolver::register_capture(const std::string& name, const Symbol& sym) {
-    if (!current_fn_ || current_fn_->name == "main") return;
-    for (auto& c : current_fn_->captures) {
+    register_capture_on(current_fn_, name, sym);
+}
+
+void TypeResolver::register_capture_on(FunctionDecl* fn, const std::string& name,
+                                       const Symbol& sym) {
+    if (!fn || fn->name == "main") return;
+    for (auto& c : fn->captures) {
         if (c.name == name) return;
     }
     TypeDesc d = sym.desc;
@@ -103,7 +113,23 @@ void TypeResolver::register_capture(const std::string& name, const Symbol& sym) 
         d.elem = sym.elem.elem;
         d.tuple_members = sym.tuple_members;
     }
-    current_fn_->captures.push_back({name, d});
+    fn->captures.push_back({name, d});
+}
+
+void TypeResolver::thread_capture(const std::string& name, const Symbol& sym,
+                                  size_t reverse_index) {
+    // M13 (audit #4): when a function references a variable that lives in an
+    // enclosing function two or more levels up, every function in between must
+    // ALSO capture it so the by-value snapshot threads through the chain —
+    // otherwise codegen emits an undeclared variable when an intermediate
+    // builds the inner closure (e.g. returns a lambda that reads a grandparent
+    // local). reverse_index 0 (immediate parent) has no intermediates.
+    const size_t n = outer_fns_.size();
+    if (reverse_index == 0 || n == 0) return;
+    if (reverse_index > n) return;  // defensive: keep stack alignment
+    for (size_t i = n - reverse_index; i < n; i++) {
+        register_capture_on(outer_fns_[i], name, sym);
+    }
 }
 
 void TypeResolver::require_capture_visibility(const std::string& fname) {
@@ -1807,6 +1833,9 @@ void TypeResolver::resolve_function_decl(FunctionDecl* fn) {
     outer_scope_stack_ = saved_outer;
     outer_scope_stack_.push_back(saved_scopes);
     FunctionDecl* saved_fn = current_fn_;
+    std::vector<FunctionDecl*> saved_outer_fns = std::move(outer_fns_);
+    outer_fns_ = saved_outer_fns;
+    outer_fns_.push_back(saved_fn);
     std::string saved_file = current_file_;
     current_fn_ = fn;
     if (!fn->file.empty()) current_file_ = fn->file;
@@ -1866,6 +1895,7 @@ void TypeResolver::resolve_function_decl(FunctionDecl* fn) {
     current_fn_ = saved_fn;
     current_file_ = saved_file;
     outer_scope_stack_ = std::move(saved_outer);
+    outer_fns_ = std::move(saved_outer_fns);
     resolved_functions_.insert(fn->name);
     pop_scope();
     scopes_ = std::move(saved_scopes);

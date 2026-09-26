@@ -156,6 +156,10 @@ export class TypeResolver {
   private functions_ = new Map<string, FunctionSig>();
   private fn_decls_ = new Map<string, FunctionDecl>();
   private outer_scope_stack_: Map<string, SymbolEntry>[][] = [];
+  // Parallel to outer_scope_stack_ (aligned 1:1): the function owning each
+  // entry's scope group (null for the top-level/main group). M13 uses it to
+  // thread transitive captures through every intermediate function.
+  private outer_fns_: (FunctionDecl | null)[] = [];
   private resolved_functions_ = new Set<string>();
   private current_fn_: FunctionDecl | null = null;
   private current_return_ = TypeKind.Unknown;
@@ -206,12 +210,16 @@ export class TypeResolver {
   }
 
   private findOuterSymbol(name: string): SymbolEntry | null {
-    for (let i = this.outer_scope_stack_.length - 1; i >= 0; i--) {
+    // reverseIndex r: 0 => the variable lives in the immediately enclosing
+    // function; larger r => it lives further out in the lexical chain.
+    let reverseIndex = 0;
+    for (let i = this.outer_scope_stack_.length - 1; i >= 0; i--, reverseIndex++) {
       const layer = this.outer_scope_stack_[i];
       for (let m = layer.length - 1; m >= 0; m--) {
         const found = layer[m].get(name);
         if (found !== undefined) {
           this.registerCapture(name, found);
+          this.threadCapture(name, found, reverseIndex);
           return found;
         }
       }
@@ -230,8 +238,12 @@ export class TypeResolver {
   }
 
   private registerCapture(name: string, sym: SymbolEntry): void {
-    if (!this.current_fn_ || this.current_fn_.name === "main") return;
-    for (const c of this.current_fn_.captures) {
+    this.registerCaptureOn(this.current_fn_, name, sym);
+  }
+
+  private registerCaptureOn(fn: FunctionDecl | null, name: string, sym: SymbolEntry): void {
+    if (!fn || fn.name === "main") return;
+    for (const c of fn.captures) {
       if (c.name === name) return;
     }
     // C++ copies the desc here; a shallow copy keeps us from mutating the
@@ -242,7 +254,22 @@ export class TypeResolver {
       d.elem = sym.elem.elem;
       d.tuple_members = sym.tuple_members;
     }
-    this.current_fn_.captures.push({ name, desc: d });
+    fn.captures.push({ name, desc: d });
+  }
+
+  private threadCapture(name: string, sym: SymbolEntry, reverseIndex: number): void {
+    // M13 (audit #4): when a function references a variable that lives in an
+    // enclosing function two or more levels up, every function in between must
+    // ALSO capture it so the by-value snapshot threads through the chain —
+    // otherwise codegen emits an undeclared variable when an intermediate
+    // builds the inner closure (e.g. returns a lambda that reads a grandparent
+    // local). reverseIndex 0 (immediate parent) has no intermediates.
+    const n = this.outer_fns_.length;
+    if (reverseIndex === 0 || n === 0) return;
+    if (reverseIndex > n) return; // defensive: keep stack alignment
+    for (let i = n - reverseIndex; i < n; i++) {
+      this.registerCaptureOn(this.outer_fns_[i], name, sym);
+    }
   }
 
   private requireCaptureVisibility(fname: string): void {
@@ -1959,6 +1986,9 @@ export class TypeResolver {
     this.outer_scope_stack_ = savedOuter;
     this.outer_scope_stack_.push(savedScopes);
     const savedFn = this.current_fn_;
+    const savedOuterFns = this.outer_fns_;
+    this.outer_fns_ = savedOuterFns;
+    this.outer_fns_.push(savedFn);
     const savedFile = this.current_file_;
     this.current_fn_ = fn;
     if (fn.file.length > 0) this.current_file_ = fn.file;
@@ -2021,6 +2051,7 @@ export class TypeResolver {
     this.current_fn_ = savedFn;
     this.current_file_ = savedFile;
     this.outer_scope_stack_ = savedOuter;
+    this.outer_fns_ = savedOuterFns;
     this.resolved_functions_.add(fn.name);
     this.popScope();
     this.scopes_ = savedScopes;

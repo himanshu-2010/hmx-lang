@@ -1189,6 +1189,19 @@ test_error "closures_capture_not_in_scope" \
     }' \
     "captured variable 'local' is not in scope"
 
+test_error "closures_transitive_capture_not_in_scope" \
+    'fn holder() {
+        let secret = 42
+        fn maker() -> fn() -> int {
+            return lambda () -> int { return secret }
+        }
+    }
+    fn main() {
+        let f = maker()
+        print(f())
+    }' \
+    "captured variable 'secret' is not in scope"
+
 test_error "closures_forward_ref_value" \
     'fn main() {
         let f: fn(int) -> int = g

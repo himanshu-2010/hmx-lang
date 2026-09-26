@@ -189,3 +189,19 @@ prior fixtures, and lands one complete feature.
   no web change needed. Native 399/399 + web 383/383 green; fixture
   `c_keyword_names.hmx` + stress `keyword_var_and_fn_names`,
   `keyword_closure_loop_destruct`.
+- **M13 transitive closure captures (audit #4):** a nested function or lambda
+  referencing a variable two or more levels up now threads the capture through
+  every intermediate function. `find_outer_symbol` gained
+  `thread_capture(name, sym, reverse_index)` using a new `outer_fns_` stack
+  aligned 1:1 with `outer_scope_stack_` (each entry = the function owning a
+  scope group); `register_capture` refactored to `register_capture_on(fn, ...)`.
+  Codegen unchanged — env structs/args already follow the `captures` lists, so
+  intermediates forward the by-value snapshot when building the inner closure.
+  Mirrored 1:1 in web `resolver.ts`. Value-returned lambdas/function values now
+  work at any depth (`outer() -> int` with `fn middle` returning
+  `lambda { a*2 }` prints 10); unsatisfiable transitive captures are proper
+  compile errors (`captured variable 'x' is not in scope`) instead of gcc/JS
+  runtime failures. Native 405/405 + web 389/389 green; fixture
+  `transitive_capture.hmx` + stress `transitive_capture_{lambda,three_level,
+  function_value,param_and_text}` + negative
+  `closures_transitive_capture_not_in_scope`.

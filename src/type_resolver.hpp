@@ -54,6 +54,10 @@ private:
     std::unordered_map<std::string, FunctionSig> functions_;
     std::unordered_map<std::string, FunctionDecl*> fn_decls_;
     std::vector<std::vector<std::unordered_map<std::string, Symbol>>> outer_scope_stack_;
+    // Parallel to outer_scope_stack_ (aligned 1:1): the function owning each
+    // entry's scope group (nullptr for the top-level/main group). M13 uses it
+    // to thread transitive captures through every intermediate function.
+    std::vector<FunctionDecl*> outer_fns_;
     std::set<std::string> resolved_functions_;
     FunctionDecl* current_fn_ = nullptr;
     TypeKind current_return_ = TypeKind::Unknown;
@@ -82,6 +86,10 @@ private:
     const Symbol* find_outer_symbol(const std::string& name);
     bool is_in_outer_scopes(const std::string& name) const;
     void register_capture(const std::string& name, const Symbol& sym);
+    void register_capture_on(FunctionDecl* fn, const std::string& name,
+                             const Symbol& sym);
+    void thread_capture(const std::string& name, const Symbol& sym,
+                        size_t reverse_index);
     void require_capture_visibility(const std::string& fname);
     void require_function_value(const std::string& fname);
     int line() const { return current_line_; }
