@@ -61,8 +61,9 @@ jobs:
         shell: ${{ matrix.shell }}
         run: |
           ./tests/run_integration.sh >/dev/null
+          ./tests/run_negative_tests.sh >/dev/null
+          ./tests/run_stress_tests.sh >/dev/null
           ./tests/run_cli_tests.sh >/dev/null
-        continue-on-error: true
 
       - name: Package .deb (Linux)
         if: runner.os == 'Linux'
