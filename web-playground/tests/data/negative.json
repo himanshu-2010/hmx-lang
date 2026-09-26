@@ -2575,6 +2575,58 @@
       }
     },
     {
+      "name": "module_top_state_type_err",
+      "kind": "module_negative",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/config.hmx": "let LIMIT: text = 3\n    fn limit() -> int {\n        return 3\n    }",
+        "main.hmx": "use \"lib/config.hmx\"\n    fn main() {\n        print(limit())\n    }"
+      },
+      "pattern": "Error \\[.*lib/config\\.hmx:[0-9]+\\].*type mismatch",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [lib/config.hmx:2]: type mismatch: variable 'LIMIT' declared as text but initialized with int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "module_top_state_dup",
+      "kind": "module_negative",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/a.hmx": "let RATE = 1.0\n    fn a_rate() -> decimal {\n        return RATE\n    }",
+        "lib/b.hmx": "let RATE = 2.0\n    fn b_rate() -> decimal {\n        return RATE\n    }",
+        "main.hmx": "use \"lib/a.hmx\"\n    use \"lib/b.hmx\"\n    fn main() {\n        print(a_rate(), b_rate())\n    }"
+      },
+      "pattern": "Error \\[.*lib/b\\.hmx:[0-9]+\\].*duplicate declaration of variable 'RATE'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [lib/b.hmx:2]: duplicate declaration of variable 'RATE'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "module_top_state_forward_ref",
+      "kind": "module_negative",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/order.hmx": "let FIRST = SECOND + 1\n    let SECOND = 5\n    fn pick() -> int {\n        return SECOND\n    }",
+        "main.hmx": "use \"lib/order.hmx\"\n    fn main() {\n        print(pick())\n    }"
+      },
+      "pattern": "undefined variable 'SECOND'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [lib/order.hmx:2]: undefined variable 'SECOND'\n",
+        "exit": 1
+      }
+    },
+    {
       "name": "use_reserved_keyword",
       "kind": "negative",
       "source": "fn main() {\n        let use = 5\n        print(use)\n    }",

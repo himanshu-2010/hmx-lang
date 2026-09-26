@@ -196,6 +196,7 @@ using StmtPtr = std::unique_ptr<Statement>;
 
 struct VarDecl : Statement {
     std::string name;
+    std::string file;                              // source .hmx file (filled by module loader)
     TypeKind annotation = TypeKind::Unknown;
     TypeDesc elem_desc;                              // element descriptor when annotation == Array
     std::vector<TypeDesc> tuple_members;               // valid when annotation == Tuple
@@ -237,6 +238,7 @@ struct DestructDecl : Statement {
     std::vector<DestructPattern> patterns; // top-level pattern slots
     ExprPtr rhs;
     bool is_mutable = true;
+    std::string file;                      // source .hmx file (filled by module loader)
     std::vector<TypeDesc> tuple_members;   // filled by resolver for Tuple
     TypeKind destruct_type = TypeKind::Unknown;  // Tuple / Array / Text after resolution
     TypeDesc destruct_elem;              // element desc when destruct_type == Array

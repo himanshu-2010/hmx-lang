@@ -371,6 +371,7 @@ export class VarDecl implements Statement {
   annotation_desc: TypeDesc = mkType(TypeKind.Unknown);
   has_annotation = false;
   is_mutable = true;
+  file = "";
   constructor(public name: string, public initializer: Expression) {}
 }
 
@@ -420,6 +421,7 @@ export class DestructDecl implements Statement {
   nl_target = false;
   nl_owner: FunctionDecl | null = null;
   is_mutable = true;
+  file = "";
   tuple_members: TypeDesc[] = [];
   destruct_type: TypeKind = TypeKind.Unknown;
   destruct_elem: TypeDesc = mkType(TypeKind.Unknown);

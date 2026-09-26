@@ -29,7 +29,7 @@
 - **Language identity:** IR layer + shared native/web VM (M26) — the compiler
   becomes frontend → IR → backends {C, bytecode VM, [LLVM later]}.
 
-## 3. Batch A — Soundness (M11–M13 done; M14 in progress; target v0.10.0)
+## 3. Batch A — Soundness (M11–M14 done; target v0.10.0)
 
 - **M11 Runtime correctness** (#1, #2, #7, #8) — **DONE 2026-09-26**:
   `sd_make_array` allocation + overflow-guarded growth; `fork`/`execlp`/
@@ -58,6 +58,17 @@
   when they build the inner closure. Value-returned lambdas and function values
   now work at any depth; unsatisfiable transitive captures are proper compile
   errors. Native 405/405 + web 389/389 green.
+- **M14 Modules: top-level state** (#5) — **DONE 2026-09-26**: the module loader
+  now merges all module statements (not just functions) in dependencies-first
+  post-order, inserted before the entry file's statements, so module init
+  sections run before `main` (state initializes before dependents read it).
+  The resolver registers all top-level `let`/`const`/destructure declarations
+  before any function body resolves (two-phase pass in `type_resolver.cpp` +
+  `resolver.ts`), so any function in any file can reference any top-level state
+  regardless of order. Module-state diagnostics cite the module file+line;
+  capture of `const` text/array state no longer warns in gcc. Duplicate
+  top-level names across modules are compile errors. Native 415/415 + web
+  399/399 green.
 
 ## 4. Batch B — Memory (v0.10–0.11)
 

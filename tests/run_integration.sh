@@ -114,6 +114,52 @@ test_module "mod_unicode" "main.hmx" \
         saludar(ö)
     }'
 
+test_module "mod_state" "main.hmx" \
+    "lib/math.hmx" 'const PI = 3.14
+    let base = 2.0
+    fn area(r: decimal) -> decimal {
+        return PI * r * r
+    }
+    fn scaled(n: decimal) -> decimal {
+        return n * base
+    }
+    fn get_base() -> decimal {
+        return base
+    }' \
+    "main.hmx" 'use "lib/math.hmx"
+    fn main() {
+        print(area(2.0), scaled(21.0), get_base())
+    }'
+
+# Module top-level state initializes dependencies-first (post-order merge):
+# calc.hmx's `let OFFSET = RATE + 5.0` reads base.hmx's `let RATE`.
+test_module "mod_state_dep" "main.hmx" \
+    "lib/base.hmx" 'let RATE = 10.0
+    fn rate() -> decimal {
+        return RATE
+    }' \
+    "lib/calc.hmx" 'use "base.hmx"
+    let OFFSET = RATE + 5.0
+    fn compute(x: decimal) -> decimal {
+        return x * OFFSET
+    }' \
+    "main.hmx" 'use "lib/calc.hmx"
+    fn main() {
+        print(rate(), compute(2.0))
+    }'
+
+# Two-phase registration: a module function can read entry-file top-level state
+# even though module statements are merged before the entry file's.
+test_module "mod_state_entry_to_module" "main.hmx" \
+    "lib/tool.hmx" 'fn get_count() -> int {
+        return COUNT
+    }' \
+    "main.hmx" 'use "lib/tool.hmx"
+    let COUNT = 7
+    fn main() {
+        print(get_count())
+    }'
+
 echo ""
 echo "Passed: $PASS, Failed: $FAIL"
 [ $FAIL -eq 0 ]

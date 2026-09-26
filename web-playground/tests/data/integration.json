@@ -618,6 +618,20 @@
       }
     },
     {
+      "name": "top_level_state",
+      "kind": "fixture",
+      "source": "// Top-level state (M14): `let`/`const` at file top level are registered before\n// any function body resolves, so a function may reference them regardless of\n// declaration order. Initializers still follow program order.\nfn get_pi() -> decimal {\n    return PI\n}\n\nconst PI = 3.14\nlet (w, h) = (4, 5)\nlet origin = [0, 0]\n\nfn area() -> int {\n    return w * h\n}\n\nfn get_origin() -> [int] {\n    return origin\n}\n\nfn main() {\n    print(get_pi())\n    print(area())\n    let o = get_origin()\n    print(o[1])\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "3.140000\n20\n0\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "transitive_capture",
       "kind": "fixture",
       "source": "// M13: transitive closure captures (audit #4) — a variable captured from a\n// function two or more levels up threads through every intermediate function,\n// for lambdas, named nested functions, and function values.\n\n// 3-level capture chain: lambda reads grandparent local `x`\nfn level3() -> int {\n    let x = 10\n    fn mid3() -> fn() -> int {\n        return lambda () -> int { return x * 3 }\n    }\n    let f = mid3()\n    return f()\n}\n\n// two intermediates: l3 reads the great-grandparent local `y`, threaded\n// through l2 and l1 and delivered as a returned function value\nfn level4() -> int {\n    let y = 7\n    fn l1() -> fn() -> int {\n        fn l2() -> fn() -> int {\n            fn l3() -> int { return y + 100 }\n            return l3\n        }\n        return l2()\n    }\n    let f = l1()\n    return f()\n}\n\n// grandparent PARAMETER capture\nfn param_chain(base: int) -> fn() -> int {\n    fn midp() -> fn() -> int {\n        return lambda () -> int { return base + 5 }\n    }\n    return midp()\n}\n\n// array-valued transitive capture (element access + foreach inside a 2-level lambda)\nfn array_chain() -> int {\n    let nums: [int] = [1, 2, 3]\n    fn mida() -> fn() -> int {\n        return lambda () -> int {\n            let total = 0\n            foreach (i, n in nums) {\n                total += n\n            }\n            return total\n        }\n    }\n    let f = mida()\n    return f()\n}\n\n// text-valued transitive capture (runtime concatenation inside a 2-level lambda)\nfn text_chain() -> text {\n    let msg = \"hi\"\n    fn midt() -> fn() -> text {\n        return lambda () -> text { return msg + \"!\" }\n    }\n    let f = midt()\n    return f()\n}\n\nfn main() {\n    print(level3())\n    print(level4())\n    let p = param_chain(40)\n    print(p())\n    print(array_chain())\n    print(text_chain())\n}",
@@ -797,6 +811,58 @@
       "pattern": null,
       "expected": {
         "stdout": "hola mundo\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_state",
+      "kind": "module",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/math.hmx": "const PI = 3.14\n    let base = 2.0\n    fn area(r: decimal) -> decimal {\n        return PI * r * r\n    }\n    fn scaled(n: decimal) -> decimal {\n        return n * base\n    }\n    fn get_base() -> decimal {\n        return base\n    }",
+        "main.hmx": "use \"lib/math.hmx\"\n    fn main() {\n        print(area(2.0), scaled(21.0), get_base())\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "12.560000 42.000000 2.000000\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_state_dep",
+      "kind": "module",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/base.hmx": "let RATE = 10.0\n    fn rate() -> decimal {\n        return RATE\n    }",
+        "lib/calc.hmx": "use \"base.hmx\"\n    let OFFSET = RATE + 5.0\n    fn compute(x: decimal) -> decimal {\n        return x * OFFSET\n    }",
+        "main.hmx": "use \"lib/calc.hmx\"\n    fn main() {\n        print(rate(), compute(2.0))\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "10.000000 30.000000\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_state_entry_to_module",
+      "kind": "module",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/tool.hmx": "fn get_count() -> int {\n        return COUNT\n    }",
+        "main.hmx": "use \"lib/tool.hmx\"\n    let COUNT = 7\n    fn main() {\n        print(get_count())\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "7\n",
         "stderr": "",
         "exit": 0
       }

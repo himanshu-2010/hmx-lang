@@ -1,0 +1,25 @@
+// Top-level state (M14): `let`/`const` at file top level are registered before
+// any function body resolves, so a function may reference them regardless of
+// declaration order. Initializers still follow program order.
+fn get_pi() -> decimal {
+    return PI
+}
+
+const PI = 3.14
+let (w, h) = (4, 5)
+let origin = [0, 0]
+
+fn area() -> int {
+    return w * h
+}
+
+fn get_origin() -> [int] {
+    return origin
+}
+
+fn main() {
+    print(get_pi())
+    print(area())
+    let o = get_origin()
+    print(o[1])
+}

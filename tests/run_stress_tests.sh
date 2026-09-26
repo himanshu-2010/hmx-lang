@@ -1405,6 +1405,66 @@ test_module_exit_code "mod_exit_code" "main.hmx" 42 \
         return pick()
     }'
 
+# M14: module top-level state is visible to entry code (constants, mutable
+# lets, and captured-by-value reads from module functions).
+test_module_output "mod_top_state" "main.hmx" \
+    '3 cfg
+0
+1
+2' \
+    "lib/config.hmx" 'let LIMIT = 3
+    const TAG = "cfg"
+    fn limit() -> int {
+        return LIMIT
+    }
+    fn tag() -> text {
+        return TAG
+    }' \
+    "main.hmx" 'use "lib/config.hmx"
+    fn main() {
+        print(limit(), tag())
+        for (let i = 0; i < LIMIT; i++) {
+            print(i)
+        }
+    }'
+
+# M14: module top-level statements are its init section — executed in use
+# order before the entry's top-level statements, and everything runs before the
+# body of main.
+test_module_output "mod_top_state_init_order" "main.hmx" \
+    'module init
+entry init
+body 5' \
+    "lib/log.hmx" 'print("module init")
+    let LEVEL = 5
+    fn level() -> int {
+        return LEVEL
+    }' \
+    "main.hmx" 'use "lib/log.hmx"
+    print("entry init")
+    fn main() {
+        print("body", level())
+    }'
+
+# M14: deps-first initialization — calc.hmx's top-level OFFSET initializer
+# reads base.hmx's RATE, so the dependency's state exists before the dependent
+# initializes.
+test_module_output "mod_top_state_dep" "main.hmx" \
+    '10.000000 30.000000' \
+    "lib/base.hmx" 'let RATE = 10.0
+    fn rate() -> decimal {
+        return RATE
+    }' \
+    "lib/calc.hmx" 'use "base.hmx"
+    let OFFSET = RATE + 5.0
+    fn compute(x: decimal) -> decimal {
+        return x * OFFSET
+    }' \
+    "main.hmx" 'use "lib/calc.hmx"
+    fn main() {
+        print(rate(), compute(2.0))
+    }'
+
 test_output "curry_partial_named" \
     'fn add(a: int, b: int, c: int) -> int {
         return a + b + c

@@ -290,6 +290,8 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
 
     out_ << "int main(void) {\n";
     for (auto* stmt : top_level) {
+        // Module top-level statements carry their own file for #line accuracy.
+        line_file_ = statement_file(stmt);
         emit_stmt(stmt);
     }
 
@@ -585,6 +587,9 @@ void CodeGen::emit_env_arg(const FunctionDecl* callee) {
     out_ << "(void*)&(sd_env_" << safe_name(callee->name) << "){";;
     for (size_t i = 0; i < callee->captures.size(); i++) {
         if (i > 0) out_ << ", ";
+        // Cast to the field type so a `const` captured text/array (top-level
+        // `const` state, M14) doesn't trip gcc -Wdiscarded-qualifiers.
+        out_ << "(" << c_type_for_desc(callee->captures[i].desc) << ")";
         emit_identifier_value(callee->captures[i].name);
     }
     out_ << "}";
@@ -598,6 +603,7 @@ void CodeGen::emit_env_heap_arg(const FunctionDecl* callee) {
     out_ << "sd_copy_env(&(sd_env_" << safe_name(callee->name) << "){";
     for (size_t i = 0; i < callee->captures.size(); i++) {
         if (i > 0) out_ << ", ";
+        out_ << "(" << c_type_for_desc(callee->captures[i].desc) << ")";
         emit_identifier_value(callee->captures[i].name);
     }
     out_ << "}, sizeof(sd_env_" << safe_name(callee->name) << "))";

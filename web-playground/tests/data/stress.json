@@ -1371,6 +1371,58 @@
       }
     },
     {
+      "name": "mod_top_state",
+      "kind": "module_output",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/config.hmx": "let LIMIT = 3\n    const TAG = \"cfg\"\n    fn limit() -> int {\n        return LIMIT\n    }\n    fn tag() -> text {\n        return TAG\n    }",
+        "main.hmx": "use \"lib/config.hmx\"\n    fn main() {\n        print(limit(), tag())\n        for (let i = 0; i < LIMIT; i++) {\n            print(i)\n        }\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "3 cfg\n0\n1\n2\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_top_state_init_order",
+      "kind": "module_output",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/log.hmx": "print(\"module init\")\n    let LEVEL = 5\n    fn level() -> int {\n        return LEVEL\n    }",
+        "main.hmx": "use \"lib/log.hmx\"\n    print(\"entry init\")\n    fn main() {\n        print(\"body\", level())\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "module init\nentry init\nbody 5\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_top_state_dep",
+      "kind": "module_output",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/base.hmx": "let RATE = 10.0\n    fn rate() -> decimal {\n        return RATE\n    }",
+        "lib/calc.hmx": "use \"base.hmx\"\n    let OFFSET = RATE + 5.0\n    fn compute(x: decimal) -> decimal {\n        return x * OFFSET\n    }",
+        "main.hmx": "use \"lib/calc.hmx\"\n    fn main() {\n        print(rate(), compute(2.0))\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "10.000000 30.000000\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "curry_partial_named",
       "kind": "output",
       "source": "fn add(a: int, b: int, c: int) -> int {\n        return a + b + c\n    }\n    fn main() {\n        let f = add(1)\n        print(f(2, 39))\n    }",

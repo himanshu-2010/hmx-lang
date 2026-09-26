@@ -20,6 +20,8 @@ import {
   WhileStmt,
   ForStmt,
   DoWhileStmt,
+  VarDecl,
+  DestructDecl,
   type Program,
   type Statement,
 } from "./ast";
@@ -71,8 +73,9 @@ function joinPath(baseDir: string, p: string): string {
   return `${baseDir}/${p}`;
 }
 
-// ---- mirror assign_file() from main.cpp: stamp file onto a fn + descendants -
-
+// ---- mirror assign_file() from main.cpp: stamp file onto a fn + descendants --
+// VarDecl/DestructDecl carry their own `file` so module top-level state
+// resolves (and cites diagnostics) against the module source.
 function stampFile(stmt: Statement, file: string): void {
   const recurse = (list: Statement[]): void => {
     for (const s of list) stampFile(s, file);
@@ -80,6 +83,10 @@ function stampFile(stmt: Statement, file: string): void {
   if (stmt instanceof FunctionDecl) {
     if (stmt.file.length === 0) stmt.file = file;
     recurse(stmt.body);
+  } else if (stmt instanceof VarDecl) {
+    if (stmt.file.length === 0) stmt.file = file;
+  } else if (stmt instanceof DestructDecl) {
+    if (stmt.file.length === 0) stmt.file = file;
   } else if (stmt instanceof IfStmt) {
     recurse(stmt.then_body);
     recurse(stmt.else_body);
@@ -101,9 +108,10 @@ function stampFile(stmt: Statement, file: string): void {
 /**
  * Expand `use` list recursively into the program. Returns an error message
  * (already prefixed) or null on success. Mirrors load_module_uses() in
- * main.cpp: ext check -> cycle check -> loaded-skip -> exists -> parse, and
- * only FunctionDecl statements are merged (lambdas and top-level code of a
- * module are ignored, matching the native behavior).
+ * main.cpp: ext check -> cycle check -> loaded-skip -> exists -> parse.
+ * All top-level module statements are merged (functions AND top-level
+ * `let`/`const` state, post-order dependencies-first, inserted before the
+ * entry file's own statements).
  */
 function loadUses(
   program: Program,
@@ -111,6 +119,26 @@ function loadUses(
   loaded: Set<string>,
   visiting: Set<string>,
   modules: Record<string, string>
+): string | null {
+  // All module statements (functions AND top-level state) are collected
+  // post-order — a module's own statements come after its dependencies' — and
+  // inserted BEFORE the entry file's own statements, so module init sections
+  // run first (before `main`) and resolve before entry code reads them (M14,
+  // audit #5). Mirrors load_module_uses() in main.cpp.
+  const merged: Statement[] = [];
+  const err = collectModuleStatements(program, baseDir, loaded, visiting, modules, merged);
+  if (err !== null) return err;
+  program.statements.unshift(...merged);
+  return null;
+}
+
+function collectModuleStatements(
+  program: Program,
+  baseDir: string,
+  loaded: Set<string>,
+  visiting: Set<string>,
+  modules: Record<string, string>,
+  merged: Statement[]
 ): string | null {
   for (const raw of program.use_files) {
     const joined = raw.startsWith("/") ? raw : joinPath(baseDir, raw);
@@ -133,14 +161,20 @@ function loadUses(
       return mod.stderr.join("") + `Error: parsing failed in module '${canon}'`;
     }
     visiting.add(canon);
-    const inner = loadUses(mod.program!, dirOf(canon), loaded, visiting, modules);
+    const inner = collectModuleStatements(
+      mod.program!,
+      dirOf(canon),
+      loaded,
+      visiting,
+      modules,
+      merged
+    );
     visiting.delete(canon);
     if (inner !== null) return inner;
+    // Post-order: this module's own statements come after its dependencies'.
     for (const stmt of mod.program!.statements) {
-      if (stmt instanceof FunctionDecl) {
-        stampFile(stmt, canon);
-        program.statements.push(stmt);
-      }
+      stampFile(stmt, canon);
+      merged.push(stmt);
     }
     loaded.add(canon);
   }

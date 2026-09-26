@@ -1566,6 +1566,51 @@ test_error_module "use_module_parse_error" "main.hmx" "parsing failed in module"
         print(0)
     }'
 
+# M14: a type error in module top-level state cites the module file+line.
+test_error_module "module_top_state_type_err" "main.hmx" \
+    "Error \[.*lib/config\.hmx:[0-9]+\].*type mismatch" \
+    "lib/config.hmx" 'let LIMIT: text = 3
+    fn limit() -> int {
+        return 3
+    }' \
+    "main.hmx" 'use "lib/config.hmx"
+    fn main() {
+        print(limit())
+    }'
+
+# M14: module top-level state shares one namespace — a duplicate `let` across
+# two modules is rejected (second declaration cites its own module file).
+test_error_module "module_top_state_dup" "main.hmx" \
+    "Error \[.*lib/b\.hmx:[0-9]+\].*duplicate declaration of variable 'RATE'" \
+    "lib/a.hmx" 'let RATE = 1.0
+    fn a_rate() -> decimal {
+        return RATE
+    }' \
+    "lib/b.hmx" 'let RATE = 2.0
+    fn b_rate() -> decimal {
+        return RATE
+    }' \
+    "main.hmx" 'use "lib/a.hmx"
+    use "lib/b.hmx"
+    fn main() {
+        print(a_rate(), b_rate())
+    }'
+
+# M14: module init statements cannot read top-level state declared LATER in the
+# same module — initializers follow program order (a dependency's state IS
+# visible; that is the passing mod_top_state_dep/mods case).
+test_error_module "module_top_state_forward_ref" "main.hmx" \
+    "undefined variable 'SECOND'" \
+    "lib/order.hmx" 'let FIRST = SECOND + 1
+    let SECOND = 5
+    fn pick() -> int {
+        return SECOND
+    }' \
+    "main.hmx" 'use "lib/order.hmx"
+    fn main() {
+        print(pick())
+    }'
+
 test_error "use_reserved_keyword" \
     'fn main() {
         let use = 5

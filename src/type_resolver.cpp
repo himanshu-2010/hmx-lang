@@ -1,6 +1,7 @@
 #include "type_resolver.hpp"
 #include <algorithm>
 #include <set>
+#include <unordered_set>
 
 static TypeDesc param_type_desc(const FunctionDecl::Param& p) {
     if (p.desc.type != TypeKind::Unknown) return p.desc;
@@ -1251,105 +1252,139 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
     return result;
 }
 
+void TypeResolver::resolve_var_decl(VarDecl* var) {
+    TypeKind init_type = resolve_expr(var->initializer.get());
+    if (var->has_annotation) {
+        if (var->annotation == TypeKind::Byte) {
+            auto* number = dynamic_cast<NumberLiteral*>(var->initializer.get());
+            if (number && (number->value < 0 || number->value > 255)) {
+                throw err(var->line, "byte value must be between 0 and 255");
+            }
+        }
+        if (init_type != TypeKind::Unknown && init_type != var->annotation) {
+            bool byte_literal = var->annotation == TypeKind::Byte &&
+                dynamic_cast<NumberLiteral*>(var->initializer.get()) != nullptr;
+            if (!byte_literal) {
+            throw err(var->line,
+                "type mismatch: variable '" + var->name + "' declared as " +
+                type_to_string(var->annotation) + " but initialized with " +
+                type_to_string(init_type));
+            }
+        }
+        if (var->annotation == TypeKind::Function) {
+            TypeDesc init_desc = expr_function_type(var->initializer.get());
+            if (init_desc != var->annotation_desc) {
+                throw err(var->line,
+                    "type mismatch: variable '" + var->name + "' declared as " +
+                    type_desc_to_string(var->annotation_desc) + " but initialized with " +
+                    (init_desc.type == TypeKind::Function ? type_desc_to_string(init_desc) : type_to_string(init_type)));
+            }
+            define(var->name, TypeKind::Function, var->is_mutable, {},
+                   {}, var->annotation_desc);
+        } else if (var->annotation == TypeKind::Array) {
+            if (auto* arrlit = dynamic_cast<ArrayLiteral*>(var->initializer.get())) {
+                fix_empty_array_literal(arrlit, var->elem_desc);
+                if (arrlit->elem != var->elem_desc) {
+                    throw err(var->line,
+                        "type mismatch: variable '" + var->name + "' declared as array of " +
+                        type_desc_to_string(var->elem_desc) + " but initialized with array of " +
+                        type_desc_to_string(arrlit->elem));
+                }
+            } else if (!desc_fully_known(var->elem_desc)) {
+                throw err(var->line,
+                    "cannot infer array element type for '" + var->name +
+                    "'; use a complete annotation like [[int]]");
+            }
+            define(var->name, TypeKind::Array, var->is_mutable, var->elem_desc);
+        } else if (var->annotation == TypeKind::Tuple) {
+            if (init_type != TypeKind::Tuple) {
+                throw err(var->line,
+                    "type mismatch: variable '" + var->name + "' declared as " +
+                    tuple_type_to_string(var->tuple_members) + " but initialized with " +
+                    type_to_string(init_type));
+            }
+            if (expr_tuple_members(var->initializer.get()) != var->tuple_members) {
+                throw err(var->line,
+                    "type mismatch: variable '" + var->name + "' declared as " +
+                    tuple_type_to_string(var->tuple_members) + " but initialized with " +
+                    tuple_type_to_string(expr_tuple_members(var->initializer.get())));
+            }
+            define(var->name, TypeKind::Tuple, var->is_mutable, {},
+                   var->tuple_members);
+        } else {
+            define(var->name, var->annotation, var->is_mutable);
+        }
+    } else {
+        if (init_type == TypeKind::Unknown) {
+            throw err(var->line,
+                "cannot infer type for '" + var->name + "'");
+        }
+        TypeDesc elem;
+        if (init_type == TypeKind::Array) {
+            elem = expr_element_desc(var->initializer.get());
+            if (!desc_fully_known(elem)) {
+                throw err(var->line,
+                    "cannot infer array element type for '" + var->name + "'; use an annotation like [int]");
+            }
+            var->elem_desc = elem;
+        }
+        if (init_type == TypeKind::Tuple) {
+            var->tuple_members = expr_tuple_members(var->initializer.get());
+            if (var->tuple_members.empty()) {
+                throw err(var->line,
+                    "cannot infer tuple type for '" + var->name + "'; use an annotation like (int, int)");
+            }
+        }
+        var->annotation = init_type;
+        if (init_type == TypeKind::Function) {
+            TypeDesc init_desc = expr_function_type(var->initializer.get());
+            if (!init_desc.fn_info) {
+                throw err(var->line,
+                    "cannot infer function type for '" + var->name + "'; use an annotation like fn(int) -> int");
+            }
+            var->annotation_desc = init_desc;
+            define(var->name, init_type, var->is_mutable, {}, {}, init_desc);
+        } else {
+            define(var->name, init_type, var->is_mutable, elem, var->tuple_members);
+        }
+    }
+}
+
+void TypeResolver::resolve_destruct_decl(DestructDecl* td) {
+    TypeKind src_type = resolve_expr(td->rhs.get());
+    TypeDesc val;
+    if (src_type == TypeKind::Tuple) {
+        td->destruct_type = TypeKind::Tuple;
+        td->tuple_members = expr_tuple_members(td->rhs.get());
+        val.type = TypeKind::Tuple;
+        val.tuple_members = td->tuple_members;
+    } else if (src_type == TypeKind::Array) {
+        TypeDesc ed = expr_element_desc(td->rhs.get());
+        if (!desc_fully_known(ed)) {
+            throw err(td->line,
+                "cannot infer element type for this array destructuring");
+        }
+        td->destruct_type = TypeKind::Array;
+        td->destruct_elem = ed;
+        val.type = TypeKind::Array;
+        val.elem = std::make_shared<TypeDesc>(ed);
+    } else if (src_type == TypeKind::Text) {
+        td->destruct_type = TypeKind::Text;
+        val.type = TypeKind::Text;
+    } else {
+        throw err(td->line,
+            "right side of destructuring must be a tuple, array, or text, got " +
+            type_to_string(src_type));
+    }
+    apply_destruct_pattern(td->patterns, val, td->line, /*declare=*/true,
+                           td->is_mutable);
+}
+
 bool TypeResolver::resolve_stmt(Statement* stmt) {
     current_line_ = stmt->line;
     bool always_returns = false;
     if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
-        TypeKind init_type = resolve_expr(var->initializer.get());
-        if (var->has_annotation) {
-            if (var->annotation == TypeKind::Byte) {
-                auto* number = dynamic_cast<NumberLiteral*>(var->initializer.get());
-                if (number && (number->value < 0 || number->value > 255)) {
-                    throw err(var->line, "byte value must be between 0 and 255");
-                }
-            }
-            if (init_type != TypeKind::Unknown && init_type != var->annotation) {
-                bool byte_literal = var->annotation == TypeKind::Byte &&
-                    dynamic_cast<NumberLiteral*>(var->initializer.get()) != nullptr;
-                if (!byte_literal) {
-                throw err(var->line,
-                    "type mismatch: variable '" + var->name + "' declared as " +
-                    type_to_string(var->annotation) + " but initialized with " +
-                    type_to_string(init_type));
-                }
-            }
-            if (var->annotation == TypeKind::Function) {
-                TypeDesc init_desc = expr_function_type(var->initializer.get());
-                if (init_desc != var->annotation_desc) {
-                    throw err(var->line,
-                        "type mismatch: variable '" + var->name + "' declared as " +
-                        type_desc_to_string(var->annotation_desc) + " but initialized with " +
-                        (init_desc.type == TypeKind::Function ? type_desc_to_string(init_desc) : type_to_string(init_type)));
-                }
-                define(var->name, TypeKind::Function, var->is_mutable, {},
-                       {}, var->annotation_desc);
-            } else if (var->annotation == TypeKind::Array) {
-                if (auto* arrlit = dynamic_cast<ArrayLiteral*>(var->initializer.get())) {
-                    fix_empty_array_literal(arrlit, var->elem_desc);
-                    if (arrlit->elem != var->elem_desc) {
-                        throw err(var->line,
-                            "type mismatch: variable '" + var->name + "' declared as array of " +
-                            type_desc_to_string(var->elem_desc) + " but initialized with array of " +
-                            type_desc_to_string(arrlit->elem));
-                    }
-                } else if (!desc_fully_known(var->elem_desc)) {
-                    throw err(var->line,
-                        "cannot infer array element type for '" + var->name +
-                        "'; use a complete annotation like [[int]]");
-                }
-                define(var->name, TypeKind::Array, var->is_mutable, var->elem_desc);
-            } else if (var->annotation == TypeKind::Tuple) {
-                if (init_type != TypeKind::Tuple) {
-                    throw err(var->line,
-                        "type mismatch: variable '" + var->name + "' declared as " +
-                        tuple_type_to_string(var->tuple_members) + " but initialized with " +
-                        type_to_string(init_type));
-                }
-                if (expr_tuple_members(var->initializer.get()) != var->tuple_members) {
-                    throw err(var->line,
-                        "type mismatch: variable '" + var->name + "' declared as " +
-                        tuple_type_to_string(var->tuple_members) + " but initialized with " +
-                        tuple_type_to_string(expr_tuple_members(var->initializer.get())));
-                }
-                define(var->name, TypeKind::Tuple, var->is_mutable, {},
-                       var->tuple_members);
-            } else {
-                define(var->name, var->annotation, var->is_mutable);
-            }
-        } else {
-            if (init_type == TypeKind::Unknown) {
-                throw err(var->line,
-                    "cannot infer type for '" + var->name + "'");
-            }
-            TypeDesc elem;
-            if (init_type == TypeKind::Array) {
-                elem = expr_element_desc(var->initializer.get());
-                if (!desc_fully_known(elem)) {
-                    throw err(var->line,
-                        "cannot infer array element type for '" + var->name + "'; use an annotation like [int]");
-                }
-                var->elem_desc = elem;
-            }
-            if (init_type == TypeKind::Tuple) {
-                var->tuple_members = expr_tuple_members(var->initializer.get());
-                if (var->tuple_members.empty()) {
-                    throw err(var->line,
-                        "cannot infer tuple type for '" + var->name + "'; use an annotation like (int, int)");
-                }
-            }
-            var->annotation = init_type;
-            if (init_type == TypeKind::Function) {
-                TypeDesc init_desc = expr_function_type(var->initializer.get());
-                if (!init_desc.fn_info) {
-                    throw err(var->line,
-                        "cannot infer function type for '" + var->name + "'; use an annotation like fn(int) -> int");
-                }
-                var->annotation_desc = init_desc;
-                define(var->name, init_type, var->is_mutable, {}, {}, init_desc);
-            } else {
-                define(var->name, init_type, var->is_mutable, elem, var->tuple_members);
-            }
-        }
+        resolve_var_decl(var);
     } else if (auto* aassign = dynamic_cast<ArrayAssignStmt*>(stmt)) {
         const Symbol* sym = find_symbol(aassign->name);
         if (!sym) {
@@ -1508,33 +1543,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         resolve_expr(expr_stmt->expr.get());
         allow_void_call_ = saved;
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
-        TypeKind src_type = resolve_expr(td->rhs.get());
-        TypeDesc val;
-        if (src_type == TypeKind::Tuple) {
-            td->destruct_type = TypeKind::Tuple;
-            td->tuple_members = expr_tuple_members(td->rhs.get());
-            val.type = TypeKind::Tuple;
-            val.tuple_members = td->tuple_members;
-        } else if (src_type == TypeKind::Array) {
-            TypeDesc ed = expr_element_desc(td->rhs.get());
-            if (!desc_fully_known(ed)) {
-                throw err(stmt->line,
-                    "cannot infer element type for this array destructuring");
-            }
-            td->destruct_type = TypeKind::Array;
-            td->destruct_elem = ed;
-            val.type = TypeKind::Array;
-            val.elem = std::make_shared<TypeDesc>(ed);
-        } else if (src_type == TypeKind::Text) {
-            td->destruct_type = TypeKind::Text;
-            val.type = TypeKind::Text;
-        } else {
-            throw err(stmt->line,
-                "right side of destructuring must be a tuple, array, or text, got " +
-                type_to_string(src_type));
-        }
-        apply_destruct_pattern(td->patterns, val, stmt->line, /*declare=*/true,
-                               td->is_mutable);
+        resolve_destruct_decl(td);
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
         TypeKind src_type = resolve_expr(ma->rhs.get());
         TypeDesc val;
@@ -2017,7 +2026,32 @@ void TypeResolver::resolve(Program& program) {
     collect_functions(program);
     analyze_nonlocal_exits(program);
     push_scope();
+    std::unordered_set<Statement*> top_state;
+    // Pass 1 (M14, audit #5): register all top-level state declarations — from
+    // the entry file AND every imported module — before any function body runs,
+    // so functions can reference module/entry `let`/`const` regardless of file
+    // or declaration order. Each statement resolves with its own file stamped
+    // for diagnostics; forward references between top-level initializers follow
+    // program order (module init sections first, dependencies first).
     for (auto& stmt : program.statements) {
+        std::string saved_file = current_file_;
+        if (auto* var = dynamic_cast<VarDecl*>(stmt.get())) {
+            current_line_ = var->line;
+            if (!var->file.empty()) current_file_ = var->file;
+            resolve_var_decl(var);
+            top_state.insert(stmt.get());
+        } else if (auto* d = dynamic_cast<DestructDecl*>(stmt.get())) {
+            current_line_ = d->line;
+            if (!d->file.empty()) current_file_ = d->file;
+            resolve_destruct_decl(d);
+            top_state.insert(stmt.get());
+        }
+        current_file_ = saved_file;
+    }
+    // Pass 2: resolve everything else (functions, module/entry init statements,
+    // main). Top-level state is already registered above.
+    for (auto& stmt : program.statements) {
+        if (top_state.count(stmt.get())) continue;
         resolve_stmt(stmt.get());
     }
     pop_scope();

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 405 / 405 (56 integration + 196 negative + 129 stress + 24 CLI); web-playground vitest 389 / 389 (384 parity + 5 app)
+**Status:** ALL TESTS PASSED — native 415 / 415 (60 integration + 199 negative + 132 stress + 24 CLI); web-playground vitest 399 / 399 (394 parity + 5 app)
 
 ---
 
@@ -782,6 +782,57 @@ at any nesting depth.
   (`outer_fns_`, `threadCapture`); parity data regenerated via `gen-data.mts`:
   `stress 129 = 0 failures; negative 196 = 0; integration 56 = 0`.
 - **Web:** vitest **389/389** (384 parity + 5 app), `tsc -b` ✓,
+  `vite build` ✓, oxlint 0 errors (11 benign warnings, all pre-existing UI).
+
+## M14 modules: top-level state re-run (2026-09-26)
+
+Full re-verification after the Batch A modules milestone (audit finding #5):
+module files previously contributed only `FunctionDecl`s to the merged program,
+so top-level `let PI = 3.14` in a module was silently dropped →
+`undefined variable 'PI'` from any function that referenced it. Now module
+top-level state is real program state.
+
+- **Before:** `use "lib/math.hmx"` with `const PI = 3.14` in the module →
+  `undefined variable 'PI'` at the use site, exit 1.
+- **After (native + web mirrored):**
+  - `main.cpp load_module_uses` now merges **all** module statements
+    (functions AND top-level state) in **post-order (dependencies first)**,
+    inserted **before** the entry file's own statements — so a module's init
+    section runs in use order, its dependency state exists before dependents
+    initialize, and everything executes before `main`'s body.
+  - The resolver registers **all top-level `let`/`const`/`let (a,b)=…`
+    declarations up front** (pass 1), before resolving any function body
+    (pass 2) — so any function, in any file, can reference any top-level state
+    regardless of file or declaration order (two-phase resolve; new
+    `resolve_var_decl`/`resolve_destruct_decl` extracted in both
+    `type_resolver.cpp` and `resolver.ts`).
+  - `VarDecl`/`DestructDecl` carry a `file` for module-tagged diagnostics and
+    codegen `#line` accuracy (`assign_file`/`stampFile` extended); the codegen
+    env-build sites cast each captured value to its env-field type so capturing
+    a `const text`/`const array` no longer trips gcc `-Wdiscarded-qualifiers`.
+- **Verified scope:** module `const` + mutable `let` read by entry functions
+  and by module functions; deps-first initialization (`let OFFSET = RATE + 5.0`
+  reading the dependency's `RATE`); entry-file top-level state read by module
+  functions; module init `print`s ordered before entry init before `main`;
+  3-level module chain with a `const` array capture; entry-file top-level
+  `let`/`const`/destructure inside a single-file fixture (forward function
+  references now legal).
+- **Errors:** a type error in module top-level state cites the module file+line;
+  duplicate top-level names between modules are rejected (citing the second
+  module's file); a top-level initializer cannot forward-reference state
+  declared later in program order (`undefined variable`).
+- **Tests:** fixtures `top_level_state.hmx`; integration `mod_state`,
+  `mod_state_dep`, `mod_state_entry_to_module`; stress `mod_top_state`,
+  `mod_top_state_init_order`, `mod_top_state_dep`; negative
+  `module_top_state_type_err`, `module_top_state_dup`,
+  `module_top_state_forward_ref`.
+- **Native:** integration **60/60**, negative **199/199**, stress & output
+  **132/132**, CLI **24/24** — all green (415/415).
+- **Web parity (1:1):** `program.ts loadUses` mirrors the post-order merge /
+  front insertion; `resolver.ts` mirrors the two-phase resolve. Parity data
+  regenerated via `gen-data.mts`:
+  `stress 132 = 0 failures; negative 199 = 0; integration 60 = 0`.
+- **Web:** vitest **399/399** (394 parity + 5 app), `tsc -b` ✓,
   `vite build` ✓, oxlint 0 errors (11 benign warnings, all pre-existing UI).
 
 ## Native-only regression report (reference)

@@ -967,6 +967,50 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   + vitest **389/389** (384 parity + 5 app); `gen-data.mts` parity 0 failures
   (129/196/56).
 
+### Milestone — Modules: top-level state (M14) — DONE
+- **Audit #5 fixed:** the module loader (`load_module_uses` in `main.cpp`)
+  merged only `FunctionDecl`s into the entry program, silently dropping any
+  top-level `let`/`const` in a module → `undefined variable 'PI'` at every use
+  site. Module top-level state is now real program state.
+- **Post-order merge:** modules contribute **all** top-level statements —
+  functions AND state declarations (and any init statements like top-level
+  `print`) — collected **dependencies-first** (a module's own statements come
+  after every module it `use`s, transitively) and inserted **before** the entry
+  file's own statements. Result: module init sections run in `use` order,
+  dependency state is initialized and visible before dependents read it, and
+  everything executes before `main`'s body. Mirrored 1:1 in web `program.ts`.
+- **Two-phase top-level registration (native + web resolver):** `resolve()`
+  runs pass 1 registering every top-level `VarDecl`/`DestructDecl` (entry +
+  modules, in program order, resolving initializers for type inference) before
+  pass 2 resolves any function body. Any function in any file can therefore
+  reference any top-level state regardless of file/order — including module
+  functions reading entry-file state and entry functions reading module state.
+  New `resolve_var_decl`/`resolve_destruct_decl` (native + `resolver.ts`)
+  extracted from the old inline branches; pass 2 skips the pre-registered
+  statements.
+- **Diagnostics + hygiene:** `VarDecl`/`DestructDecl` gained a `file` field
+  (`assign_file`/`stampFile` extended) so module-state errors cite the module
+  path + line and codegen `#line` stays accurate. The codegen env-build sites
+  cast each captured value to its env-struct field type, so capturing a `const`
+  text/array (module `const` state) no longer trips gcc
+  `-Wdiscarded-qualifiers` on stderr.
+- **Semantics locked in SYNTAX.md §1.6:** top-level state shares one namespace
+  (duplicates rejected); functions see it by value (read-only, like local
+  closure captures); top-level *initializers* follow program order (forward
+  refs are `undefined variable`, while function bodies may see any top-level
+  state).
+- **Tests:** fixture `top_level_state.hmx` (entry two-phase + forward fn refs +
+  top-level destructure); integration `mod_state`, `mod_state_dep`,
+  `mod_state_entry_to_module`; stress `mod_top_state`,
+  `mod_top_state_init_order`, `mod_top_state_dep`; negative
+  `module_top_state_type_err` (module-file attribution),
+  `module_top_state_dup` (cross-module duplicate), and
+  `module_top_state_forward_ref` (init order within a module).
+- **Hygiene:** native **415/415** (60 integration / 199 negative / 132 stress /
+  24 CLI); web `tsc -b` + `vite build` + oxlint (0 errors, 11 benign warnings)
+  + vitest **399/399** (394 parity + 5 app); `gen-data.mts` parity 0 failures
+  (132/199/60).
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

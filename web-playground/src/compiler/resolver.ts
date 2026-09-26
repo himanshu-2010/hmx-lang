@@ -1395,6 +1395,144 @@ export class TypeResolver {
 
   // ---- statement resolution ----
 
+  /**
+   * M14 (audit #5): resolve + define an individual top-level state declaration.
+   * Used for VarDecl and DestructDecl, which may come from the entry file or an
+   * imported module (carrying their own `file` for the diagnostics prefix).
+   */
+  resolveVarDecl(vd: VarDecl): void {
+    const initType = this.resolveExpr(vd.initializer);
+    if (vd.has_annotation) {
+      if (vd.annotation === TypeKind.Byte) {
+        const number = vd.initializer instanceof NumberLiteral ? vd.initializer : null;
+        if (number && (number.value < 0 || number.value > 255)) {
+          throw this.err(vd.line, "byte value must be between 0 and 255");
+        }
+      }
+      if (initType !== TypeKind.Unknown && initType !== vd.annotation) {
+        const byteLiteral = vd.annotation === TypeKind.Byte && vd.initializer instanceof NumberLiteral;
+        if (!byteLiteral) {
+          throw this.err(
+            vd.line,
+            `type mismatch: variable '${vd.name}' declared as ${typeToString(vd.annotation)} but initialized with ${typeToString(initType)}`
+          );
+        }
+      }
+      if (vd.annotation === TypeKind.Function) {
+        const initDesc = this.exprFunctionType(vd.initializer);
+        if (!typeDescEquals(initDesc, vd.annotation_desc)) {
+          throw this.err(
+            vd.line,
+            `type mismatch: variable '${vd.name}' declared as ${typeDescToString(vd.annotation_desc)} but initialized with ${
+              initDesc.type === TypeKind.Function ? typeDescToString(initDesc) : typeToString(initType)
+            }`
+          );
+        }
+        this.define(vd.name, TypeKind.Function, vd.is_mutable, mkType(TypeKind.Unknown), [], vd.annotation_desc);
+      } else if (vd.annotation === TypeKind.Array) {
+        if (vd.initializer instanceof ArrayLiteral) {
+          fixEmptyArrayLiteral(vd.initializer, vd.elem_desc);
+          if (!typeDescEquals(vd.initializer.elem, vd.elem_desc)) {
+            throw this.err(
+              vd.line,
+              `type mismatch: variable '${vd.name}' declared as array of ${typeDescToString(vd.elem_desc)} but initialized with array of ${typeDescToString(vd.initializer.elem)}`
+            );
+          }
+        } else if (!descFullyKnown(vd.elem_desc)) {
+          throw this.err(
+            vd.line,
+            `cannot infer array element type for '${vd.name}'; use a complete annotation like [[int]]`
+          );
+        }
+        this.define(vd.name, TypeKind.Array, vd.is_mutable, vd.elem_desc);
+      } else if (vd.annotation === TypeKind.Tuple) {
+        if (initType !== TypeKind.Tuple) {
+          throw this.err(
+            vd.line,
+            `type mismatch: variable '${vd.name}' declared as ${tupleTypeToString(vd.tuple_members)} but initialized with ${typeToString(initType)}`
+          );
+        }
+        if (!typeDescListEquals(this.exprTupleMembers(vd.initializer), vd.tuple_members)) {
+          throw this.err(
+            vd.line,
+            `type mismatch: variable '${vd.name}' declared as ${tupleTypeToString(vd.tuple_members)} but initialized with ${tupleTypeToString(this.exprTupleMembers(vd.initializer))}`
+          );
+        }
+        this.define(vd.name, TypeKind.Tuple, vd.is_mutable, mkType(TypeKind.Unknown), [...vd.tuple_members]);
+      } else {
+        this.define(vd.name, vd.annotation, vd.is_mutable);
+      }
+    } else {
+      if (initType === TypeKind.Unknown) {
+        throw this.err(vd.line, `cannot infer type for '${vd.name}'`);
+      }
+      let elem = mkType(TypeKind.Unknown);
+      if (initType === TypeKind.Array) {
+        elem = this.exprElementDesc(vd.initializer);
+        if (!descFullyKnown(elem)) {
+          throw this.err(
+            vd.line,
+            `cannot infer array element type for '${vd.name}'; use an annotation like [int]`
+          );
+        }
+        vd.elem_desc = elem;
+      }
+      if (initType === TypeKind.Tuple) {
+        vd.tuple_members = this.exprTupleMembers(vd.initializer);
+        if (vd.tuple_members.length === 0) {
+          throw this.err(
+            vd.line,
+            `cannot infer tuple type for '${vd.name}'; use an annotation like (int, int)`
+          );
+        }
+      }
+      vd.annotation = initType;
+      if (initType === TypeKind.Function) {
+        const initDesc = this.exprFunctionType(vd.initializer);
+        if (!initDesc.fn_info) {
+          throw this.err(
+            vd.line,
+            `cannot infer function type for '${vd.name}'; use an annotation like fn(int) -> int`
+          );
+        }
+        vd.annotation_desc = initDesc;
+        this.define(vd.name, initType, vd.is_mutable, mkType(TypeKind.Unknown), [], initDesc);
+      } else {
+        this.define(vd.name, initType, vd.is_mutable, elem, vd.tuple_members);
+      }
+    }
+  }
+
+  /** M14: resolve + define an individual top-level destructuring declaration. */
+  resolveDestructDecl(td: DestructDecl): void {
+    const srcType = this.resolveExpr(td.rhs);
+    let val = mkType(TypeKind.Unknown);
+    if (srcType === TypeKind.Tuple) {
+      td.destruct_type = TypeKind.Tuple;
+      td.tuple_members = this.exprTupleMembers(td.rhs);
+      val.type = TypeKind.Tuple;
+      val.tuple_members = td.tuple_members;
+    } else if (srcType === TypeKind.Array) {
+      const ed = this.exprElementDesc(td.rhs);
+      if (!descFullyKnown(ed)) {
+        throw this.err(td.line, "cannot infer element type for this array destructuring");
+      }
+      td.destruct_type = TypeKind.Array;
+      td.destruct_elem = ed;
+      val.type = TypeKind.Array;
+      val.elem = ed;
+    } else if (srcType === TypeKind.Text) {
+      td.destruct_type = TypeKind.Text;
+      val.type = TypeKind.Text;
+    } else {
+      throw this.err(
+        td.line,
+        `right side of destructuring must be a tuple, array, or text, got ${typeToString(srcType)}`
+      );
+    }
+    this.applyDestructPattern(td.patterns, val, td.line, true, td.is_mutable);
+  }
+
   resolveStatement(stmt: Statement): boolean {
     this.current_line_ = stmt.line;
     let always_returns = false;
@@ -1402,107 +1540,7 @@ export class TypeResolver {
       this.resolveFunctionDecl(stmt);
       always_returns = false;
     } else if (stmt instanceof VarDecl) {
-      const vd = stmt;
-      const initType = this.resolveExpr(vd.initializer);
-      if (vd.has_annotation) {
-        if (vd.annotation === TypeKind.Byte) {
-          const number = vd.initializer instanceof NumberLiteral ? vd.initializer : null;
-          if (number && (number.value < 0 || number.value > 255)) {
-            throw this.err(vd.line, "byte value must be between 0 and 255");
-          }
-        }
-        if (initType !== TypeKind.Unknown && initType !== vd.annotation) {
-          const byteLiteral = vd.annotation === TypeKind.Byte && vd.initializer instanceof NumberLiteral;
-          if (!byteLiteral) {
-            throw this.err(
-              vd.line,
-              `type mismatch: variable '${vd.name}' declared as ${typeToString(vd.annotation)} but initialized with ${typeToString(initType)}`
-            );
-          }
-        }
-        if (vd.annotation === TypeKind.Function) {
-          const initDesc = this.exprFunctionType(vd.initializer);
-          if (!typeDescEquals(initDesc, vd.annotation_desc)) {
-            throw this.err(
-              vd.line,
-              `type mismatch: variable '${vd.name}' declared as ${typeDescToString(vd.annotation_desc)} but initialized with ${
-                initDesc.type === TypeKind.Function ? typeDescToString(initDesc) : typeToString(initType)
-              }`
-            );
-          }
-          this.define(vd.name, TypeKind.Function, vd.is_mutable, mkType(TypeKind.Unknown), [], vd.annotation_desc);
-        } else if (vd.annotation === TypeKind.Array) {
-          if (vd.initializer instanceof ArrayLiteral) {
-            fixEmptyArrayLiteral(vd.initializer, vd.elem_desc);
-            if (!typeDescEquals(vd.initializer.elem, vd.elem_desc)) {
-              throw this.err(
-                vd.line,
-                `type mismatch: variable '${vd.name}' declared as array of ${typeDescToString(vd.elem_desc)} but initialized with array of ${typeDescToString(vd.initializer.elem)}`
-              );
-            }
-          } else if (!descFullyKnown(vd.elem_desc)) {
-            throw this.err(
-              vd.line,
-              `cannot infer array element type for '${vd.name}'; use a complete annotation like [[int]]`
-            );
-          }
-          this.define(vd.name, TypeKind.Array, vd.is_mutable, vd.elem_desc);
-        } else if (vd.annotation === TypeKind.Tuple) {
-          if (initType !== TypeKind.Tuple) {
-            throw this.err(
-              vd.line,
-              `type mismatch: variable '${vd.name}' declared as ${tupleTypeToString(vd.tuple_members)} but initialized with ${typeToString(initType)}`
-            );
-          }
-          if (!typeDescListEquals(this.exprTupleMembers(vd.initializer), vd.tuple_members)) {
-            throw this.err(
-              vd.line,
-              `type mismatch: variable '${vd.name}' declared as ${tupleTypeToString(vd.tuple_members)} but initialized with ${tupleTypeToString(this.exprTupleMembers(vd.initializer))}`
-            );
-          }
-          this.define(vd.name, TypeKind.Tuple, vd.is_mutable, mkType(TypeKind.Unknown), [...vd.tuple_members]);
-        } else {
-          this.define(vd.name, vd.annotation, vd.is_mutable);
-        }
-      } else {
-        if (initType === TypeKind.Unknown) {
-          throw this.err(vd.line, `cannot infer type for '${vd.name}'`);
-        }
-        let elem = mkType(TypeKind.Unknown);
-        if (initType === TypeKind.Array) {
-          elem = this.exprElementDesc(vd.initializer);
-          if (!descFullyKnown(elem)) {
-            throw this.err(
-              vd.line,
-              `cannot infer array element type for '${vd.name}'; use an annotation like [int]`
-            );
-          }
-          vd.elem_desc = elem;
-        }
-        if (initType === TypeKind.Tuple) {
-          vd.tuple_members = this.exprTupleMembers(vd.initializer);
-          if (vd.tuple_members.length === 0) {
-            throw this.err(
-              vd.line,
-              `cannot infer tuple type for '${vd.name}'; use an annotation like (int, int)`
-            );
-          }
-        }
-        vd.annotation = initType;
-        if (initType === TypeKind.Function) {
-          const initDesc = this.exprFunctionType(vd.initializer);
-          if (!initDesc.fn_info) {
-            throw this.err(
-              vd.line,
-              `cannot infer function type for '${vd.name}'; use an annotation like fn(int) -> int`
-            );
-          }
-          vd.annotation_desc = initDesc;
-          this.define(vd.name, initType, vd.is_mutable, mkType(TypeKind.Unknown), [], initDesc);
-        } else {
-          this.define(vd.name, initType, vd.is_mutable, elem, vd.tuple_members);
-        }
-      }
+      this.resolveVarDecl(stmt);
     } else if (stmt instanceof ArrayAssignStmt) {
       const aassign = stmt;
       const sym = this.findSymbol(aassign.name);
@@ -1668,33 +1706,7 @@ export class TypeResolver {
       this.resolveExpr(stmt.expr);
       this.allow_void_call_ = saved;
     } else if (stmt instanceof DestructDecl) {
-      const td = stmt;
-      const srcType = this.resolveExpr(td.rhs);
-      let val = mkType(TypeKind.Unknown);
-      if (srcType === TypeKind.Tuple) {
-        td.destruct_type = TypeKind.Tuple;
-        td.tuple_members = this.exprTupleMembers(td.rhs);
-        val.type = TypeKind.Tuple;
-        val.tuple_members = td.tuple_members;
-      } else if (srcType === TypeKind.Array) {
-        const ed = this.exprElementDesc(td.rhs);
-        if (!descFullyKnown(ed)) {
-          throw this.err(stmt.line, "cannot infer element type for this array destructuring");
-        }
-        td.destruct_type = TypeKind.Array;
-        td.destruct_elem = ed;
-        val.type = TypeKind.Array;
-        val.elem = ed;
-      } else if (srcType === TypeKind.Text) {
-        td.destruct_type = TypeKind.Text;
-        val.type = TypeKind.Text;
-      } else {
-        throw this.err(
-          stmt.line,
-          `right side of destructuring must be a tuple, array, or text, got ${typeToString(srcType)}`
-        );
-      }
-      this.applyDestructPattern(td.patterns, val, stmt.line, true, td.is_mutable);
+      this.resolveDestructDecl(stmt);
     } else if (stmt instanceof MultiAssignStmt) {
       const ma = stmt;
       const srcType = this.resolveExpr(ma.rhs);
@@ -2189,7 +2201,30 @@ export class TypeResolver {
     this.collectFunctions(program);
     this.analyzeNonlocalExits(program);
     this.pushScope();
+    const topState = new Set<Statement>();
+    // Pass 1 (M14, audit #5): register all top-level state declarations — from
+    // the entry file AND every imported module — before any function body runs,
+    // so functions can reference module/entry `let`/`const` regardless of file
+    // or declaration order. Each statement resolves with its own stamped file.
     for (const stmt of program.statements) {
+      const savedFile = this.current_file_;
+      if (stmt instanceof VarDecl) {
+        this.current_line_ = stmt.line;
+        if (stmt.file.length > 0) this.current_file_ = stmt.file;
+        this.resolveVarDecl(stmt);
+        topState.add(stmt);
+      } else if (stmt instanceof DestructDecl) {
+        this.current_line_ = stmt.line;
+        if (stmt.file.length > 0) this.current_file_ = stmt.file;
+        this.resolveDestructDecl(stmt);
+        topState.add(stmt);
+      }
+      this.current_file_ = savedFile;
+    }
+    // Pass 2: resolve everything else (functions, module/entry init statements,
+    // main). Top-level state is already registered above.
+    for (const stmt of program.statements) {
+      if (topState.has(stmt)) continue;
       this.resolveStatement(stmt);
     }
     this.popScope();

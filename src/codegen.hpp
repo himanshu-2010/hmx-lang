@@ -24,6 +24,18 @@ private:
     std::string fn_file(const FunctionDecl* fn) const {
         return (fn && !fn->file.empty()) ? fn->file : source_file_;
     }
+    // File for a top-level statement: module top-level state declarations carry
+    // their own `file` (stamped by the module loader); everything else belongs
+    // to wherever the current function / source is.
+    std::string statement_file(const Statement* stmt) const {
+        if (auto* v = dynamic_cast<const VarDecl*>(stmt); v && !v->file.empty()) {
+            return v->file;
+        }
+        if (auto* d = dynamic_cast<const DestructDecl*>(stmt); d && !d->file.empty()) {
+            return d->file;
+        }
+        return line_file_;
+    }
     std::map<std::vector<TypeDesc>, std::string> tuple_types_;
     std::vector<FunctionDecl*> all_functions_;
     std::map<std::string, FunctionDecl*> functions_by_name_;

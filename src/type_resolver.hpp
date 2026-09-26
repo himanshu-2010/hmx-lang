@@ -108,6 +108,8 @@ private:
 
     TypeKind resolve_expr(Expression* expr);
     bool resolve_stmt(Statement* stmt);
+    void resolve_var_decl(VarDecl* var);
+    void resolve_destruct_decl(DestructDecl* td);
     bool resolve_block(const std::vector<StmtPtr>& statements);
     void resolve_function_decl(FunctionDecl* fn);
     void collect_functions(Program& program);

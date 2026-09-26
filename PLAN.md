@@ -205,3 +205,19 @@ prior fixtures, and lands one complete feature.
   `transitive_capture.hmx` + stress `transitive_capture_{lambda,three_level,
   function_value,param_and_text}` + negative
   `closures_transitive_capture_not_in_scope`.
+- **M14 modules: top-level state (audit #5):** the module loader now merges ALL
+  module statements (functions + top-level `let`/`const`/destructures + init
+  statements) in dependencies-first post-order, inserted BEFORE the entry
+  file's statements, so module init sections run in `use` order before `main`.
+  The resolver registers all top-level state declarations up front (two-phase
+  pass: new `resolve_var_decl`/`resolve_destruct_decl` extracted in both
+  `type_resolver.cpp` and `resolver.ts`), so any function in any file can
+  reference any top-level state regardless of order. `VarDecl`/`DestructDecl`
+  carry a `file` for module-tagged diagnostics + accurate `#line`; codegen
+  env-build sites cast captures to their field type (no more
+  `-Wdiscarded-qualifiers` for `const` text/array state). Duplicates across
+  modules and forward references in initializers are compile errors. Native
+  415/415 + web 399/399 green; fixture `top_level_state.hmx` + integration
+  `mod_state{,_dep,_entry_to_module}` + stress
+  `mod_top_state{,_init_order,_dep}` + negative
+  `module_top_state_{type_err,dup,forward_ref}`.

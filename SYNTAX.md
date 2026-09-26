@@ -39,7 +39,9 @@ standard C reference documentation, but uses HMX's own syntax, types, and conven
 
 A HMX program is a sequence of statements and function declarations in a `.hmx` file.
 `use` statements at the very top of the file pull in top-level functions from other
-`.hmx` modules (§1.6). Execution begins in the `main` function.
+`.hmx` modules (§1.6). Top-level `let`/`const` declarations are legal in any file
+(entry or module) and initialize before `main` runs (§1.6). Execution begins in the
+`main` function.
 
 ```hmx
 fn main() {
@@ -105,6 +107,25 @@ use "<relative or absolute path>"
   `Error [line 12]: ...` form.
 - Imported modules may themselves use other modules, define closures, capture state,
   and use non-local `break`/`continue`, with no restrictions.
+- Modules can declare top-level `let`/`const` state (single bindings or
+  `let (a, b) = …` destructures). Every top-level declaration is registered
+  before any function body is type-checked, so any function — in the entry file
+  or any module — can reference any top-level variable regardless of file or
+  declaration order.
+- A module's top-level statements form its *init section*: they execute, in
+  source order, before the `main` function runs. Initialization is
+  dependencies-first — a module's own statements run after those of every
+  module it `use`s, transitively — and all module init sections run before the
+  entry file's top-level statements and before `main`'s body.
+- Within a top-level initializer, forward references are an error (state
+  initializes in program order); between initializers this is
+  `undefined variable 'X'`. Functions, by contrast, may reference any top-level
+  state (the two-phase registration above). Top-level state read from inside a
+  function is a by-value capture, so it is read-only there (same rule as local
+  closure captures).
+- Top-level state shares one namespace across all files: a duplicate
+  `let`/`const` name between modules (or entry/module) is a compile error, like
+  duplicate functions.
 
 ```hmx
 // main.hmx

@@ -10,6 +10,7 @@
 #include <vector>
 #include <set>
 #include <algorithm>
+#include <iterator>
 #include <csignal>
 
 #ifndef _WIN32
@@ -127,7 +128,9 @@ static std::string dir_of(const std::string& path) {
     return path.substr(0, pos);
 }
 
-// Recursively stamp `file` onto a function and every nested statement of it.
+// Recursively stamp `file` onto a function and every nested statement of it,
+// plus top-level state declarations (VarDecl/DestructDecl) which carry their
+// own `file` field so module diagnostics cite the right source.
 static void assign_file(Statement* stmt, const std::string& file) {
     auto recurse = [&](const std::vector<StmtPtr>& list) {
         for (auto& s : list) assign_file(s.get(), file);
@@ -135,6 +138,10 @@ static void assign_file(Statement* stmt, const std::string& file) {
     if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
         if (fn->file.empty()) fn->file = file;
         recurse(fn->body);
+    } else if (auto* v = dynamic_cast<VarDecl*>(stmt)) {
+        if (v->file.empty()) v->file = file;
+    } else if (auto* d = dynamic_cast<DestructDecl*>(stmt)) {
+        if (d->file.empty()) d->file = file;
     } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
         recurse(ifs->then_body);
         recurse(ifs->else_body);
@@ -167,13 +174,19 @@ static Program* parse_file(const std::string& path) {
     return g_program;
 }
 
-// Recursively load `use`d modules into `program`. `base_dir` is the directory
+// Recursively load `use`d modules into `merged`. `base_dir` is the directory
 // of the file that declared the modules (relative paths resolve to it).
 // `visiting` holds canonical paths on the current load chain (cycle detection);
-// `loaded` holds canonical paths already merged.
+// `loaded` holds canonical paths already merged. Statements are collected in
+// post-order — a module's own statements come after its transitive
+// dependencies' — so top-level module state initializes (and resolves) before
+// any dependent module reads it (M14, audit #5). All top-level statements are
+// merged, not just functions: module `let`/`const` state is real program
+// state, and the module's top-level statements act as its init section.
 static bool load_module_uses(Program* program, const std::string& base_dir,
                              std::set<std::string>& loaded,
-                             std::vector<std::string>& visiting) {
+                             std::vector<std::string>& visiting,
+                             std::vector<StmtPtr>& merged) {
     for (auto& u : program->use_files) {
         std::filesystem::path p(u);
         if (p.is_relative()) p = std::filesystem::path(base_dir) / p;
@@ -201,18 +214,17 @@ static bool load_module_uses(Program* program, const std::string& base_dir,
         }
 
         visiting.push_back(canon);
-        bool sub_ok = load_module_uses(mod, dir_of(canon), loaded, visiting);
+        bool sub_ok = load_module_uses(mod, dir_of(canon), loaded, visiting, merged);
         visiting.pop_back();
         if (!sub_ok) {
             delete mod;
             return false;
         }
 
+        // Post-order: merge this module's own statements after its deps'.
         for (auto& stmt : mod->statements) {
-            if (auto* fn = dynamic_cast<FunctionDecl*>(stmt.get())) {
-                assign_file(fn, canon);
-                program->statements.push_back(std::move(stmt));
-            }
+            assign_file(stmt.get(), canon);
+            merged.push_back(std::move(stmt));
         }
         delete mod;
         loaded.insert(canon);
@@ -347,13 +359,21 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Expand modules (used files are merged into the entry program).
+    // Expand modules (used files are merged into the entry program). Module
+    // statements are collected dependencies-first, then inserted BEFORE the
+    // entry file's own statements, so module init sections run first (before
+    // `main`) and their top-level state resolves before entry code reads it.
     std::set<std::string> loaded;
     std::vector<std::string> visiting;
     visiting.push_back(std::filesystem::weakly_canonical(source_file).string());
-    if (!load_module_uses(program, dir_of(source_file), loaded, visiting)) {
+    std::vector<StmtPtr> module_stmts;
+    if (!load_module_uses(program, dir_of(source_file), loaded, visiting,
+                          module_stmts)) {
         return 1;
     }
+    program->statements.insert(program->statements.begin(),
+                               std::make_move_iterator(module_stmts.begin()),
+                               std::make_move_iterator(module_stmts.end()));
     g_program = program;
 
     CodeGen codegen;
