@@ -1,0 +1,26 @@
+{
+  "version": "0.9.0",
+  "description": "HMX — a small statically typed systems language that transpiles to C",
+  "homepage": "https://github.com/himanshu-2010/hmx-lang",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/himanshu-2010/hmx-lang/releases/download/v0.9.0/hmx-0.9.0-windows-x86_64.zip",
+      "hash": "SKIP"
+    }
+  },
+  "bin": "hmx.exe",
+  "installer": {
+    "script": "Write-Host \"hmx installed. A C compiler (gcc/cc/clang) is required at runtime.\""
+  },
+  "checkver": {
+    "github": "https://github.com/himanshu-2010/hmx-lang"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/himanshu-2010/hmx-lang/releases/download/v$version/hmx-$version-windows-x86_64.zip"
+      }
+    }
+  }
+}

@@ -82,6 +82,28 @@ To ship it: import this repository into Antideploy (preferred) or Vercel —
 both auto-detect it because `package.json`/`vercel.json`/`Procfile` sit at the
 repo root. Domain suggestions and step-by-step: [`DEPLOY.md`](DEPLOY.md).
 
+## Install
+
+The `hmx` command-line compiler installs on Linux, macOS and Windows. Pick the
+option that matches your platform:
+
+| Platform        | Installer                                                                 |
+| --------------- | -------------------------------------------------------------------------- |
+| **Linux**       | `curl -fsSL https://raw.githubusercontent.com/himanshu-2010/hmx-lang/main/install/install.sh \| bash` |
+| **macOS**       | `brew tap himanshu-2010/homebrew-hmx && brew install hmx`                  |
+| **Windows**     | `curl -fsSL https://raw.githubusercontent.com/himanshu-2010/hmx-lang/main/install/install.ps1 \| powershell -Command -` |
+| **Arch Linux**  | `yay -S hmx` (AUR)                                                          |
+| **Debian/Ubuntu** | `.deb` from the [GitHub Release](https://github.com/himanshu-2010/hmx-lang/releases) |
+| **Scoop / winget** | `scoop bucket add hmx https://github.com/himanshu-2010/scoop-hmx && scoop install hmx` · `winget install HMX` |
+
+The Linux installer detects your distro and uses the best option available:
+`.deb` (Debian/Ubuntu via `apt`), the AUR (Arch), a Homebrew install (macOS),
+or the prebuilt binary tarball as a generic fallback. Every installer is free
+and open source.
+
+`hmx` transpiles a `.hmx` program to C and compiles it, so it needs a C
+compiler on PATH (`gcc`, `cc`, or `clang`).
+
 ## Quick Start
 
 ### Requirements
@@ -156,15 +178,24 @@ language are the two separators in a `for` loop header.
 ## CLI
 
 ```text
-Usage: hmx <command> <file.hmx> [options]
+HMX — a small statically typed systems language
 
-Commands:
-  run   <file.hmx>        Transpile, compile, execute
-  build <file.hmx>        Transpile and compile only
+Usage:
+  hmx <file.hmx> [options]     Transpile, compile and execute
+  hmx run   <file.hmx> [opts]  Same as above (explicit)
+  hmx build <file.hmx> [opts]  Transpile and compile to a binary only
+  hmx new   <name>             Scaffold a new .hmx file
+  hmx -h | --help              Show help
+  hmx -v | --version           Show the version
 
 Options:
-  -keep-c                Keep intermediate .c file
+  -keep-c        Keep the intermediate .c file (build_temp.c)
+  -o <output>    Output binary path (with build)
 ```
+
+A bare `hmx <file.hmx>` runs the program by default; `run` is the explicit
+spelling. `hmx build file.hmx -o hello` produces a standalone `hello` binary.
+`hmx new <name>` writes a ready-to-run starter file.
 
 `main` is the entry point. A `main` function without a return type exits with code 0.
 A typed main can return an integer exit code:

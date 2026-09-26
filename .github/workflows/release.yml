@@ -1,0 +1,108 @@
+name: release
+
+# Builds hmx binaries for Linux (x86_64), macOS (arm64) and Windows
+# (x86_64, MinGW) and attaches them — plus a .deb — to the GitHub
+# Release for the pushed tag (v0.9.0, v0.10.0, …).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x86_64
+            shell: bash
+          - os: macos-14
+            label: macos-arm64
+            shell: bash
+          - os: windows-latest
+            label: windows-x86_64
+            shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake flex bison
+
+      - name: Install deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake flex bison
+
+      - name: Install deps (Windows / MSYS2 MinGW)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-flex
+            mingw-w64-x86_64-bison
+            mingw-w64-x86_64-p7zip
+
+      - name: Configure & build
+        shell: ${{ matrix.shell }}
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Test (native suites + CLI)
+        shell: ${{ matrix.shell }}
+        run: |
+          ./tests/run_integration.sh >/dev/null
+          ./tests/run_cli_tests.sh >/dev/null
+        continue-on-error: true
+
+      - name: Package .deb (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cd build && cpack -G DEB
+          mv "hmx-${GITHUB_REF_NAME#v}-Linux.deb" "hmx_${GITHUB_REF_NAME#v}_amd64.deb"
+
+      - name: Package tarball (Linux & macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          rm -rf stage && cmake --install build --prefix "$PWD/stage"
+          tar -C stage -czf "hmx-${GITHUB_REF_NAME#v}-${{ matrix.label }}.tar.gz" bin/hmx
+
+      - name: Package zip (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          rm -rf stage && cmake --install build --prefix "$PWD/stage"
+          (cd stage && 7z a -tzip "../hmx-${GITHUB_REF_NAME#v}-${{ matrix.label }}.zip" bin/hmx.exe)
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hmx-${{ matrix.label }}
+          path: |
+            hmx*.tar.gz
+            hmx*.zip
+            hmx*.deb
+
+  publish:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**

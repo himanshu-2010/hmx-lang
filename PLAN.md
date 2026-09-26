@@ -148,3 +148,22 @@ prior fixtures, and lands one complete feature.
   persisted to localStorage), Dark Reader detection + themed disable prompt,
   and 250ms debounce on every compile-carrying button. Details + verification
   in PROGRESS.md / TESTRESULT.md.
+- **M8 mouse follower + light-theme colour pass:** desktop-only cursor trail
+  (dot + lerped halo, one rAF loop, ref-only writes, `pointer: fine` gating,
+  reduced-motion + vitest guards) and a rebuilt light palette + forced
+  light-on-dark text inside the surfaces that stay dark in light mode
+  (`.doc-intro` hidden-text bug fixed). Details in PROGRESS.md.
+- **M9 CLI hardening:** bare `hmx <file.hmx>` runs by default; `-h/--help`,
+  `-v/--version` (`0.9.0` from `project(VERSION)`), `hmx new <name>`,
+  `build -o <output>`, gcc → cc → clang compiler probe, `_WIN32` shims
+  (sys/wait fallback, `.exe` suffix, run prefix); new `tests/run_cli_tests.sh`
+  (23 tests). All native suites green (52/190/116).
+- **M10 distribution:** `cmake --install` target, CPack `.deb`, GitHub Actions
+  `release.yml` (ubuntu/macos-Arm/windows-MinGW → tar.gz + zip + `.deb` on a
+  `v*` tag), distro-aware `install/install.sh` (apt/pacman+paru+yay/dnf/brew/
+  generic binary) + `install/install.ps1` (winget→scoop→zip), and repo
+  packaging manifests (`packaging/arch/PKBUILD`, `packaging/brew/hmx.rb`,
+  `packaging/scoop/hmx.json`, `packaging/winget/hmx.installer.yaml`) for the
+  first release, **v0.9.0**. External submissions (AUR, Homebrew tap, Scoop
+  bucket, winget-pkgs, Launchpad PPA, and the `REPLACE_WITH_TAG_SHA` brew
+  revision) are documented in `packaging/` headers and the README.

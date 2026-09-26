@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 358 / 358; web-playground parity 358 / 358 (361 vitest)
+**Status:** ALL TESTS PASSED — native 381 / 381 (52 integration + 190 negative + 116 stress + 23 CLI); web-playground vitest 366 / 366
 
 ---
 
@@ -54,7 +54,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (51/51 Passed)
+### 1. Integration Fixtures (52/52 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -110,7 +110,7 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 
 ---
 
-### 2. Negative & Error Handling Suite (182/182 Passed)
+### 2. Negative & Error Handling Suite (190/190 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -286,7 +286,7 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (104/104 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (116/116 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -395,14 +395,23 @@ These tests verify exact runtime output matching and process exit code propagati
 
 ---
 
-### 4. CLI Driver Options Suite
+### 4. CLI Driver Suite (23 CLI tests via `tests/run_cli_tests.sh`)
 
-| Command / Option Tested | Action Taken | Expected Result | Status |
+| Test | Command | Expected Result | Status |
 | :--- | :--- | :--- | :---: |
-| `./hmx run <file.hmx>` | Transpile, compile, execute | Binary executes, temporary C file removed | **PASS** |
-| `./hmx build <file.hmx>` | Transpile and compile only | Binary created, output `Built: <file>` | **PASS** |
-| `-keep-c` Flag | Transpile & keep source | Intermediate `build_temp.c` retained | **PASS** |
-| Invalid Arguments / Missing File | Run without valid file | Exit `1` with usage / error diagnostic | **PASS** |
+| Default run (M9) | `hmx <file.hmx>` | Transpile, compile, execute | **PASS** |
+| Explicit run | `hmx run <file.hmx>` | Binary executes, temporary C file removed | **PASS** |
+| `-keep-c` Flag | `run <file.hmx> -keep-c` | Intermediate `build_temp.c` retained | **PASS** |
+| Exit-code passthrough | `hmx run exit42.hmx` | Program exit code = 42 | **PASS** |
+| Build + `-o` | `hmx build <f> -o hello` | Binary built, runs, output matches | **PASS** |
+| Version | `hmx --version` / `-v` | Prints `hmx 0.9.0` | **PASS** |
+| Help | `hmx --help` / `-h` | Prints usage incl. `run` | **PASS** |
+| Scaffold (M9) | `hmx new greet` | Creates `greet.hmx` | **PASS** |
+| No overwrite | `hmx new greet` (exists) | Exit 1 "already exists" | **PASS** |
+| Unknown option / missing file / non-`.hmx` | `hmx f.hmx --wat`, `hmx nope.hmx`, `hmx hello.txt` | Exit 1 with diagnostic | **PASS** |
+| No args / bare `run` / `new` no name / `-o` no path | — | Exit 1 with usage | **PASS** |
+
+Also verified by hand: `hmx new` scaffolds a runnable starter and `build -o` produces an executable.
 
 ---
 
@@ -638,5 +647,26 @@ rate-limited interactions. Compiler parity untouched (366 vitest green).
   examples); the smoke test flushes the timer via fake timers.
 - **Status: 366 vitest green; `tsc -b`, `vite build`, `oxlint` (0 errors, 10
   benign warnings) all green.**
+
+## M8 / M9 / M10 re-run (2026-09-26)
+
+Full re-verification after the mouse-follower + light-theme pass (M8), the CLI
+hardening (M9), and the release/packaging work (M10):
+
+- **Native:** integration **52/52**, negative **190/190**, stress & output
+  **116/116**, CLI **23/23** (new `tests/run_cli_tests.sh`) — all green.
+- **CLI surface:** bare `hmx <file>` defaults to `run`; `run`/`build`/`new`;
+  `-h/--help`, `-v/--version` (prints `hmx 0.9.0`); `build -o <path>`;
+  `-keep-c`; unknown options / bad args exit 1. Compiler probe = gcc → cc →
+  clang fallback. Windows `_WIN32` guards compile-clean (`sys/wait.h`,
+  `.exe` suffix, run prefix).
+- **Packaging (locally verified):** `cpack -G DEB` produces
+  `hmx_0.9.0_amd64.deb`; `cmake --install` installs `bin/hmx` + LICENSE;
+  installer archive shape `bin/hmx` verified end-to-end against the
+  `install/install.sh` binary path.
+- **Web:** vitest **366/366**, `tsc -b` ✓, `vite build` ✓
+  (`index-CQYx8wo9.css` / `index-CZE3Fah3.js`), oxlint 0 errors (11 benign
+  warnings). Light-theme rebuild + dark-kept-surface text fixes; headless
+  Chrome confirms the cursor follower renders nothing without a fine pointer.
 
 ## Native-only regression report (reference)

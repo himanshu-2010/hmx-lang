@@ -793,6 +793,72 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 - **Hygiene:** `tsc -b` + `vite build` + `oxlint` (0 errors, 10 benign
   warnings) + vitest **366/366** green.
 
+### Milestone — Mouse follower + light-theme colour pass (M8) — DONE
+- **Cursor trail:** `web-playground/src/ui/CursorTrail.tsx` — a hot dot that
+  tracks the pointer 1:1 plus a 190px halo that lerps behind it, driven by one
+  `requestAnimationFrame` loop writing only to `transform`/`scale` through refs
+  (no React state per frame). Mounted in `App.tsx` with `pointer-events: none`
+  and z-index 40 (below splash/guide overlays). Gated to `(pointer: fine) and
+  (hover: hover)`, disabled under `prefers-reduced-motion`, hidden until the
+  first pointer move, hidden on document leave, skipped in vitest
+  (`MODE === "test"`) and on touch — verified: headless Chrome reports no fine
+  pointer, so nothing renders there.
+- **Light-theme palette overhaul:** rebuilt the `[data-theme="light"]` token
+  block around a considered warm-paper palette (`--bg #f4efec`, white panels,
+  `--text #241a17` ≈13:1, `--muted #5d4843` ≈6.5:1, `--dim #8a726c` ≈4.5:1 on
+  `--bg`, readable red accents `--red-hi #a0162c` / `--coral #d73748`). Fixed
+  every "hidden text" regression: `.doc-intro` was hardcoded light-grey
+  `#c6c6d0` (invisible on a light page → now `var(--muted)`); dark-kept
+  surfaces (hero terminal, sample-code bars, docs code strips/actions) pinned
+  to light-mode-forced text colors so token-driven `--muted/--dim/--ok` do not
+  flip dark inside them.
+- **Hygiene:** tsc ✓, vite build ✓ (fresh `index-CQYx8wo9.css` /
+  `index-CZE3Fah3.js`), oxlint 0 errors, vitest 366/366.
+
+### Milestone — CLI hardening: default-run, help/version, `new`, portability (M9) — DONE
+- `src/main.cpp` reworked argument handling: bare `hmx <file.hmx>` **runs by
+  default**; `run`/`build` stay explicit; `-h/--help/help` → usage on stdout
+  (exit 0); `-v/--version/version` → `hmx 0.9.0`; `hmx new <name>` scaffolds a
+  runnable starter file (refuses to overwrite, tolerates a `.hmx` suffix);
+  `build -o <output>` for explicit binary paths; unknown options / missing
+  args / non-`.hmx` files exit 1 with a clear message.
+- **Version stamp:** `project(hmx VERSION 0.9.0 …)` in `CMakeLists.txt` +
+  `target_compile_definitions(hmx PRIVATE HMX_VERSION=...)`, with a hard-coded
+  `0.9.0` fallback in `main.cpp` when built outside CMake.
+- **Compiler probe:** `find_c_compiler()` prefers `gcc`, falls back to `cc`
+  then `clang` (macOS/no-gcc systems), with a friendly error if none exist.
+- **Windows portability:** `sys/wait.h` include guarded (`#ifndef WEXITSTATUS`
+  fallback for MSVC), output binaries get a `.exe` suffix on `_WIN32`, and the
+  POSIX `./` run-prefix is dropped (cmd runs current-dir executables by name).
+  MinGW-w64 + winflex-bison build path covered by the release workflow.
+- **Exit-code contract preserved:** `run` still passes through the program's
+  exit code via `WEXITSTATUS` (stress suite asserts 0/1/42/100).
+- New `tests/run_cli_tests.sh` (**23 CLI tests**): default-run, explicit run,
+  `-keep-c` file retention, exit-code passthrough, `build -o` + run, version,
+  help, `new` semantics, and error paths. Full regression: native 52 integration
+  / 190 negative / 116 stress + 23 CLI, all green.
+
+### Milestone — Release v0.9.0: packaging, installers, distribution (M10) — DONE
+- **CMake install target:** `cmake --install` drops `hmx` into `bin/` and the
+  MIT `LICENSE` into `share/doc/hmx` (GNUInstallDirs).
+- **CPack DEB:** `.deb` builds locally (`cpack -G DEB` → `hmx_0.9.0_amd64.deb`,
+  depends on `gcc`, section `devel`).
+- **GitHub release workflow** (`.github/workflows/release.yml`): on a `v*` tag,
+  three runners — ubuntu (x86_64) → tarball + `.deb`, macos-14 (arm64) →
+  tarball, windows (MSYS2/MinGW-w64) → zip of `hmx.exe` — each runs the native
+  suites, then a `publish` job downloads everything and attaches the assets to
+  the GitHub Release.
+- **Distro-aware installer:** `install/install.sh` detects apt (`.deb` via
+  `apt`), pacman (AUR via paru/yay, binary fallback), dnf (binary fallback),
+  brew (macOS Homebrew), else the generic `linux|x86_64|arm64` tarball;
+  `install/install.ps1` tries winget → scoop → direct zip (user PATH).
+- **Repo packaging manifests:** `packaging/arch/PKBUILD` (AUR), `packaging/brew/hmx.rb`
+  (Homebrew tap `himanshu-2010/homebrew-hmx`), `packaging/scoop/hmx.json`,
+  `packaging/winget/hmx.installer.yaml`. The brew `revision` and scoop/winget
+  hashes are stamped at release time from the actual tag/build.
+- **Docs:** README install table + refreshed CLI section; SYNTAX.md CLI
+  reference; TESTRESULT.md re-run report.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.
@@ -815,5 +881,6 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
 
 ## Relevant files
 - `src/lexer.l`, `src/parser.y`, `src/ast.hpp/cpp`, `src/type_resolver.hpp/cpp`, `src/codegen.hpp/cpp`, `src/main.cpp`
-- `tests/fixtures/*.hmx`, `tests/run_integration.sh`
+- `tests/fixtures/*.hmx`, `tests/run_integration.sh`, `tests/run_cli_tests.sh`
+- `install/install.sh`, `install/install.ps1`, `packaging/`, `.github/workflows/release.yml`
 - `PLAN.md`, `SYNTAX.md`

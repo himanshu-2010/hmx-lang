@@ -1,0 +1,19 @@
+# winget manifest for HMX (installer type: MSI is not produced yet;
+# this uses the portable zip and requires the ZIP + scoped installer).
+# Publish to microsoft/winget-pkgs under manifests/h/HMX/HMX/<version>/.
+PackageIdentifier: HMX.HMX
+PackageVersion: 0.9.0
+PackageLocale: en-US
+Publisher: HMX
+PackageName: HMX
+PackageUrl: https://github.com/himanshu-2010/hmx-lang
+License: MIT
+ShortDescription: HMX — a small statically typed systems language that transpiles to C
+InstallerType: zip
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/himanshu-2010/hmx-lang/releases/download/v0.9.0/hmx-0.9.0-windows-x86_64.zip
+    InstallerSha256: SKIP
+    InstallerLocation: hmx.exe
+ManifestType: singleton
+ManifestVersion: 1.6.0

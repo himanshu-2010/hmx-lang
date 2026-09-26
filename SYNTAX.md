@@ -1685,6 +1685,37 @@ Error [line 6]: undefined variable 'nope'
   via `#line` directives); preserve `build_temp.c` for inspection.
 - **Runtime** → execute the binary and pass through its exit code.
 
+### 14.6 Command-Line Reference
+
+Since v0.9.0 the driver supports the following surface (run `hmx --help` for
+the in-tool copy):
+
+```text
+Usage:
+  hmx <file.hmx> [options]     Transpile, compile and execute
+  hmx run   <file.hmx> [opts]  Same as above (explicit)
+  hmx build <file.hmx> [opts]  Transpile and compile to a binary only
+  hmx new   <name>             Scaffold a new .hmx file
+  hmx -h | --help              Show help
+  hmx -v | --version           Show the version
+
+Options:
+  -keep-c        Keep the intermediate .c file (build_temp.c)
+  -o <output>    Output binary path (with build)
+```
+
+- A bare `hmx <file.hmx>` runs the program (`run` is the explicit spelling).
+- `run` deletes the temp `.c` and the binary afterwards (unless `-keep-c`);
+  the program's exit code is passed through (`fn main() -> int { return N }`
+  exits with code `N`).
+- `build` keeps the binary at `<basename>` (or the `-o` path) and reports
+  `Built: <path>` on stderr.
+- `new` writes a runnable starter `<name>.hmx` and refuses to overwrite an
+  existing file.
+- The C compiler is probed in order `gcc` → `cc` → `clang`; a missing
+  compiler is a clear error before any file is written.
+- Only `.hmx` files are accepted; everything else is rejected with exit 1.
+
 ---
 
 ## 15. Roadmap (planned features)

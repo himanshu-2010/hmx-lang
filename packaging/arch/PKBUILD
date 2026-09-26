@@ -1,0 +1,32 @@
+# Maintainer: Himanshu Kumar <himanshu2010.dev@gmail.com>
+# This PKGBUILD lives in the hmx-lang repo under packaging/arch/.
+# Publish the directory to AUR as package "hmx" (the file must be
+# named PKGBUILD there).
+
+pkgname=hmx
+pkgver=0.9.0
+pkgrel=1
+pkgdesc="HMX — a small statically typed systems language that transpiles to C"
+arch=('x86_64')
+url="https://github.com/himanshu-2010/hmx-lang"
+license=('MIT')
+depends=('gcc' 'flex' 'bison' 'cmake')
+makedepends=('ninja')
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/himanshu-2010/hmx-lang/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cmake -S "hmx-lang-v${pkgver}" -B build -DCMAKE_BUILD_TYPE=Release
+}
+
+build() {
+  cmake --build build
+}
+
+check() {
+  ./build/hmx --version | grep -q "hmx ${pkgver}"
+}
+
+package() {
+  cmake --install build --prefix "${pkgdir}/usr"
+}
