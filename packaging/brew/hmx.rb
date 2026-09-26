@@ -12,7 +12,7 @@ class Hmx < Formula
   homepage "https://github.com/himanshu-2010/hmx-lang"
   url "https://github.com/himanshu-2010/hmx-lang.git",
       tag:      "v0.9.0",
-      revision: "fd8977ed1270282589efc1080da646e38454c576"
+      revision: "20e3a256b4fc659ed21594e385e8d030e5da7b9a"
   license "MIT"
   head "https://github.com/himanshu-2010/hmx-lang.git", branch: "main"
 
