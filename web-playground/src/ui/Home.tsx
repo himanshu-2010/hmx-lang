@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { useRunner } from "./runner-context";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { Highlight } from "./Highlight";
-import { HeroTerminal } from "./HeroTerminal";
 import "./home.css";
 
 const GITHUB_URL = "https://github.com/himanshu-2010/hmx-lang";
@@ -296,7 +295,13 @@ export function HomePage() {
                   <Highlight code={samples[0].code} />
                 </code>
               </pre>
-              <HeroTerminal />
+              <div className="hero-card-foot">
+                <span className="prompt">$ hmx run main.hmx</span>
+                <span>→</span>
+                <span>42</span>
+                <span>42</span>
+                <span className="cursor" aria-hidden="true" />
+              </div>
             </div>
           </Reveal>
         </div>

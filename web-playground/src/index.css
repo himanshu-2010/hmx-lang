@@ -797,19 +797,11 @@ a:hover {
   border-color: rgba(140, 230, 158, 0.45);
   background: rgba(140, 230, 158, 0.13);
 }
-[data-theme="light"] .hero-term-output,
-[data-theme="light"] .hero-term-line {
-  color: #b9a6a6;
+[data-theme="light"] .hero-card-foot {
+  color: #a08a88;
 }
-[data-theme="light"] .hero-term-prompt {
+[data-theme="light"] .hero-card-foot .prompt {
   color: #ff9d8a;
-}
-[data-theme="light"] .hero-term-input {
-  color: #f5f0f0;
-  caret-color: #ff6b6b;
-}
-[data-theme="light"] .hero-term-input::placeholder {
-  color: #6f5c58;
 }
 [data-theme="light"] .code-strip {
   background: rgba(26, 5, 5, 0.42);

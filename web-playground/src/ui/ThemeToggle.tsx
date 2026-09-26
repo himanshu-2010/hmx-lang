@@ -1,47 +1,15 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useState } from "react";
 import { applyTheme, getInitialTheme, type Theme } from "./theme";
 
-interface ThemeContextValue {
-  theme: Theme;
-  setTheme: (t: Theme) => void;
-  toggle: () => void;
-}
-
-const ThemeContext = createContext<ThemeContextValue | null>(null);
-
-/**
- * Single source of truth for the site theme. Shared by the nav toggle and
- * the hero terminal's `theme` command, so either path stays in sync with
- * the other. Persists via localStorage, defaulted to system preference.
- */
-export function ThemeProvider({ children }: { children: ReactNode }) {
+export function useTheme(): { theme: Theme; toggle: () => void } {
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
-  return (
-    <ThemeContext.Provider
-      value={{
-        theme,
-        setTheme,
-        toggle: () => setTheme((t) => (t === "dark" ? "light" : "dark")),
-      }}
-    >
-      {children}
-    </ThemeContext.Provider>
-  );
-}
-
-export function useTheme(): ThemeContextValue {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error("useTheme must be used inside <ThemeProvider>");
-  return ctx;
+  return {
+    theme,
+    toggle: () => setTheme((t) => (t === "dark" ? "light" : "dark")),
+  };
 }
 
 /** Sun/moon switch — persists via localStorage, defaulted to system theme. */
