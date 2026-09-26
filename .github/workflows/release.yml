@@ -49,20 +49,43 @@ jobs:
             mingw-w64-x86_64-cmake
             flex
             bison
+            ninja
 
       - name: Configure & build
+        if: runner.os != 'Windows'
         shell: bash
+        run: |
+          # Ninja ships as a dependency of the cmake package; the macOS
+          # runner gets keg-only flex/bison on PATH via GITHUB_PATH above.
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build build
+
+      - name: Configure & build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: |
           # Force the MinGW toolchain: windows-latest defaults to the MSVC
           # generator, but flex-generated lexer.cpp uses strdup()/POSIX bits
-          # (fine under MinGW, not MSVC). Ninja ships as a dependency of the
-          # mingw-w64-x86_64-cmake package above.
+          # (fine under MinGW, not MSVC). Must run under the msys2 shell —
+          # Git Bash cannot see the MSYS2 install. ninja here is the
+          # msys-native package (there is no mingw-w64-x86_64-ninja).
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build
 
       - name: Test (native suites + CLI)
+        if: runner.os != 'Windows'
         shell: bash
+        run: |
+          ./tests/run_integration.sh >/dev/null
+          ./tests/run_negative_tests.sh >/dev/null
+          ./tests/run_stress_tests.sh >/dev/null
+          ./tests/run_cli_tests.sh >/dev/null
+
+      - name: Test (native suites + CLI, Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: |
           ./tests/run_integration.sh >/dev/null
           ./tests/run_negative_tests.sh >/dev/null
@@ -85,12 +108,13 @@ jobs:
 
       - name: Package zip (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          $ver = $env:GITHUB_REF_NAME
-          if ($ver -like 'v*') { $ver = $ver.Substring(1) }
-          cmake --install build --prefix "$PWD/stage"
-          Compress-Archive -Path stage/bin/hmx.exe -DestinationPath "hmx-$ver-${{ matrix.label }}.zip"
+          ver="${GITHUB_REF_NAME#v}"
+          cmake --install build --prefix "$(pwd -W)/stage"
+          # pwd -W gives wind32-style forward-slash paths, which both cmake
+          # and PowerShell accept; run under msys2 so cmake is on PATH.
+          powershell.exe -NoProfile -Command "& { Compress-Archive -Path '$(pwd -W)/stage/bin/hmx.exe' -DestinationPath 'hmx-$ver-${{ matrix.label }}.zip' }"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
