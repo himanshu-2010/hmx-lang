@@ -1,0 +1,2690 @@
+{
+  "_comment": "Auto-generated from tests/run_negative_tests.sh + build/hmx snapshot by web-playground/tools/smoke/gen-data.mts. parity.test.ts asserts runProgram() matches 'expected' verbatim.",
+  "cases": [
+    {
+      "name": "decl_type_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let x: int = \"text\"\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: variable 'x' declared as int but initialized with text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "duplicate_variable",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 1\n        let x = 2\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "duplicate declaration of variable",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: duplicate declaration of variable 'x'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "duplicate_function",
+      "kind": "negative",
+      "source": "fn helper() {\n        print(1)\n    }\n    fn helper() {\n        print(2)\n    }\n    fn main() {\n        print(0)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "duplicate declaration of function",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: duplicate declaration of function 'helper'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "missing_return",
+      "kind": "negative",
+      "source": "fn value(flag: bool) -> int {\n        if (flag) {\n            return 1\n        }\n    }\n    fn main() {\n        print(value(true))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "may exit without returning int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: function 'value' may exit without returning int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "assign_type_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 5\n        x = \"hello\"\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: type mismatch: cannot assign text to int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "binary_type_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 5 + \"text\"\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch in binary expression: int + text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "binary_bool_addition",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = true + false\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "operator.*not defined",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: operator '+' not defined for type bool\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "binary_mixed_int_decimal",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 5 + 3.14\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch in binary expression: int + decimal\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "text_ordering",
+      "kind": "negative",
+      "source": "fn main() {\n        let b = \"a\" < \"b\"\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "operator.*not defined for type text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: operator '<' not defined for type text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "logical_non_bool",
+      "kind": "negative",
+      "source": "fn main() {\n        let b = 5 and 3\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "requires bool",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: operator '&&' requires bool operands, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "not_non_bool",
+      "kind": "negative",
+      "source": "fn main() {\n        let b = not 5\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "requires bool",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: operator 'not' requires bool operand, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "loop_count_non_int",
+      "kind": "negative",
+      "source": "fn main() {\n        loop(\"5\") {\n            print(1)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "loop count must be int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: loop count must be int, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "while_cond_non_bool",
+      "kind": "negative",
+      "source": "fn main() {\n        while (5) {\n            print(1)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "while condition must be bool",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: while condition must be bool, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "for_cond_non_bool",
+      "kind": "negative",
+      "source": "fn main() {\n        for (let i = 0; 5; i++) {\n            print(i)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "for condition must be bool",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: for condition must be bool, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "for_update_text_increment",
+      "kind": "negative",
+      "source": "fn main() {\n        for (let s = \"x\"; true; s++) {\n            print(s)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "requires int or decimal",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: operator '++' requires int or decimal, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "do_while_cond_non_bool",
+      "kind": "negative",
+      "source": "fn main() {\n        do {\n            print(1)\n        } while (5)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "do-while condition must be bool",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: do-while condition must be bool, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "semicolon_outside_for",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 1;\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "Parse error",
+      "expected": {
+        "stdout": "",
+        "stderr": "Parse error [line 2]: syntax error near ';'\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "if_cond_non_bool",
+      "kind": "negative",
+      "source": "fn main() {\n        if (5) {\n            print(1)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "if condition must be bool",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: if condition must be bool, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "else_if_cond_non_bool",
+      "kind": "negative",
+      "source": "fn main() {\n        if (true) {\n            print(1)\n        } else if (5) {\n            print(2)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "if condition must be bool",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: if condition must be bool, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "ternary_cond_non_bool",
+      "kind": "negative",
+      "source": "fn main() {\n        let value = 1 ? 2 : 3\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "ternary condition must be bool",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: ternary condition must be bool, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "ternary_branch_type_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let value = true ? 1 : 2.0\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "ternary branches must have the same type",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: ternary branches must have the same type, got int and decimal\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "invalid_cast",
+      "kind": "negative",
+      "source": "fn main() {\n        let value = \"text\" as int\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "casts are only supported between int and decimal",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: casts are only supported between int and decimal\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "byte_out_of_range",
+      "kind": "negative",
+      "source": "fn main() {\n        let value: byte = 256\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "byte value must be between 0 and 255",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: byte value must be between 0 and 255\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "char_arithmetic",
+      "kind": "negative",
+      "source": "fn main() {\n        let value: char = 'a'\n        value += 1\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "requires int or decimal",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: operator '+=' requires int or decimal, got char\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "switch_non_scalar",
+      "kind": "negative",
+      "source": "fn main() {\n        switch (\"value\") {\n            case \"value\":\n                print(1)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "switch value must be int, byte, or char",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: switch value must be int, byte, or char, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "switch_duplicate_case",
+      "kind": "negative",
+      "source": "fn main() {\n        switch (1) {\n            case 1:\n                print(1)\n            case 1:\n                print(2)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "duplicate switch case value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: duplicate switch case value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "switch_multiple_default",
+      "kind": "negative",
+      "source": "fn main() {\n        switch (1) {\n            default:\n                print(1)\n            default:\n                print(2)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "multiple default",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: switch cannot have multiple default cases\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "substring_index_type",
+      "kind": "negative",
+      "source": "fn main() {\n        print(substring(\"hello\", 1.0, 2))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "expects int indexes",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: builtin 'substring' expects int indexes\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "const_assignment",
+      "kind": "negative",
+      "source": "fn main() {\n        const value = 1\n        value = 2\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot modify immutable variable",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: cannot modify immutable variable 'value'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "const_compound_assignment",
+      "kind": "negative",
+      "source": "fn main() {\n        const value = 1\n        value += 2\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot modify immutable variable",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: cannot modify immutable variable 'value'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "const_increment",
+      "kind": "negative",
+      "source": "fn main() {\n        const value = 1\n        value++\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot modify immutable variable",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: cannot modify immutable variable 'value'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "undef_var_read",
+      "kind": "negative",
+      "source": "fn main() {\n        print(nope)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "undefined variable",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: undefined variable 'nope'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "undef_var_assign",
+      "kind": "negative",
+      "source": "fn main() {\n        nope = 5\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "undefined variable",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: undefined variable 'nope'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "compound_assign_type_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 5\n        x += \"str\"\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: type mismatch in compound assignment: int += text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "compound_assign_text",
+      "kind": "negative",
+      "source": "fn main() {\n        let s = \"hello\"\n        s += 1\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "requires int or decimal",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: operator '+=' requires int or decimal, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "incr_text",
+      "kind": "negative",
+      "source": "fn main() {\n        let s = \"hello\"\n        s++\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "requires int or decimal",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: operator '++' requires int or decimal, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "string_concat_mixed",
+      "kind": "negative",
+      "source": "fn main() {\n        let s = \"hello\" + 5\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch in binary expression: text + int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "string_subtraction",
+      "kind": "negative",
+      "source": "fn main() {\n        let s = \"hello\" - \"world\"\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "operator '-' not defined for type text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: operator '-' not defined for type text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "undef_fn_call",
+      "kind": "negative",
+      "source": "fn main() {\n        no_such_func()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "undefined function",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: undefined function 'no_such_func'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "call_main",
+      "kind": "negative",
+      "source": "fn foo() {\n        main()\n    }\n    fn main() {\n        foo()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot call function 'main'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: cannot call function 'main'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "call_arg_count_mismatch",
+      "kind": "negative",
+      "source": "fn add(a: int, b: int) -> int {\n        return a + b\n    }\n    fn main() {\n        add(1, 2, 3)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "expects 2 arguments, got 3",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: function 'add' expects 2 arguments, got 3\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "curry_prefix_arg_mismatch",
+      "kind": "negative",
+      "source": "fn add(a: int, b: int) -> int {\n        return a + b\n    }\n    fn main() {\n        let inc = add(\"one\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch: argument 1 of 'add' expects int, got text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: type mismatch: argument 1 of 'add' expects int, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "curry_zero_args_value",
+      "kind": "negative",
+      "source": "fn add(a: int, b: int) -> int {\n        return a + b\n    }\n    fn main() {\n        let f = add\n        f()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "expects 2 arguments, got 0",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: function 'f' expects 2 arguments, got 0\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "curry_too_many_remaining",
+      "kind": "negative",
+      "source": "fn add(a: int, b: int, c: int) -> int {\n        return a + b + c\n    }\n    fn main() {\n        let f = add(1)\n        print(f(2, 3, 4))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "expects 2 arguments, got 3",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: function 'f' expects 2 arguments, got 3\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "curry_multi_partial_chain_type",
+      "kind": "negative",
+      "source": "fn add(a: int, b: int, c: int) -> int {\n        return a + b + c\n    }\n    fn main() {\n        let f = add(1)\n        let g: fn(int) -> int = f\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "declared as fn\\(int\\) -> int but initialized with fn\\(int, int\\) -> int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: type mismatch: variable 'g' declared as fn(int) -> int but initialized with fn(int, int) -> int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "lambda_void_value_position",
+      "kind": "negative",
+      "source": "fn main() {\n        let v = lambda() {\n            print(1)\n        }\n        print(v())\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "returns nothing and cannot be used as a value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: function 'v' returns nothing and cannot be used as a value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "lambda_missing_return",
+      "kind": "negative",
+      "source": "fn main() {\n        let bad = lambda(x: int) -> int {\n            print(x)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "lambda may exit without returning int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: lambda may exit without returning int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "lambda_default_value_type",
+      "kind": "negative",
+      "source": "fn main() {\n        let bad = lambda(x: int = \"nope\") -> int {\n            return x\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "default value for parameter 'x' of lambda must be a literal of type int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: default value for parameter 'x' of lambda must be a literal of type int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "call_arg_type_mismatch",
+      "kind": "negative",
+      "source": "fn add(a: int, b: int) -> int {\n        return a + b\n    }\n    fn main() {\n        add(1, \"two\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch: argument 2",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: type mismatch: argument 2 of 'add' expects int, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "void_fn_as_value",
+      "kind": "negative",
+      "source": "fn greet() {\n        print(\"hi\")\n    }\n    fn main() {\n        let x = greet()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "returns nothing and cannot be used as a value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: function 'greet' returns nothing and cannot be used as a value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "return_val_in_void_fn",
+      "kind": "negative",
+      "source": "fn greet() {\n        return 42\n    }\n    fn main() {\n        greet()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "return value in void function",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: return value in void function\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "bare_return_in_typed_fn",
+      "kind": "negative",
+      "source": "fn calc() -> int {\n        return\n    }\n    fn main() {\n        calc()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "bare return used",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: function expected to return int but bare return used\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "return_type_mismatch",
+      "kind": "negative",
+      "source": "fn calc() -> int {\n        return \"hello\"\n    }\n    fn main() {\n        calc()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch: return text but function returns int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: return text but function returns int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "return_outside_fn",
+      "kind": "negative",
+      "source": "let x = 10\n    return 5",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "return outside of function",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: return outside of function\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "syntax_unclosed_brace",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 5",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "Parse error",
+      "expected": {
+        "stdout": "",
+        "stderr": "Parse error [line 2]: syntax error near ''\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "syntax_unclosed_paren",
+      "kind": "negative",
+      "source": "fn main() {\n        print(5\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "Parse error",
+      "expected": {
+        "stdout": "",
+        "stderr": "Parse error [line 3]: syntax error near '}'\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "unterminated_block_comment",
+      "kind": "negative",
+      "source": "/* unclosed comment\n    fn main() {}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "unterminated block comment",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: unterminated block comment\nParse error [line 2]: syntax error near ''\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_element_type_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [int] = [\"x\", \"y\"]\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch: variable 'a' declared as array of int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: variable 'a' declared as array of int but initialized with array of text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_mixed_element_types",
+      "kind": "negative",
+      "source": "fn main() {\n        let a = [1, 2, \"three\"]\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "array elements must all be the same type",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: array elements must all be the same type, got int and text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_untyped_empty",
+      "kind": "negative",
+      "source": "fn main() {\n        let a = []\n        print(a[0])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot infer array element type",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: cannot infer array element type for 'a'; use an annotation like [int]\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_nested_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [int] = [[1], [2]]\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "declared as array of int but initialized with array of array of int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: variable 'a' declared as array of int but initialized with array of array of int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_nested_element_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [[int]] = [[1], [\"x\"]]\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "array elements must all be the same type",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: array elements must all be the same type, got array of int and array of text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_index_on_non_array",
+      "kind": "negative",
+      "source": "fn main() {\n        let n = 5\n        print(n[0])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "is not an array",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: variable 'n' is not an array\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_index_non_int",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [int] = [1]\n        print(a[\"x\"])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "array index must be int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: array index must be int, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_assign_type_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [int] = [1]\n        a[0] = \"x\"\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot assign text to array element of int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: type mismatch: cannot assign text to array element of int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_assign_immutable",
+      "kind": "negative",
+      "source": "fn main() {\n        const a: [int] = [1]\n        a[0] = 5\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot modify immutable variable",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: cannot modify immutable variable 'a'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_binary_op",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [int] = [1]\n        print(a + a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "not defined for type array",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: operator '+' not defined for type array\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "print_array",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [int] = [1]\n        print(a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot print an array",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: cannot print an array; index its elements or use length(arr)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_param_element_mismatch",
+      "kind": "negative",
+      "source": "fn f(a: [int]) {\n        print(1)\n    }\n    fn main() {\n        f([\"x\"])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "expects array of int, got array of text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: type mismatch: argument 1 of 'f' expects array of int, got array of text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_builtin_push_non_array",
+      "kind": "negative",
+      "source": "fn main() {\n        push(3, 1)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'push' expects an array as argument 1",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: builtin 'push' expects an array as argument 1\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_builtin_push_type_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [int] = [1]\n        push(a, \"x\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot push text to array of int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: cannot push text to array of int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_builtin_push_immutable",
+      "kind": "negative",
+      "source": "fn main() {\n        const a: [int] = [1]\n        push(a, 2)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot modify immutable array 'a'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: cannot modify immutable array 'a'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_builtin_push_as_value",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [int] = [1]\n        let x = push(a, 2)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "returns nothing and cannot be used as a value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: builtin 'push' returns nothing and cannot be used as a value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_builtin_sort_bool",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [bool] = [true, false]\n        sort(a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "requires an array of int, decimal, byte, char, or text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: builtin 'sort' requires an array of int, decimal, byte, char, or text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_builtin_slice_non_int",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [int] = [1]\n        let b = slice(a, 0, \"x\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'slice' expects int indexes",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: builtin 'slice' expects int indexes, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_builtin_concat_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        concat([1], [\"x\"])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot concatenate array of text with array of int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: type mismatch: cannot concatenate array of text with array of int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_builtin_index_of_type_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        index_of([\"a\", \"b\"], 2)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "index_of value of int does not match array of text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: type mismatch: index_of value of int does not match array of text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_builtin_index_of_nested",
+      "kind": "negative",
+      "source": "fn main() {\n        index_of([[1]], [1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "requires an array of scalar or text elements",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: builtin 'index_of' requires an array of scalar or text elements\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_builtin_pop_on_const",
+      "kind": "negative",
+      "source": "fn main() {\n        const a: [int] = [1]\n        pop(a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot modify immutable array 'a'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: cannot modify immutable array 'a'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "text_index_assign",
+      "kind": "negative",
+      "source": "fn main() {\n        let s = \"hi\"\n        s[0] = 'x'\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot assign to a character of a text value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: cannot assign to a character of a text value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "text_index_non_int",
+      "kind": "negative",
+      "source": "fn main() {\n        let s = \"hi\"\n        let c = s[1.5]\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "text index must be int, got decimal",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: text index must be int, got decimal\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "ord_expects_char_int",
+      "kind": "negative",
+      "source": "fn main() {\n        let n = ord(5)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'ord' expects char, got int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: builtin 'ord' expects char, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "ord_expects_char_text",
+      "kind": "negative",
+      "source": "fn main() {\n        let n = ord(\"a\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'ord' expects char, got text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: builtin 'ord' expects char, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "ord_arity",
+      "kind": "negative",
+      "source": "fn main() {\n        let n = ord('a', 'b')\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'ord' expects 1 arguments, got 2",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: builtin 'ord' expects 1 arguments, got 2\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "chr_expects_int",
+      "kind": "negative",
+      "source": "fn main() {\n        let c = chr(\"a\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'chr' expects int, got text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: builtin 'chr' expects int, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "split_expects_text1",
+      "kind": "negative",
+      "source": "fn main() {\n        let p = split(3, \",\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'split' expects text as argument 1, got int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: builtin 'split' expects text as argument 1, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "split_expects_text2",
+      "kind": "negative",
+      "source": "fn main() {\n        let p = split(\"a\", 3)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'split' expects text as argument 2, got int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: builtin 'split' expects text as argument 2, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "split_arity",
+      "kind": "negative",
+      "source": "fn main() {\n        let p = split(\"a\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'split' expects 2 arguments, got 1",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: builtin 'split' expects 2 arguments, got 1\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_print",
+      "kind": "negative",
+      "source": "fn f() -> (int, int) {\n        return 1, 2\n    }\n    fn main() {\n        print(f())\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot print a tuple",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: cannot print a tuple; destructure it or index its elements\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_binary_op",
+      "kind": "negative",
+      "source": "fn f() -> (int, int) {\n        return 1, 2\n    }\n    fn main() {\n        let t = f()\n        print(t + t)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "not defined for type tuple",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: operator '+' not defined for type tuple\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_ternary",
+      "kind": "negative",
+      "source": "fn f(flag: bool) -> (int, int) {\n        if (flag) {\n            return 1, 2\n        }\n        return 3, 4\n    }\n    fn main() {\n        let t = true ? f(true) : f(false)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "ternary branches cannot be tuples",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 9]: ternary branches cannot be tuples\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_index_dynamic_hetero",
+      "kind": "negative",
+      "source": "fn f() -> (int, text) {\n        return 1, \"x\"\n    }\n    fn main() {\n        let t = f()\n        let i = 0\n        print(t[i])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "tuple members must all be of the same type",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: cannot index tuple (int, text) with a non-constant index: tuple members must all be of the same type\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_index_dynamic_nested_hetero",
+      "kind": "negative",
+      "source": "fn mk() -> (int, int) {\n        return 1, 2\n    }\n    fn f() -> ((int, int), text) {\n        return mk(), \"x\"\n    }\n    fn main() {\n        let t = f()\n        let i = 0\n        print(t[i])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "tuple members must all be of the same type",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 10]: cannot index tuple ((int, int), text) with a non-constant index: tuple members must all be of the same type\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_index_dynamic_non_int",
+      "kind": "negative",
+      "source": "fn f() -> (int, int) {\n        return 1, 2\n    }\n    fn main() {\n        let t = f()\n        let s = \"x\"\n        print(t[s])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "tuple index must be int, got text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: tuple index must be int, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_index_out_of_range",
+      "kind": "negative",
+      "source": "fn f() -> (int, int) {\n        return 1, 2\n    }\n    fn main() {\n        let t = f()\n        print(t[2])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "tuple index 2 out of range",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: tuple index 2 out of range for (int, int)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_index_on_int",
+      "kind": "negative",
+      "source": "fn main() {\n        let n = 5\n        print(n[0])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "is not an array",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: variable 'n' is not an array\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_destruct_count_mismatch",
+      "kind": "negative",
+      "source": "fn f() -> (int, int) {\n        return 1, 2\n    }\n    fn main() {\n        let (a, b, c) = f()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot destructure tuple of 2 members into 3 variables",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: cannot destructure tuple of 2 members into 3 variables\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_destruct_non_tuple",
+      "kind": "negative",
+      "source": "fn main() {\n        let (a, b) = 5\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "right side of destructuring must be a tuple, array, or text, got int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: right side of destructuring must be a tuple, array, or text, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destruct_tuple_rest",
+      "kind": "negative",
+      "source": "fn f() -> (int, int) {\n        return 1, 2\n    }\n    fn main() {\n        let (a, ...rest) = f()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot use '...rest' when destructuring a tuple",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: cannot use '...rest' when destructuring a tuple\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destruct_array_unknown_elem",
+      "kind": "negative",
+      "source": "fn main() {\n        let (a, b) = []\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot infer element type for this array destructuring",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: cannot infer element type for this array destructuring\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destruct_array_multiassign_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let a = \"x\"\n        let b = \"y\"\n        (a, b) = [1, 2]\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot assign int to text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: type mismatch: cannot assign int to text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destruct_array_rest_target_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 1\n        let r = 5\n        (x, ...r) = [1, 2, 3]\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot assign array of int to int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: type mismatch: cannot assign array of int to int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destruct_array_immutable_target",
+      "kind": "negative",
+      "source": "fn main() {\n        const c: int = 1\n        let a: int = 0\n        (c, a) = [5, 6]\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot modify immutable variable 'c'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: cannot modify immutable variable 'c'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destruct_text_multiassign_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 1\n        let y = 2\n        (x, y) = \"ab\"\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot assign char to int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: type mismatch: cannot assign char to int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destruct_text_rest_target_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let a = 'a'\n        let r: [int] = [1]\n        (a, ...r) = \"hi there\"\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot assign text to array of int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: type mismatch: cannot assign text to array of int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_destruct_target_type_mismatch",
+      "kind": "negative",
+      "source": "fn f() -> (int, text) {\n        return 1, \"x\"\n    }\n    fn main() {\n        let x = 5\n        let y = 6\n        (x, y) = f()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 8]: type mismatch: cannot assign text to int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_destruct_undefined_target",
+      "kind": "negative",
+      "source": "fn f() -> (int, int) {\n        return 1, 2\n    }\n    fn main() {\n        (a, b) = f()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "undefined variable",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: undefined variable 'a'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_return_count_mismatch",
+      "kind": "negative",
+      "source": "fn f() -> (int, int) {\n        return 1, 2, 3\n    }\n    fn main() {\n        print(0)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "returns 2 values but return statement provides 3",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: function returns 2 values but return statement provides 3\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_return_member_type_mismatch",
+      "kind": "negative",
+      "source": "fn f() -> (int, int) {\n        return 1, \"x\"\n    }\n    fn main() {\n        print(0)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "return value 2 has type text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: return value 2 has type text but function member 2 expects int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_return_single_whole_scalar",
+      "kind": "negative",
+      "source": "fn f() -> (int, int) {\n        return 5\n    }\n    fn main() {\n        print(0)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch: return int but function returns",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: return int but function returns (int, int)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_nested_pattern_on_char",
+      "kind": "negative",
+      "source": "fn main() {\n        let s: text = \"hi\"\n        let (a, (b, c)) = s\n        print(a, b, c)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot destructure a character into a nested pattern",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: cannot destructure a character into a nested pattern\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_nested_pattern_on_scalar_elem",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [int] = [1, 2, 3]\n        let ((x, y), z) = a\n        print(x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot destructure a value of type int into a nested pattern",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: cannot destructure a value of type int into a nested pattern\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_nested_count_mismatch",
+      "kind": "negative",
+      "source": "fn mk3() -> (int, int, int) {\n        return 1, 2, 3\n    }\n    fn mk() -> ((int, int, int), int) {\n        return mk3(), 4\n    }\n    fn main() {\n        let ((a, b), c) = mk()\n        print(a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot destructure tuple of 3 members into 2 variables",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 9]: cannot destructure tuple of 3 members into 2 variables\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_nested_rest_in_group",
+      "kind": "negative",
+      "source": "fn mk() -> (int, int) {\n        return 1, 2\n    }\n    fn f() -> ((int, int), int) {\n        return mk(), 3\n    }\n    fn main() {\n        let ((a, ...r), b) = f()\n        print(a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot use '...rest' when destructuring a tuple",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 9]: cannot use '...rest' when destructuring a tuple\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destruct_rest_not_last_array",
+      "kind": "negative",
+      "source": "fn main() {\n        let a: [int] = [1, 2, 3]\n        let (...r, x) = a\n        print(x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot use '...rest' before another destructuring target",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: cannot use '...rest' before another destructuring target\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destruct_rest_not_last_text",
+      "kind": "negative",
+      "source": "fn main() {\n        let s = \"hello\"\n        let (...r, x) = s\n        print(x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot use '...rest' before another destructuring target",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: cannot use '...rest' before another destructuring target\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_nested_multiassign_undefined",
+      "kind": "negative",
+      "source": "fn mk_pair(x: int) -> (int, int) {\n        return x, x * 10\n    }\n    fn mk_nested() -> ((int, int), int) {\n        return mk_pair(1), 2\n    }\n    fn main() {\n        let one = 0\n        ((one, two), three) = mk_nested()\n        print(one)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "undefined variable 'two'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 10]: undefined variable 'two'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_annotated_mismatch",
+      "kind": "negative",
+      "source": "fn f() -> (int, text) {\n        return 1, \"x\"\n    }\n    fn main() {\n        let t: (int, int) = f()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "but initialized with",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: type mismatch: variable 't' declared as (int, int) but initialized with (int, text)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_length",
+      "kind": "negative",
+      "source": "fn f() -> (int, int) {\n        return 1, 2\n    }\n    fn main() {\n        let t = f()\n        print(length(t))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin .length. expects text or array, got tuple",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: builtin 'length' expects text or array, got tuple\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_bare_return",
+      "kind": "negative",
+      "source": "fn f() -> (int, int) {\n        return\n    }\n    fn main() {\n        print(0)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "bare return used",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: function expected to return tuple but bare return used\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_call_arg_shape_mismatch",
+      "kind": "negative",
+      "source": "fn pair_txt() -> (int, text) {\n        return 1, \"x\"\n    }\n    fn g(t: (int, int)) -> int {\n        return t[0]\n    }\n    fn main() {\n        let p = pair_txt()\n        print(g(p))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "expects tuple \\(int, int\\), got tuple \\(int, text\\)",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 9]: type mismatch: argument 1 of 'g' expects tuple (int, int), got tuple (int, text)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "mod_on_decimal",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 5.5 % 2.5\n        print(x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "operator '%' not defined for type decimal",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: operator '%' not defined for type decimal\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "mod_on_text",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = \"abc\" % \"def\"\n        print(x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "operator '%' not defined for type text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: operator '%' not defined for type text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "mod_type_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 5 % 2.5\n        print(x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch in binary expression",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch in binary expression: int % decimal\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "mod_eq_on_decimal",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 5.5\n        x %= 2\n        print(x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "operator '%=' requires int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: operator '%=' requires int, got decimal\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "unary_minus_on_text",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = -\"abc\"\n        print(x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "operator '-' not defined for type text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: operator '-' not defined for type text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "break_outside_loop",
+      "kind": "negative",
+      "source": "fn main() {\n        break\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "break outside of a loop",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: break outside of a loop\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "continue_outside_loop",
+      "kind": "negative",
+      "source": "fn main() {\n        continue\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "continue outside of a loop",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: continue outside of a loop\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "break_in_switch_no_loop",
+      "kind": "negative",
+      "source": "fn main() {\n        loop (1) {\n            switch (1) {\n                case 1: break\n            }\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "break inside a switch case requires an enclosing loop",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: break inside a switch case requires an enclosing loop within the case\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "continue_in_switch_no_loop",
+      "kind": "negative",
+      "source": "fn main() {\n        loop (1) {\n            switch (1) {\n                case 1: continue\n            }\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "continue inside a switch case requires an enclosing loop",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: continue inside a switch case requires an enclosing loop within the case\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "foreach_on_int",
+      "kind": "negative",
+      "source": "fn main() {\n        foreach (x in 5) {\n            print(x)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "foreach iterable must be an array or text, got int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: foreach iterable must be an array or text, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "foreach_on_tuple",
+      "kind": "negative",
+      "source": "fn pair() -> (int, int) {\n        return 1, 2\n    }\n    fn main() {\n        foreach (x in pair()) {\n            print(x)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "foreach iterable must be an array or text, got tuple",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: foreach iterable must be an array or text, got tuple\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "foreach_var_out_of_scope",
+      "kind": "negative",
+      "source": "fn main() {\n        let a = [1, 2]\n        foreach (x in a) {\n            print(x)\n        }\n        print(x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "undefined variable",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: undefined variable 'x'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "input_with_args",
+      "kind": "negative",
+      "source": "fn main() {\n        print(input(5))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'input' expects 0 arguments, got 1",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: builtin 'input' expects 0 arguments, got 1\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tostr_on_array",
+      "kind": "negative",
+      "source": "fn main() {\n        print(tostr([1, 2]))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'tostr' expects int, decimal, bool, byte, char, or text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: builtin 'tostr' expects int, decimal, bool, byte, char, or text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tostr_wrong_arity",
+      "kind": "negative",
+      "source": "fn main() {\n        print(tostr())\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'tostr' expects 1 arguments, got 0",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: builtin 'tostr' expects 1 arguments, got 0\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "parse_int_on_int",
+      "kind": "negative",
+      "source": "fn main() {\n        print(parse_int(42))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'parse_int' expects text, got int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: builtin 'parse_int' expects text, got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "parse_decimal_on_bool",
+      "kind": "negative",
+      "source": "fn main() {\n        print(parse_decimal(true))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'parse_decimal' expects text, got bool",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: builtin 'parse_decimal' expects text, got bool\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "print_zero_args",
+      "kind": "negative",
+      "source": "fn main() {\n        print()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "syntax error near",
+      "expected": {
+        "stdout": "",
+        "stderr": "Parse error [line 2]: syntax error near ')'\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "print_array_arg",
+      "kind": "negative",
+      "source": "fn main() {\n        let a = [1, 2]\n        print(a, 5)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot print an array",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: cannot print an array; index its elements or use length(arr)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "print_tuple_arg",
+      "kind": "negative",
+      "source": "fn pair() -> (int, int) {\n        return 1, 2\n    }\n    fn main() {\n        print(pair())\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot print a tuple",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: cannot print a tuple; destructure it or index its elements\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "nested_fn_assigns_captured",
+      "kind": "negative",
+      "source": "fn main() {\n        let outer = 5\n        fn helper() {\n            outer = 7\n        }\n        helper()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot assign to captured variable",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: cannot assign to captured variable 'outer'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "closures_capture_not_in_scope",
+      "kind": "negative",
+      "source": "fn other() {\n        let local = 5\n        fn g() -> int { return local }\n    }\n    fn main() {\n        print(g())\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "captured variable 'local' is not in scope",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: cannot call 'g' from here: captured variable 'local' is not in scope\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "closures_forward_ref_value",
+      "kind": "negative",
+      "source": "fn main() {\n        let f: fn(int) -> int = g\n        fn g(n: int) -> int { return n }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "must be declared before it is used as a value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: function 'g' must be declared before it is used as a value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "closures_use_main_value",
+      "kind": "negative",
+      "source": "fn apply(f: fn(int) -> int, x: int) -> int { return f(x) }\n    fn main() {\n        print(apply(main, 3))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot use function 'main' as a value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: cannot use function 'main' as a value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "closures_print_function",
+      "kind": "negative",
+      "source": "fn twice(a: int) -> int { return a + a }\n    fn main() {\n        let f: fn(int) -> int = twice\n        print(f)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot print a function",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: cannot print a function\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "closures_ternary_function",
+      "kind": "negative",
+      "source": "fn twice(a: int) -> int { return a + a }\n    fn main() {\n        let f: fn(int) -> int = twice\n        let t = true\n        print(t ? f : f)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "ternary branches cannot be functions",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: ternary branches cannot be functions\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "closures_arg_fn_mismatch",
+      "kind": "negative",
+      "source": "fn twice(a: int) -> int { return a + a }\n    fn concat(a: int, b: int) -> int { return a + b }\n    fn choose(b: bool, f: fn(int) -> int, g: fn(int) -> int) -> int {\n        if (b) { return f(1) }\n        return g(1)\n    }\n    fn main() {\n        let f: fn(int) -> int = twice\n        let g: fn(int, int) -> int = concat\n        print(choose(true, f, g))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "argument 3 of 'choose' expects",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 10]: type mismatch: argument 3 of 'choose' expects fn(int) -> int, got fn(int, int) -> int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "closures_var_mismatch",
+      "kind": "negative",
+      "source": "fn twice(a: int) -> int { return a + a }\n    fn concat(a: int, b: int) -> int { return a + b }\n    fn main() {\n        let f: fn(int, int) -> int = twice\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "but initialized with",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: type mismatch: variable 'f' declared as fn(int, int) -> int but initialized with fn(int) -> int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "closures_assign_mismatch",
+      "kind": "negative",
+      "source": "fn twice(a: int) -> int { return a + a }\n    fn concat(a: int, b: int) -> int { return a + b }\n    fn main() {\n        let f: fn(int) -> int = twice\n        f = concat\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot assign",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: type mismatch: cannot assign fn(int, int) -> int to fn(int) -> int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "closures_return_mismatch",
+      "kind": "negative",
+      "source": "fn make() -> fn(int) -> int {\n        let g = 1\n        fn h(n: int) -> int { return n + g }\n        return 5\n    }\n    fn main() {\n        let f = make()\n        print(f(3))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "but function returns function",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: type mismatch: return int but function returns function\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "closures_return_fn_mismatch",
+      "kind": "negative",
+      "source": "fn make() -> fn(int) -> int {\n        let g = 1\n        fn h(n: int, k: int) -> int { return n + k + g }\n        return h\n    }\n    fn main() {\n        let f = make()\n        print(f(3))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "but function returns fn",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: type mismatch: return fn(int, int) -> int but function returns fn(int) -> int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "closures_call_arity",
+      "kind": "negative",
+      "source": "fn apply(f: fn(int) -> int, x: int) -> int { return f(x) }\n    fn twice(a: int) -> int { return a + a }\n    fn main() {\n        let f: fn(int) -> int = twice\n        print(f(1, 2))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "expects 1 arguments, got 2",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: function 'f' expects 1 arguments, got 2\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "nested_fn_duplicate_global",
+      "kind": "negative",
+      "source": "fn add() {\n        print(0)\n    }\n    fn main() {\n        fn add() {\n            print(0)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "duplicate declaration of function",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: duplicate declaration of function 'add'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "nested_fn_duplicate_sibling",
+      "kind": "negative",
+      "source": "fn main() {\n        fn first() {\n            print(0)\n        }\n        fn first() {\n            print(0)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "duplicate declaration of function",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: duplicate declaration of function 'first'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "nested_fn_named_main",
+      "kind": "negative",
+      "source": "fn main() {\n        fn main() {\n            print(0)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "duplicate declaration of function",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: duplicate declaration of function 'main'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "nested_fn_break_outside_loop",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = 1\n        fn helper() {\n            break\n        }\n        print(x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "break outside of a loop",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: break outside of a loop\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "nl_reject_call_outside_loop",
+      "kind": "negative",
+      "source": "fn main() {\n        loop (3) {\n            fn bail() {\n                break\n            }\n        }\n        bail()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "its non-local break/continue target loop is not active here",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: cannot call 'bail' from here: its non-local break/continue target loop is not active here\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "nl_reject_call_from_other_fn",
+      "kind": "negative",
+      "source": "fn owner() {\n        loop (3) {\n            fn bail() {\n                break\n            }\n            bail()\n        }\n    }\n    fn main() {\n        bail()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "its non-local break/continue target loop is not active here",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 10]: cannot call 'bail' from here: its non-local break/continue target loop is not active here\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "nl_reject_forwarded_via_wrapper",
+      "kind": "negative",
+      "source": "fn main() {\n        loop (3) {\n            fn bail() {\n                break\n            }\n            fn wrapper() {\n                bail()\n            }\n            wrapper()\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "its non-local break/continue target loop is not active here",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: cannot call 'bail' from here: its non-local break/continue target loop is not active here\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "nl_reject_cross_loop_call",
+      "kind": "negative",
+      "source": "fn main() {\n        loop (3) {\n            fn bail() {\n                break\n            }\n            fn swipe() {\n                continue\n            }\n        }\n        loop (3) {\n            bail()\n            swipe()\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "its non-local break/continue target loop is not active here",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 11]: cannot call 'bail' from here: its non-local break/continue target loop is not active here\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "nl_reject_token_as_value",
+      "kind": "negative",
+      "source": "fn main() {\n        loop (3) {\n            fn bail() {\n                break\n            }\n            let f = bail\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot use function 'bail' as a value because it has a non-local break/continue target",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: cannot use function 'bail' as a value because it has a non-local break/continue target\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "nl_reject_token_as_arg",
+      "kind": "negative",
+      "source": "fn apply(f: fn(int) -> int, x: int) -> int {\n        return f(x)\n    }\n    fn main() {\n        loop (3) {\n            fn bail(n: int) -> int {\n                break\n            }\n            apply(bail, 5)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "function 'bail'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 8]: function 'bail' may exit without returning int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "nl_continue_outside_loop",
+      "kind": "negative",
+      "source": "fn main() {\n        fn helper() {\n            continue\n        }\n        helper()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "continue outside of a loop",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: continue outside of a loop\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "default_param_type_mismatch",
+      "kind": "negative",
+      "source": "fn f(a: int = \"x\") {\n        print(a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "default value for parameter 'a' of function 'f' must be a literal of type int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: default value for parameter 'a' of function 'f' must be a literal of type int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "default_param_non_literal",
+      "kind": "negative",
+      "source": "fn f(a: int = 1 + 2) {\n        print(a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "default value for parameter 'a' of function 'f' must be a literal of type int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: default value for parameter 'a' of function 'f' must be a literal of type int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "default_param_not_trailing",
+      "kind": "negative",
+      "source": "fn f(a: int = 1, b: int) {\n        print(a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot follow a parameter with a default value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: parameter 'b' cannot follow a parameter with a default value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "default_param_byte_range",
+      "kind": "negative",
+      "source": "fn f(a: byte = 300) {\n        print(a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "default value for byte parameter 'a' must be between 0 and 255",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: default value for byte parameter 'a' must be between 0 and 255\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "default_params_too_few_args",
+      "kind": "negative",
+      "source": "fn f(a: int, b: int = 2) {\n        print(a)\n    }\n    fn main() {\n        f()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "expects at least 1 argument, got 0",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: function 'f' expects at least 1 argument, got 0\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "variadic_not_last",
+      "kind": "negative",
+      "source": "fn f(rest: ...int, a: int) {\n        print(a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "must be the last parameter",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: variadic parameter 'a' of function 'f' must be the last parameter\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "variadic_duplicate",
+      "kind": "negative",
+      "source": "fn f(x: ...int, y: ...int) {\n        print(x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "more than one variadic parameter",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: function 'f' has more than one variadic parameter\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "variadic_collects_array",
+      "kind": "negative",
+      "source": "fn f(rest: ...[int]) {\n        print(length(rest))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "must collect a scalar type",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: variadic parameter of function 'f' must collect a scalar type\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "variadic_wrong_type",
+      "kind": "negative",
+      "source": "fn f(a: int, rest: ...int) {\n        print(a)\n    }\n    fn main() {\n        f(1, \"s\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch: variadic argument 2 of 'f' expects int, got text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: type mismatch: variadic argument 2 of 'f' expects int, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "use_missing_file",
+      "kind": "module_negative",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "main.hmx": "use \"lib/nope.hmx\"\n    fn main() {\n        print(0)\n    }"
+      },
+      "pattern": "cannot open module",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: cannot open module 'lib/nope.hmx'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "use_non_hmx",
+      "kind": "module_negative",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/math.txt": "fn sum(a: int, b: int) -> int {\n        return a + b\n    }",
+        "main.hmx": "use \"lib/math.txt\"\n    fn main() {\n        print(0)\n    }"
+      },
+      "pattern": "must be a .hmx file",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: module 'lib/math.txt' must be a .hmx file\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "use_cycle",
+      "kind": "module_negative",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/c2.hmx": "use \"c1.hmx\"\n    fn fc2() {\n        print(2)\n    }",
+        "lib/c1.hmx": "use \"c2.hmx\"\n    fn fc1() {\n        print(1)\n    }",
+        "main.hmx": "use \"lib/c1.hmx\"\n    fn main() {\n        fc1()\n    }"
+      },
+      "pattern": "circular module dependency",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: circular module dependency involving 'lib/c1.hmx'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "use_cycle_to_entry",
+      "kind": "module_negative",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/up.hmx": "use \"../main.hmx\"\n    fn up() {\n        print(1)\n    }",
+        "main.hmx": "use \"lib/up.hmx\"\n    fn main() {\n        up()\n    }"
+      },
+      "pattern": "circular module dependency",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: circular module dependency involving 'main.hmx'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "use_not_at_top",
+      "kind": "module_negative",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/math.hmx": "fn sum(a: int, b: int) -> int {\n        return a + b\n    }",
+        "main.hmx": "fn main() {\n        print(1)\n    }\n    use \"lib/math.hmx\""
+      },
+      "pattern": "Parse error",
+      "expected": {
+        "stdout": "",
+        "stderr": "Parse error [line 4]: syntax error near 'use'\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "use_dup_function",
+      "kind": "module_negative",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/a.hmx": "fn fa(x: int) -> int {\n        return x + 5\n    }",
+        "lib/b.hmx": "fn fa(x: int) -> int {\n        return x + 1\n    }",
+        "main.hmx": "use \"lib/a.hmx\"\n    use \"lib/b.hmx\"\n    fn main() {\n        print(fa(3))\n    }"
+      },
+      "pattern": "duplicate declaration of function",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [lib/b.hmx:3]: duplicate declaration of function 'fa'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "use_module_type_error",
+      "kind": "module_negative",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/err.hmx": "fn bad() {\n        let x = \"a\"\n        x = 5\n    }",
+        "main.hmx": "use \"lib/err.hmx\"\n    fn main() {\n        bad()\n    }"
+      },
+      "pattern": "Error \\[.*err\\.hmx:4\\]",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [lib/err.hmx:4]: type mismatch: cannot assign int to text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "use_module_parse_error",
+      "kind": "module_negative",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/syn.hmx": "fn broken( {",
+        "main.hmx": "use \"lib/syn.hmx\"\n    fn main() {\n        print(0)\n    }"
+      },
+      "pattern": "parsing failed in module",
+      "expected": {
+        "stdout": "",
+        "stderr": "Parse error [line 1]: syntax error near '{'\nError: parsing failed in module 'lib/syn.hmx'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "use_reserved_keyword",
+      "kind": "negative",
+      "source": "fn main() {\n        let use = 5\n        print(use)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "Parse error",
+      "expected": {
+        "stdout": "",
+        "stderr": "Parse error [line 2]: syntax error near 'use'\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_literal_print",
+      "kind": "negative",
+      "source": "fn main() {\n        print((1, 2))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot print a tuple",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: cannot print a tuple; destructure it or index its elements\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_literal_annotated_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let t: (int, int) = (1, \"x\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "declared as \\(int, int\\) but initialized with \\(int, text\\)",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: variable 't' declared as (int, int) but initialized with (int, text)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_literal_arity_mismatch",
+      "kind": "negative",
+      "source": "fn main() {\n        let t: (int, int) = (1, 2, 3)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "declared as \\(int, int\\) but initialized with \\(int, int, int\\)",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: variable 't' declared as (int, int) but initialized with (int, int, int)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_literal_single_elem_not_tuple",
+      "kind": "negative",
+      "source": "fn main() {\n        let t: (int, int) = (5)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "declared as tuple but initialized with int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: variable 't' declared as tuple but initialized with int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_literal_index_out_of_range",
+      "kind": "negative",
+      "source": "fn main() {\n        let t = (1, 2)\n        print(t[2])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "tuple index 2 out of range",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: tuple index 2 out of range for (int, int)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_literal_binary_op",
+      "kind": "negative",
+      "source": "fn main() {\n        let t = (1, 2) + (3, 4)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "not defined for type tuple",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: operator '+' not defined for type tuple\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_literal_ternary",
+      "kind": "negative",
+      "source": "fn main() {\n        let c = true\n        let t = c ? (1, 2) : (3, 4)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "ternary branches cannot be tuples",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: ternary branches cannot be tuples\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_literal_length",
+      "kind": "negative",
+      "source": "fn main() {\n        let t = (1, 2)\n        print(length(t))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'length' expects text or array, got tuple",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: builtin 'length' expects text or array, got tuple\n",
+        "exit": 1
+      }
+    }
+  ]
+}

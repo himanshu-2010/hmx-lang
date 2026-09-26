@@ -1,0 +1,749 @@
+{
+  "_comment": "Auto-generated from tests/run_integration.sh + build/hmx snapshot by web-playground/tools/smoke/gen-data.mts. parity.test.ts asserts runProgram() matches 'expected' verbatim.",
+  "cases": [
+    {
+      "name": "advanced_functions",
+      "kind": "fixture",
+      "source": "fn get_greeting(name: text) -> text {\n    return name\n}\n\nfn get_pi() -> decimal {\n    return 3.14159\n}\n\nfn is_even(n: int) -> bool {\n    let half = n / 2\n    return half * 2 == n\n}\n\nfn search_loop() -> int {\n    let count = 0\n    loop(10) {\n        if (count == 4) {\n            return count\n        }\n        count++\n    }\n    return 0 - 1\n}\n\nfn main() {\n    let msg = get_greeting(\"Hello Stardance\")\n    print(msg)\n\n    let pi = get_pi()\n    print(pi)\n\n    let e1 = is_even(4)\n    print(e1) // 1 (true)\n\n    let e2 = is_even(7)\n    print(e2) // 0 (false)\n\n    let s = search_loop()\n    print(s) // 4\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "Hello Stardance\n3.141590\n1\n0\n4\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "array_builtins",
+      "kind": "fixture",
+      "source": "fn main() {\n    let a: [int] = [3, 1, 2]\n    push(a, 9)\n    sort(a)\n    print(length(a))\n    print(a[3])\n    print(pop(a))\n    let b: [int] = slice(a, 1, 3)\n    let c: [int] = concat(a, b)\n    print(length(c))\n    print(index_of(c, 3))\n    print(contains(c, 99))\n    let t: [text] = [\"banana\", \"apple\"]\n    sort(t)\n    print(t[0])\n    let grid: [[int]] = [[1, 2], [3, 4]]\n    push(grid, [5, 6])\n    let row: [int] = pop(grid)\n    print(row[1])\n    print(length(grid))\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "4\n9\n9\n5\n2\n0\napple\n6\n2\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "arrays",
+      "kind": "fixture",
+      "source": "fn sum(a: [int]) -> int {\n    let total = 0\n    let i = 0\n    while (i < length(a)) {\n        total += a[i]\n        i++\n    }\n    return total\n}\n\nfn main() {\n    let scores: [int] = [10, 20, 30]\n    print(scores[0])\n    print(scores[2])\n    print(length(scores))\n\n    let names: [text] = [\"alice\", \"bob\"]\n    print(names[1])\n\n    let empty: [int] = []\n    print(length(empty))\n\n    let inferred = [1, 2, 3, 4]\n    print(length(inferred))\n\n    scores[1] = 99\n    print(scores[1])\n\n    let total = sum(scores)\n    print(total)\n\n    const fixed: [int] = [5, 6]\n    print(fixed[0])\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "10\n30\n3\nbob\n0\n4\n99\n139\n5\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "assignment",
+      "kind": "fixture",
+      "source": "fn main() {\n    let count = 0\n    loop(5) {\n        count += 1\n        print(count)\n    }\n\n    let x = 10\n    x = x - 4\n    print(x)\n    x *= 2\n    print(x)\n    x /= 3\n    print(x)\n\n    let y = 7\n    y++\n    print(y)\n    y--\n    print(y)\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1\n2\n3\n4\n5\n6\n12\n4\n8\n7\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "block_comments",
+      "kind": "fixture",
+      "source": "fn main() {\n    /* this is a block comment */\n    let x = 5\n\n    /*\n       multi-line block comment\n       spanning several lines\n    */\n    print(x + 1)\n\n    /* comment before */ print(\"done\")\n    let y = /* inline */ 10\n    print(y)\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "6\ndone\n10\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "booleans",
+      "kind": "fixture",
+      "source": "fn main() {\n    print(true and false)\n    print(true or false)\n    print(not true)\n    print(true && false)\n    print(true || false)\n    print(!true)\n    print((5 > 3) and (2 < 4))\n    print((1 == 1) or (2 == 3))\n    print(not (5 > 3))\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "0\n1\n0\n0\n1\n0\n1\n1\n0\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "calls",
+      "kind": "fixture",
+      "source": "fn greet(name: text) {\n    print(name)\n}\n\nfn add(a: int, b: int) -> int {\n    return a + b\n}\n\nfn double_it(x: int) -> int {\n    return x * 2\n}\n\nfn main() {\n    greet(\"Boss\")\n    let sum: int = add(3, 4)\n    print(sum)\n    print(double_it(21))\n    let total: int = add(add(1, 2), 3)\n    print(total)\n    if (double_it(2) == 4) {\n        print(\"doubled ok\")\n    }\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "Boss\n7\n42\n6\ndoubled ok\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "char_byte",
+      "kind": "fixture",
+      "source": "fn echo(letter: char) {\n    print(letter)\n}\n\nfn main() {\n    let letter: char = 'H'\n    let value: byte = 255\n    echo(letter)\n    print(value)\n    print(value as int)\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "H\n255\n255\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "closures",
+      "kind": "fixture",
+      "source": "fn apply(f: fn(int) -> int, x: int) -> int {\n    return f(x)\n}\n\nfn twice(a: int) -> int {\n    return a * 2\n}\n\nfn make_mult(m: int) -> fn(int) -> int {\n    fn mult(a: int) -> int {\n        return a * m\n    }\n    return mult\n}\n\nfn nested() -> int {\n    let x = 100\n    fn inner() -> int {\n        return x\n    }\n    fn outer() -> int {\n        let y = 7\n        fn inn2() -> int {\n            return x + y\n        }\n        return inn2() + inner()\n    }\n    return outer()\n}\n\nfn main() {\n    print(apply(twice, 21))\n    let by3 = make_mult(3)\n    print(by3(5))\n    let by10 = make_mult(10)\n    print(by10(6))\n    print(nested())\n\n    let sum = 0\n    fn add_part(v: int) -> int {\n        return v + sum\n    }\n    let acc = add_part\n    print(acc(1))\n    print(acc(2))\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "42\n15\n60\n207\n1\n2\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "comparisons",
+      "kind": "fixture",
+      "source": "fn main() {\n    print(5 > 3)\n    print(2 + 3 == 5)\n    print(4 <= 4)\n    print(3 >= 7)\n    print(1 != 1)\n    print(10 < 2)\n    print(\"a\" == \"a\")\n    print(\"a\" != \"b\")\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1\n1\n1\n0\n0\n0\n1\n1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "complex_math",
+      "kind": "fixture",
+      "source": "fn test_precedence() {\n    let a = 2 + 3 * 4\n    print(a) // 14\n\n    let b = (2 + 3) * 4\n    print(b) // 20\n\n    let c = 100 - 20 - 5\n    print(c) // 75 (left-associative)\n\n    let d = 100 / 5 / 2\n    print(d) // 10 (left-associative)\n\n    let e = 10 + 20 * 30 / 5 - 2\n    print(e) // 10 + 600/5 - 2 = 10 + 120 - 2 = 128\n    print(e)\n}\n\nfn test_decimals() {\n    let x: decimal = 10.5\n    let y: decimal = 2.5\n    let z = x + y\n    print(z) // 13.000000\n\n    let diff = x - y\n    print(diff) // 8.000000\n\n    let prod = x * y\n    print(prod) // 26.250000\n\n    let div = x / y\n    print(div) // 4.200000\n}\n\nfn main() {\n    test_precedence()\n    test_decimals()\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "14\n20\n75\n10\n128\n128\n13.000000\n8.000000\n26.250000\n4.200000\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "control_flow_nested",
+      "kind": "fixture",
+      "source": "fn main() {\n    let sum = 0\n    loop(3) {\n        loop(4) {\n            sum += 1\n        }\n    }\n    print(sum) // 12\n\n    let flag = true\n    let count = 0\n    if (flag) {\n        if (sum == 12) {\n            loop(5) {\n                count += 2\n            }\n        } else {\n            count = 999\n        }\n    }\n    print(count) // 10\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "12\n10\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "conversions",
+      "kind": "fixture",
+      "source": "fn main() {\n    let i = 42\n    let d = 2.5\n    let b = false\n    let c = 'Q'\n    let by: byte = 9\n    print(tostr(i))\n    print(tostr(d))\n    print(tostr(b))\n    print(tostr(c))\n    print(tostr(by))\n    print(tostr(\"txt\"))\n    print(tostr(i) + \"|\" + tostr(by))\n    let n = parse_int(\"100\")\n    print(n - 1)\n    let dec = parse_decimal(\"3.5\")\n    print(dec + 0.5)\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "42\n2.500000\n0\nQ\n9\ntxt\n42|9\n99\n4.000000\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "currying",
+      "kind": "fixture",
+      "source": "fn add(a: int, b: int) -> int {\n    return a + b\n}\n\nfn sub(a: int, b: int) -> int {\n    return a - b\n}\n\nfn apply(f: fn(int) -> int, x: int) -> int {\n    return f(x)\n}\n\nfn counter(start: int) -> fn(int) -> int {\n    return lambda(step: int) -> int {\n        return start + step\n    }\n}\n\nfn main() {\n    // partial application of a named function\n    let inc = add(1)\n    print(inc(41))\n\n    // direct partial with all but one arg\n    print(add(2, 40))\n\n    // lambda with capture from an enclosing function\n    let base = 100\n    let add_base = lambda(x: int) -> int {\n        return x + base\n    }\n    print(add_base(5))\n\n    // a lambda that returns a lambda (closure of a closure)\n    let mk = counter(7)\n    print(mk(35))\n\n    // passing a partial application into a higher-order function\n    let add5 = add(5)\n    print(apply(add5, 3))\n\n    // partial application of a function value stored in a variable\n    let f = sub\n    let minus_ten = f(10)\n    print(minus_ten(30))\n\n    // lambda used as an argument directly\n    print(apply(lambda(y: int) -> int { return y * y }, 6))\n\n    // void lambda\n    let greet = lambda() {\n        print(0)\n    }\n    greet()\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "42\n42\n105\n42\n8\n-20\n36\n0\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "destructure_nested",
+      "kind": "fixture",
+      "source": "fn mk_pair(x: int) -> (int, int) {\n    return x, x * 10\n}\nfn mk_nested() -> ((int, int), int) {\n    return mk_pair(1), 2\n}\nfn mk_deep() -> (((int, int), int), int) {\n    return mk_nested(), 4\n}\nfn main() {\n    // deep nested tuple pattern\n    let (((a, b), c), d) = mk_deep()\n    print(a, b, c, d)\n    // array of tuples: nested group plus rest\n    let pairs: [(int, int)] = [mk_pair(1), mk_pair(2), mk_pair(3)]\n    let ((p, q), r, ...tail) = pairs\n    print(p, q)\n    print(r[0], r[1])\n    print(length(tail), tail[0][0], tail[0][1])\n    // nested arrays: rest inside a group\n    let grid: [[int]] = [[1, 2, 3], [4, 5]]\n    let ((x, y, ...zs), row1) = grid\n    print(x, y)\n    print(length(zs), zs[0])\n    print(length(row1), row1[0], row1[1])\n    // text elements bound by nested patterns\n    let words: [text] = [\"hi\", \"ok\"]\n    let (w0, (c1, c2)) = words\n    print(w0)\n    print(c1, c2)\n    // nested multi-assign\n    let one = 0\n    let two = 0\n    let three = 0\n    ((one, two), three) = mk_nested()\n    print(one, two, three)\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1 10 2 4\n1 10\n2 20\n1 3 30\n1 2\n1 3\n2 4 5\nhi\no k\n1 10 2\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "destructure_rest",
+      "kind": "fixture",
+      "source": "fn main() {\n    let a: [int] = [1, 2, 3, 4]\n    let (x, y, ...rest) = a\n    print(x)\n    print(y)\n    print(length(rest))\n    print(rest[0])\n    print(rest[1])\n    let (m, n) = a\n    print(m, n)\n    let s = \"hello\"\n    let (c1, c2, ...cs) = s\n    print(c1)\n    print(c2)\n    print(cs)\n    let grid: [[int]] = [[1, 2, 3], [4, 5, 6]]\n    let (row0, row1) = grid\n    print(length(row0), row0[2])\n    print(length(row1), row1[1])\n    let (t, ...tt) = grid[1]\n    print(t)\n    print(length(tt), tt[0], tt[1])\n    let parts: [text] = split(\"a,b,c\", \",\")\n    let (first, ...tail) = parts\n    print(first)\n    print(length(tail), tail[0], tail[1])\n    let one: [int] = [42]\n    let (e, ...es) = one\n    print(e, length(es))\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1\n2\n2\n3\n4\n1 2\nh\ne\nllo\n3 3\n3 5\n4\n2 5 6\na\n2 b c\n42 0\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "do_while",
+      "kind": "fixture",
+      "source": "fn main() {\n    let i = 10\n    do {\n        print(i)\n        i++\n    } while (i < 10)\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "10\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "else_if",
+      "kind": "fixture",
+      "source": "fn classify(value: int) {\n    if (value < 0) {\n        print(\"negative\")\n    } else if (value == 0) {\n        print(\"zero\")\n    } else if (value < 10) {\n        print(\"small\")\n    } else {\n        print(\"large\")\n    }\n}\n\nfn main() {\n    classify(0)\n    classify(4)\n    classify(20)\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "zero\nsmall\nlarge\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "expressions",
+      "kind": "fixture",
+      "source": "fn main() {\n    let x = 10\n    let y = 20\n    print(x + y)\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "30\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "fn_params",
+      "kind": "fixture",
+      "source": "fn add(a: int, b: int) -> int {\n    return a + b\n}\n\nfn greet(name: text) {\n    print(name)\n}\n\nfn scale(x: decimal, y: decimal) -> decimal {\n    return x * y\n}\n\nfn main() {\n    print(\"hello\")\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "hello\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "for",
+      "kind": "fixture",
+      "source": "fn main() {\n    let total = 0\n    for (let i = 0; i < 5; i++) {\n        total += i\n    }\n    print(total)\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "10\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "for_assignment_init",
+      "kind": "fixture",
+      "source": "fn main() {\n    let i = 0\n    let total = 0\n    for (i = 1; i <= 4; i++) {\n        total += i\n    }\n    print(total)\n    print(i)\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "10\n5\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "foreach",
+      "kind": "fixture",
+      "source": "fn sum(a: [int]) -> int {\n    let total = 0\n    foreach (x in a) {\n        total = total + x\n    }\n    return total\n}\n\nfn main() {\n    let nums = [3, 7, 2, 8]\n    print(sum(nums))\n    let words = [\"hi\", \"hey\", \"yo\"]\n    foreach (i, w in words) {\n        print(i)\n        print(length(w))\n    }\n    let word = \"a\" + \"bcd\"\n    foreach (ch in word) {\n        if (ch == 'b') {\n            continue\n        }\n        print(ch)\n    }\n    let a = [10, 20, 30]\n    foreach (x in a) {\n        x = x * 2\n    }\n    print(a[1])\n    let idx_total = 0\n    foreach (i, v in a) {\n        idx_total = idx_total + i * v\n    }\n    print(idx_total)\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "20\n0\n2\n1\n3\n2\n2\na\nc\nd\n20\n80\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "forward_calls",
+      "kind": "fixture",
+      "source": "fn main() {\n    let res = helper_b(5)\n    print(res)\n}\n\nfn helper_a(n: int) -> int {\n    return n * 2\n}\n\nfn helper_b(n: int) -> int {\n    return helper_a(n) + 10\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "20\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "functions",
+      "kind": "fixture",
+      "source": "fn greet() {\n    print(\"hi\")\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "ifelse",
+      "kind": "fixture",
+      "source": "fn main() {\n    let score = 75\n    if (score >= 60) {\n        print(\"passed\")\n    } else {\n        print(\"failed\")\n    }\n\n    let flag = false\n    if (flag) {\n        print(\"yes\")\n    } else {\n        print(\"no\")\n    }\n\n    if (flag) {\n        print(\"never\")\n    }\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "passed\nno\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "loop",
+      "kind": "fixture",
+      "source": "fn main() {\n    let i = 0\n    loop(3) {\n        print(i + 1)\n    }\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1\n1\n1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "loops_nested",
+      "kind": "fixture",
+      "source": "fn main() {\n    let total = 0\n    loop(2) {\n        let i = 0\n        while (i < 2) {\n            for (let j = 0; j < 2; j++) {\n                let once = true\n                do {\n                    total += 1\n                    once = false\n                } while (once)\n            }\n            i++\n        }\n    }\n    print(total)\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "8\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "neg_mod_break",
+      "kind": "fixture",
+      "source": "fn is_even(n: int) -> int {\n    return n % 2 == 0 ? 1 : 0\n}\n\nfn main() {\n    let a = -5\n    print(a)\n    let neg : int = -(a)\n    print(neg)\n    let mod = 17 % 5\n    print(mod)\n    let m = 10\n    m %= 3\n    print(m)\n    let dec = -1.25\n    print(dec)\n    let sum = -2 + 5\n    print(sum)\n    let d = -100 % 7\n    print(d)\n    print(is_even(42))\n    print(is_even(7))\n    let i = 0\n    loop (6) {\n        i = i + 1\n        if (i == 3) {\n            continue\n        }\n        print(i)\n    }\n    print(i)\n    let count = 0\n    while (true) {\n        count = count + 1\n        if (count == 5) {\n            break\n        }\n    }\n    print(count)\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "-5\n5\n2\n1\n-1.250000\n3\n-2\n1\n0\n1\n2\n4\n5\n6\n6\n5\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "nested_arrays",
+      "kind": "fixture",
+      "source": "fn main() {\n    let grid: [[int]] = [[1, 2, 3], [4, 5, 6]]\n    print(grid[0][0])\n    print(grid[1][2])\n    print(length(grid))\n    print(length(grid[0]))\n\n    grid[0][1] = 99\n    print(grid[0][1])\n\n    let inferred = [[10, 20], [30, 40]]\n    print(inferred[1][0])\n\n    let sum = 0\n    foreach (row in grid) {\n        foreach (n in row) {\n            sum += n\n        }\n    }\n    print(sum)\n\n    let total = 0\n    let flat: [int] = [1, 2]\n    let stack: [[int]] = [flat, flat]\n    foreach (row in stack) {\n        total += length(row)\n    }\n    print(total)\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1\n6\n2\n3\n99\n30\n118\n4\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "nested_functions",
+      "kind": "fixture",
+      "source": "fn scale(x: int) -> int {\n    return x * 10\n}\n\nfn main() {\n    fn add(a: int, b: int) -> int {\n        return a + b\n    }\n    print(add(2, 3))\n\n    fn fact(n: int) -> int {\n        if (n <= 1) {\n            return 1\n        }\n        return n * fact(n - 1)\n    }\n    print(fact(6))\n\n    fn outer_helper() {\n        fn inner_helper() -> text {\n            return \"innermost\"\n        }\n        print(inner_helper())\n    }\n    outer_helper()\n\n    let total = 0\n    loop (3) {\n        fn bump(v: int) -> int {\n            return v + 2\n        }\n        total = total + bump(total)\n    }\n    print(total)\n\n    fn use_top_level(v: int) -> int {\n        return scale(v) + 5\n    }\n    print(use_top_level(3))\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "5\n720\ninnermost\n14\n35\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "nonlocal_exit",
+      "kind": "fixture",
+      "source": "// Non-local exit: break/continue from a nested function\n// breaks/continues the nearest loop in the enclosing function.\nfn main() {\n    let total = 0\n    loop (3) {\n        fn bail() {\n            break\n        }\n        total = total + 1\n        if (total == 2) {\n            bail()\n        }\n    }\n    print(total)\n\n    let hits = 0\n    foreach (i, x in [10, 20, 30, 40]) {\n        fn skip() {\n            continue\n        }\n        if (x == 30) {\n            skip()\n        }\n        hits = hits + 1\n    }\n    print(hits)\n\n    let i = 0\n    while (i < 100) {\n        fn stop() {\n            break\n        }\n        i = i + 1\n        if (i == 7) {\n            stop()\n        }\n    }\n    print(i)\n\n    let j = 0\n    do {\n        fn halt() {\n            break\n        }\n        j = j + 1\n        if (j == 4) {\n            halt()\n        }\n    } while (j < 50)\n    print(j)\n\n    let k = 0\n    for (let n = 0; n < 100; n++) {\n        fn skippy() {\n            continue\n        }\n        if (n % 2 == 0) {\n            skippy()\n        }\n        k = k + 1\n    }\n    print(k)\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "2\n3\n7\n4\n50\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "print_multi",
+      "kind": "fixture",
+      "source": "fn main() {\n    let x = 7\n    print(\"value:\", x, \"squared:\", x * x)\n    print(\"a\", \"b\", \"c\")\n    print(true, 'n', 2.25, -3)\n    let name = \"zm\"\n    print(\"hi\", name, \"!\")\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "value: 7 squared: 49\na b c\n1 n 2.250000 -3\nhi zm !\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "recursion",
+      "kind": "fixture",
+      "source": "fn fib(n: int) -> int {\n    if (n <= 1) {\n        return n\n    }\n    return fib(n - 1) + fib(n - 2)\n}\n\nfn main() -> int {\n    print(fib(10))\n    return 0\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "55\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "scope_shadowing",
+      "kind": "fixture",
+      "source": "fn shadow_test(val: int) -> int {\n    let result = val\n    if (val > 5) {\n        let result = 100\n        print(result) // 100\n    }\n    return result\n}\n\nfn main() {\n    let x = 10\n    let res = shadow_test(x)\n    print(res) // 10\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "100\n10\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "string_concat",
+      "kind": "fixture",
+      "source": "fn greet(name: text) {\n    print(\"Hello, \" + name + \"!\")\n}\n\nfn main() {\n    let first = \"Ada\"\n    let last = \" Lovelace\"\n    print(first + last)\n    print(\"a\" + \"b\" + \"c\")\n    let full: text = first + last\n    print(full)\n    greet(\"Boss\")\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "Ada Lovelace\nabc\nAda Lovelace\nHello, Boss!\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "string_methods",
+      "kind": "fixture",
+      "source": "fn main() {\n    let message = \"hello world\"\n    print(length(message))\n    print(substring(message, 0, 5))\n    print(substring(message, 6, 11))\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "11\nhello\nworld\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "string_ops",
+      "kind": "fixture",
+      "source": "fn test_strings() {\n    let s1: text = \"hello\"\n    let s2: text = \"hello\"\n    let s3: text = \"world\"\n\n    if (s1 == s2) {\n        print(\"s1 equals s2\")\n    } else {\n        print(\"error\")\n    }\n\n    if (s1 != s3) {\n        print(\"s1 not equal s3\")\n    } else {\n        print(\"error\")\n    }\n\n    let b1 = (s1 == s2) and (s1 != s3)\n    print(b1) // 1 (true)\n}\n\nfn main() {\n    test_strings()\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "s1 equals s2\ns1 not equal s3\n1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "switch",
+      "kind": "fixture",
+      "source": "fn describe(value: int) {\n    switch (value) {\n        case 0:\n            print(\"zero\")\n        case 1:\n            print(\"one\")\n        default:\n            print(\"other\")\n    }\n}\n\nfn main() {\n    describe(0)\n    describe(1)\n    describe(9)\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "zero\none\nother\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "ternary_cast_const",
+      "kind": "fixture",
+      "source": "fn main() {\n    const answer: int = true ? 40 + 2 : 0\n    const decimal_value = 7 as decimal\n    let rounded = decimal_value as int\n    let nested = false ? 1 : true ? 2 : 3\n    print(answer)\n    print(rounded)\n    print(nested)\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "42\n7\n2\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "text_ops",
+      "kind": "fixture",
+      "source": "fn main() {\n    let s = \"hello\"\n    print(s[0])\n    print(s[4])\n    print(s[length(s) - 1])\n    let names: [text] = [\"abc\", \"de\"]\n    print(names[1][0])\n    print(ord('A'))\n    print(ord(names[0][0]))\n    print(chr(65))\n    print(chr(ord('b') + 1))\n    let parts: [text] = split(\"a,b,,c\", \",\")\n    print(length(parts))\n    print(parts[0])\n    print(parts[1])\n    print(parts[2])\n    print(parts[3])\n    print(index_of(parts, \"c\"))\n    print(parts[0] + \"!\")\n    let empty: [text] = split(\"\", \";\")\n    print(length(empty))\n    print(empty[0])\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "h\no\no\nd\n65\n97\nA\nc\n4\na\nb\n\nc\n3\na!\n1\n\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_dynamic_index",
+      "kind": "fixture",
+      "source": "fn triple(a: int, b: int, c: int) -> (int, int, int) {\n    return a, b, c\n}\nfn mk(a: int) -> (int, int) {\n    return a, a * 10\n}\nfn mk_pair(a: int) -> (int, int) {\n    return a, a + 1\n}\nfn nested() -> ((int, int), (int, int)) {\n    return mk_pair(1), mk_pair(5)\n}\nfn make_getter() -> fn() -> int {\n    let t = mk(7)\n    fn inner() -> int {\n        let i = 1\n        return t[i]\n    }\n    return inner\n}\nfn main() {\n    // plain homogeneous tuple, variable index\n    let t = triple(10, 20, 30)\n    let i = 1\n    print(t[i])\n    // expression index\n    print(t[i + 1])\n    // chained: array of homogeneous tuples\n    let grid: [(int, int)] = [mk(1), mk(2), mk(3)]\n    let j = 0\n    print(grid[2][j])\n    print(grid[2][j + 1])\n    // nested homogeneous tuple\n    let nt = nested()\n    print(nt[1][0], nt[1][1])\n    // dynamic index result feeds destructuring\n    let (x, y) = nt[0]\n    print(x, y)\n    // closure capture\n    let f = make_getter()\n    print(f())\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "20\n30\n3\n30\n5 6\n1 2\n70\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_literals",
+      "kind": "fixture",
+      "source": "const ORIGIN = (0, 0)\n\nfn swap(t: (int, int)) -> (int, int) {\n    return (t[1], t[0])\n}\n\nfn pair() -> (int, int) {\n    return (7, 9)\n}\n\nfn main() {\n    // basic literal bound to a variable\n    let t = (1, 2)\n    print(t[0], t[1])\n\n    // nested tuple literal\n    let n = (4, (5, 6))\n    print(n[0], n[1][0], n[1][1])\n\n    // tuple literal passed directly as an argument\n    let s = swap((3, 4))\n    print(s[0], s[1])\n\n    // tuple literal from a function return\n    let p = pair()\n    print(p[0], p[1])\n\n    // annotated tuple var with a literal\n    let a: (int, int) = (10, 20)\n    print(a[0] + a[1])\n\n    // tuple literal as a single-value return\n    let id = pair()\n    print(id[0], id[1])\n\n    // function stored as a value, returning a tuple literal\n    let mk = lambda(b: int) -> (int, int) {\n        return (b, b + 1)\n    }\n    let r = mk(41)\n    print(r[0], r[1])\n\n    // array of tuples built from literals\n    let grid = [(3, 4), (5, 6)]\n    print(grid[0][0], grid[0][1], grid[1][1])\n\n    // heterogeneous tuple literal\n    let mix = (42, \"hello\", true)\n    print(mix[0], mix[1], mix[2])\n\n    // tuple of arrays from literals\n    let duo = ([1, 2], [3, 4])\n    print(duo[0][1], duo[1][0])\n\n    // foreach over an array of tuples built from literals\n    let pts = [(2, 3), (7, 8)]\n    foreach (pt in pts) {\n        print(pt[0] + pt[1])\n    }\n\n    // destructuring directly from a literal\n    let (a1, b1) = (10, 20)\n    print(a1, b1)\n\n    // const holding a tuple literal\n    print(ORIGIN[0] + ORIGIN[1])\n\n    // tuple literal feeding a function-typed partial application result\n    let apply = lambda(f: fn(int) -> int, x: int) -> int {\n        return f(x)\n    }\n    let dbl = lambda(n: int) -> int { return n * 2 }\n    let gt = (10, apply(dbl, 21))\n    print(gt[1])\n\n    // tuple literal member inside a nested tuple\n    let deep = (1, (2, (3, 4)))\n    print(deep[0], deep[1][0], deep[1][1][1])\n\n    // group arithmetic through a parenthesized literal-shaped expression\n    let total = (2 + 3) * 4\n    print(total)\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1 2\n4 5 6\n4 3\n7 9\n30\n7 9\n41 42\n3 4 6\n42 hello 1\n2 3\n5\n15\n10 20\n0\n42\n1 2 4\n20\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuples",
+      "kind": "fixture",
+      "source": "fn quotrem(a: int, b: int) -> (int, int) {\n    return a / b, a - (a / b) * b\n}\n\nfn swap(t: (int, int)) -> (int, int) {\n    return t[1], t[0]\n}\n\nfn first_of(t: (int, int)) -> int {\n    return t[0]\n}\n\nfn make_pair() -> (int, text) {\n    return 7, \"hi\"\n}\n\nfn best_of(scores: [int]) -> ([int], int) {\n    let best = scores[0]\n    let i = 0\n    while (i < length(scores)) {\n        if (scores[i] > best) {\n            best = scores[i]\n        }\n        i++\n    }\n    return scores, best\n}\n\nfn main() {\n    let (q, r) = quotrem(17, 5)\n    print(q)\n    print(r)\n\n    let pair = quotrem(10, 3)\n    print(pair[0])\n    print(pair[1])\n\n    (q, r) = quotrem(20, 7)\n    print(q)\n    print(r)\n\n    print(first_of(pair))\n    print(first_of(swap(pair)))\n\n    let (n, s) = make_pair()\n    print(n)\n    print(s)\n\n    let whole = make_pair()\n    print(whole[1])\n\n    let tagged: (int, int) = quotrem(5, 2)\n    print(tagged[0])\n    print(tagged[1])\n\n    let result = best_of([3, 9, 6])\n    let top = result[1]\n    print(top)\n    print(length(result[0]))\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "3\n2\n3\n1\n2\n6\n3\n1\n7\nhi\nhi\n2\n1\n9\n3\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "unicode_identifiers",
+      "kind": "fixture",
+      "source": "// Unicode identifiers: any non-ASCII (UTF-8) byte is a valid identifier char.\nfn añadir(a: int, b: int) -> int {\n    return a + b\n}\nfn 日本語(x: int) -> int {\n    return x + 1000\n}\nfn main() {\n    let número = 5\n    let çàñ = \"unicode\"\n    print(número, añadir(número, 2), çàñ, length(çàñ), 日本語(1))\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "5 7 unicode 7 1001\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "variadic_defaults",
+      "kind": "fixture",
+      "source": "fn greet(name: text, greeting: text = \"hello\") {\n    print(greeting, name)\n}\n\nfn countdown(n: int = 5) -> int {\n    if (n <= 0) {\n        return 0\n    }\n    return countdown(n - 1)\n}\n\nfn sum(rest: ...int) -> int {\n    let total = 0\n    foreach (x in rest) {\n        total = total + x\n    }\n    return total\n}\n\nfn main() {\n    greet(\"world\")\n    greet(\"bob\", \"hi\")\n    print(countdown())\n    print(countdown(3))\n    print(sum())\n    print(sum(1, 2, 3, 4))\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "hello world\nhi bob\n0\n0\n0\n10\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "while",
+      "kind": "fixture",
+      "source": "fn main() {\n    let i = 0\n    let total = 0\n    while (i < 5) {\n        total += i\n        i += 1\n    }\n    print(total)\n    print(i)\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "10\n5\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_basic",
+      "kind": "module",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/math.hmx": "fn sum(a: int, b: int) -> int {\n        return a + b\n    }\n    fn twice(x: int) -> int {\n        return x * 2\n    }",
+        "main.hmx": "use \"lib/math.hmx\"\n    fn main() {\n        print(sum(1, 2), twice(21))\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "3 42\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_chain",
+      "kind": "module",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/b.hmx": "fn fb(x: int) -> int {\n        return x * 10\n    }",
+        "lib/a.hmx": "use \"b.hmx\"\n    fn fa(x: int) -> int {\n        return fb(x) + 1\n    }",
+        "main.hmx": "use \"lib/a.hmx\"\n    fn main() {\n        print(fa(3))\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "31\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_closures",
+      "kind": "module",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/caps.hmx": "fn make_adder(base: int) -> fn(int) -> int {\n        let b = base\n        fn add(x: int) -> int {\n            return x + b\n        }\n        return add\n    }",
+        "main.hmx": "use \"lib/caps.hmx\"\n    fn main() {\n        let f: fn(int) -> int = make_adder(100)\n        print(f(1), f(f(1)))\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "101 201\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_nonlocal",
+      "kind": "module",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/scan.hmx": "fn first_multiples(n: int) -> int {\n        let count = 0\n        loop (n) {\n            fn bail() {\n                break\n            }\n            count = count + 1\n            if (count == 3) {\n                bail()\n            }\n        }\n        return count\n    }",
+        "main.hmx": "use \"lib/scan.hmx\"\n    fn main() {\n        print(first_multiples(50), first_multiples(2))\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "3 2\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_unicode",
+      "kind": "module",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/saludar.hmx": "fn saludar(nombre: text) {\n        print(\"hola\", nombre)\n    }",
+        "main.hmx": "use \"lib/saludar.hmx\"\n    fn main() {\n        let ö = \"mundo\"\n        saludar(ö)\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "hola mundo\n",
+        "stderr": "",
+        "exit": 0
+      }
+    }
+  ]
+}

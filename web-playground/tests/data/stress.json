@@ -1,0 +1,1640 @@
+{
+  "_comment": "Auto-generated from tests/run_stress_tests.sh + build/hmx snapshot by web-playground/tools/smoke/gen-data.mts. parity.test.ts asserts runProgram() matches 'expected' verbatim.",
+  "cases": [
+    {
+      "name": "exit_code_zero",
+      "kind": "exit",
+      "source": "fn main() -> int {\n        return 0\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "exit_code_custom_42",
+      "kind": "exit",
+      "source": "fn main() -> int {\n        return 42\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "",
+        "exit": 42
+      }
+    },
+    {
+      "name": "exit_code_custom_100",
+      "kind": "exit",
+      "source": "fn main() -> int {\n        return 100\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "",
+        "exit": 100
+      }
+    },
+    {
+      "name": "factorial_recursion",
+      "kind": "output",
+      "source": "fn fact(n: int) -> int {\n        if (n <= 1) {\n            return 1\n        }\n        return n * fact(n - 1)\n    }\n    fn main() {\n        print(fact(6))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "720\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "ackermann_recursion",
+      "kind": "output",
+      "source": "fn ack(m: int, n: int) -> int {\n        if (m == 0) {\n            return n + 1\n        }\n        if (n == 0) {\n            return ack(m - 1, 1)\n        }\n        return ack(m - 1, ack(m, n - 1))\n    }\n    fn main() {\n        print(ack(2, 4))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "11\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "large_loop_stress",
+      "kind": "output",
+      "source": "fn main() {\n        let count = 0\n        loop(1000) {\n            count += 1\n        }\n        print(count)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1000\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "while_loop_counter",
+      "kind": "output",
+      "source": "fn main() {\n        let i = 0\n        let sum = 0\n        while (i < 100) {\n            sum += i\n            i += 1\n        }\n        print(sum)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "4950\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "nested_while_loops",
+      "kind": "output",
+      "source": "fn main() {\n        let i = 0\n        let total = 0\n        while (i < 5) {\n            let j = 0\n            while (j < 5) {\n                total += 1\n                j += 1\n            }\n            i += 1\n        }\n        print(total)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "25\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "string_concat_chain",
+      "kind": "output",
+      "source": "fn main() {\n        let s = \"A\" + \"B\" + \"C\" + \"D\" + \"E\"\n        print(s)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "ABCDE\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "boolean_logic_truth_table",
+      "kind": "output",
+      "source": "fn main() {\n        print(true and true)\n        print(true and false)\n        print(false or true)\n        print(false or false)\n        print(not false)\n        print(!true)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1\n0\n1\n0\n1\n0\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "collatz_steps",
+      "kind": "output",
+      "source": "fn main() {\n        let x = 10\n        let steps = 0\n        while (x != 1) {\n            let half = x / 2\n            if (half * 2 == x) {\n                x /= 2\n            } else {\n                x = x * 3 + 1\n            }\n            steps += 1\n        }\n        print(steps)\n        print(x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "6\n1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "for_loop_factorial",
+      "kind": "output",
+      "source": "fn main() {\n        let result = 1\n        for (let i = 1; i <= 6; i++) {\n            result *= i\n        }\n        print(result)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "720\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "do_while_countdown",
+      "kind": "output",
+      "source": "fn main() {\n        let i = 3\n        do {\n            print(i)\n            i--\n        } while (i > 0)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "3\n2\n1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "all_loop_forms_nested",
+      "kind": "output",
+      "source": "fn main() {\n        let total = 0\n        loop(2) {\n            for (let i = 0; i < 3; i++) {\n                let j = 0\n                while (j < 2) {\n                    let run = true\n                    do {\n                        total += 1\n                        run = false\n                    } while (run)\n                    j++\n                }\n            }\n        }\n        print(total)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "12\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "ternary_cast_const",
+      "kind": "output",
+      "source": "fn main() {\n        const base = 7\n        let value = true ? base as decimal : 0.0\n        print(value as int)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "7\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "char_byte_values",
+      "kind": "output",
+      "source": "fn main() {\n        let letter: char = 'A'\n        let value: byte = 255\n        print(letter)\n        print(value)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "A\n255\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "switch_automatic_break",
+      "kind": "output",
+      "source": "fn main() {\n        switch (2) {\n            case 1:\n                print(1)\n            case 2:\n                print(2)\n            default:\n                print(3)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "2\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "string_methods",
+      "kind": "output",
+      "source": "fn main() {\n        let message = \"hello world\"\n        print(length(message))\n        print(substring(message, 0, 5))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "11\nhello\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "array_sum_loop",
+      "kind": "output",
+      "source": "fn main() {\n        let a: [int] = [5, 10, 15, 20]\n        let total = 0\n        let i = 0\n        while (i < length(a)) {\n            total += a[i]\n            i++\n        }\n        print(total)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "50\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "array_text_elements",
+      "kind": "output",
+      "source": "fn main() {\n        let names: [text] = [\"alpha\", \"beta\", \"gamma\"]\n        print(names[1])\n        print(length(names[2]))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "beta\n5\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "array_return_and_param",
+      "kind": "output",
+      "source": "fn make() -> [int] {\n        return [1, 2, 3]\n    }\n    fn first(a: [int]) -> int {\n        return a[0]\n    }\n    fn main() {\n        let arr = make()\n        print(length(arr))\n        print(first(arr))\n        arr[2] = 9\n        print(arr[2])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "3\n1\n9\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "array_oob_high",
+      "kind": "exit",
+      "source": "fn main() {\n        let a: [int] = [1, 2]\n        print(a[2])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: array index out of bounds (index 2, length 2)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_oob_low",
+      "kind": "exit",
+      "source": "fn main() {\n        let a: [int] = [1, 2]\n        print(a[0 - 1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: array index out of bounds (index -1, length 2)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_builtins",
+      "kind": "output",
+      "source": "fn main() {\n        let a: [int] = [3, 1, 2]\n        push(a, 9)\n        sort(a)\n        print(length(a))\n        print(a[3])\n        print(pop(a))\n        print(length(a))\n        let b: [int] = slice(a, 1, 3)\n        print(length(b))\n        print(b[0])\n        let c: [int] = concat(a, b)\n        print(length(c))\n        print(index_of(c, 9))\n        print(index_of(c, 3))\n        print(contains(c, 3))\n        print(contains(c, 9))\n        let t: [text] = [\"banana\", \"apple\"]\n        sort(t)\n        print(t[0])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "4\n9\n9\n3\n2\n2\n5\n-1\n2\n1\n0\napple\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "text_indexing",
+      "kind": "output",
+      "source": "fn main() {\n        let s = \"hello\"\n        print(s[0])\n        print(s[4])\n        print(s[length(s) - 1])\n        let names: [text] = [\"abc\", \"de\"]\n        print(names[1][0])\n        print(ord('A'))\n        print(ord(names[0][0]))\n        print(chr(65))\n        print(chr(ord('b') + 1))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "h\no\no\nd\n65\n97\nA\nc\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "split_basic",
+      "kind": "output",
+      "source": "fn main() {\n        let parts: [text] = split(\"a,b,,c\", \",\")\n        print(length(parts))\n        print(parts[0])\n        print(parts[1])\n        print(parts[2])\n        print(parts[3])\n        print(index_of(parts, \"c\"))\n        print(parts[0] + \"!\")\n        let empty: [text] = split(\"\", \";\")\n        print(length(empty))\n        print(empty[0])\n        let nums: [text] = split(\"1 2 3\", \" \")\n        foreach (n in nums) {\n            print(n)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "4\na\nb\n\nc\n3\na!\n1\n\n1\n2\n3\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "text_index_oob",
+      "kind": "exit",
+      "source": "fn main() {\n        let s = \"hi\"\n        print(s[5])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: array index out of bounds (index 5, length 2)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "chr_out_of_range",
+      "kind": "exit",
+      "source": "fn main() {\n        print(chr(300))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: chr expects a character code between 0 and 255, got 300\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "split_empty_separator",
+      "kind": "exit",
+      "source": "fn main() {\n        let p: [text] = split(\"abc\", \"\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: split separator must not be empty\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destructure_array_rest",
+      "kind": "output",
+      "source": "fn main() {\n        let a: [int] = [1, 2, 3, 4]\n        let (x, y, ...rest) = a\n        print(x)\n        print(y)\n        print(length(rest))\n        print(rest[0], rest[1])\n        let (m, n) = a\n        print(m, n)\n        let one: [int] = [42]\n        let (e, ...es) = one\n        print(e, length(es))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1\n2\n2\n3 4\n1 2\n42 0\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "destructure_text_rest",
+      "kind": "output",
+      "source": "fn main() {\n        let s = \"hello\"\n        let (c1, c2, ...cs) = s\n        print(c1)\n        print(c2)\n        print(cs)\n        print(length(cs), cs[0], cs[1])\n        let grid: [[int]] = [[1, 2, 3], [4, 5, 6]]\n        let (row0, row1) = grid\n        print(length(row0), row0[2])\n        let (t, ...tt) = grid[1]\n        print(t)\n        print(length(tt), tt[0], tt[1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "h\ne\nllo\n3 l l\n3 3\n4\n2 5 6\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "destructure_array_oob",
+      "kind": "exit",
+      "source": "fn main() {\n        let a: [int] = [1, 2]\n        let (x, y, z) = a\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: cannot destructure array of length 2 into 3 targets\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destructure_nested_tuple_deep",
+      "kind": "output",
+      "source": "fn mk_pair(x: int) -> (int, int) {\n        return x, x * 10\n    }\n    fn mk_nested() -> ((int, int), int) {\n        return mk_pair(1), 2\n    }\n    fn mk_deep() -> (((int, int), int), int) {\n        return mk_nested(), 4\n    }\n    fn main() {\n        let (((a, b), c), d) = mk_deep()\n        print(a, b, c, d)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1 10 2 4\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "destructure_nested_array_group_rest",
+      "kind": "output",
+      "source": "fn main() {\n        let grid: [[int]] = [[1, 2, 3], [4, 5]]\n        let ((x, y, ...zs), row1) = grid\n        print(x, y)\n        print(length(zs), zs[0])\n        print(length(row1), row1[0], row1[1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1 2\n1 3\n2 4 5\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "destructure_array_of_tuples_rest",
+      "kind": "output",
+      "source": "fn mk_pair(x: int) -> (int, int) {\n        return x, x * 10\n    }\n    fn main() {\n        let pairs: [(int, int)] = [mk_pair(1), mk_pair(2), mk_pair(3)]\n        let ((p, q), r, ...tail) = pairs\n        print(p, q)\n        print(r[0], r[1])\n        print(length(tail), tail[0][0], tail[0][1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1 10\n2 20\n1 3 30\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "destructure_nested_text_elem",
+      "kind": "output",
+      "source": "fn main() {\n        let words: [text] = [\"hi\", \"ok\"]\n        let (w0, (c1, c2)) = words\n        print(w0)\n        print(c1, c2)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "hi\no k\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "destructure_nested_multi_assign",
+      "kind": "output",
+      "source": "fn mk_pair(x: int) -> (int, int) {\n        return x, x * 10\n    }\n    fn mk_nested() -> ((int, int), int) {\n        return mk_pair(1), 2\n    }\n    fn main() {\n        let one = 0\n        let two = 0\n        let three = 0\n        ((one, two), three) = mk_nested()\n        print(one, two, three)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1 10 2\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "destructure_nested_array_oob",
+      "kind": "exit",
+      "source": "fn main() {\n        let grid: [[int]] = [[1], [2, 3]]\n        let ((a, b), r) = grid\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: cannot destructure array of length 1 into 2 targets\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destructure_array_of_tuples_oob",
+      "kind": "exit",
+      "source": "fn mk_pair(x: int) -> (int, int) {\n        return x, x * 10\n    }\n    fn main() {\n        let pairs: [(int, int)] = [mk_pair(1)]\n        let (a, b) = pairs\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: cannot destructure array of length 1 into 2 targets\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destructure_nested_text_member",
+      "kind": "exit",
+      "source": "fn f() -> (int, text) {\n        return 1, \"x\"\n    }\n    fn main() {\n        let (a, (b, c)) = f()\n        print(a, b, c)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: cannot destructure text of length 1 into 2 targets\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "destructure_text_oob",
+      "kind": "exit",
+      "source": "fn main() {\n        let s = \"h\"\n        let (c1, c2) = s\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: cannot destructure text of length 1 into 2 targets\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_pop_empty",
+      "kind": "exit",
+      "source": "fn main() {\n        let a: [int] = []\n        pop(a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: pop on empty array\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "array_slice_oob",
+      "kind": "exit",
+      "source": "fn main() {\n        let a: [int] = [1, 2]\n        let b: [int] = slice(a, 0, 5)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: slice out of bounds (0, 5)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_multi_return_destructure",
+      "kind": "output",
+      "source": "fn quotrem(a: int, b: int) -> (int, int) {\n        return a / b, a - (a / b) * b\n    }\n    fn main() {\n        let (q, r) = quotrem(17, 5)\n        print(q)\n        print(r)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "3\n2\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_inference_and_index",
+      "kind": "output",
+      "source": "fn quotrem(a: int, b: int) -> (int, int) {\n        return a / b, a - (a / b) * b\n    }\n    fn main() {\n        let pair = quotrem(10, 3)\n        print(pair[0])\n        print(pair[1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "3\n1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_dynamic_index_homogeneous",
+      "kind": "output",
+      "source": "fn triple(a: int, b: int, c: int) -> (int, int, int) {\n        return a, b, c\n    }\n    fn main() {\n        let t = triple(10, 20, 30)\n        let i = 1\n        print(t[i])\n        print(t[0])\n        print(t[i + 1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "20\n10\n30\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_dynamic_index_loop",
+      "kind": "output",
+      "source": "fn triple(a: int, b: int, c: int) -> (int, int, int) {\n        return a, b, c\n    }\n    fn main() {\n        let t = triple(4, 5, 6)\n        for (let i = 0; i < 3; i++) {\n            print(t[i])\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "4\n5\n6\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_dynamic_index_oob",
+      "kind": "exit",
+      "source": "fn triple(a: int, b: int, c: int) -> (int, int, int) {\n        return a, b, c\n    }\n    fn main() {\n        let t = triple(1, 2, 3)\n        let i = 3\n        print(t[i])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: tuple index out of bounds (index 3, length 3)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_dynamic_index_negative",
+      "kind": "exit",
+      "source": "fn f() -> (int, int) {\n        return 1, 2\n    }\n    fn main() {\n        let t = f()\n        let i = -1\n        print(t[i])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: tuple index out of bounds (index -1, length 2)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tuple_dynamic_index_chained",
+      "kind": "output",
+      "source": "fn mk(a: int) -> (int, int) {\n        return a, a * 10\n    }\n    fn main() {\n        let grid: [(int, int)] = [mk(1), mk(2), mk(3)]\n        let i = 1\n        let j = 0\n        print(grid[i][j])\n        print(grid[i][j + 1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "2\n20\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_dynamic_index_nested_tuple",
+      "kind": "output",
+      "source": "fn mk_pair(a: int) -> (int, int) {\n        return a, a + 1\n    }\n    fn f() -> ((int, int), (int, int)) {\n        return mk_pair(1), mk_pair(5)\n    }\n    fn main() {\n        let t = f()\n        let i = 0\n        print(t[i][0])\n        print(t[i][1])\n        print(t[1][i + 1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1\n2\n6\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_dynamic_index_destructure",
+      "kind": "output",
+      "source": "fn mk_pair(a: int) -> (int, int) {\n        return a, a + 1\n    }\n    fn f() -> ((int, int), (int, int)) {\n        return mk_pair(1), mk_pair(5)\n    }\n    fn main() {\n        let t = f()\n        let i = 1\n        let (x, y) = t[i]\n        print(x, y)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "5 6\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_dynamic_index_capture",
+      "kind": "output",
+      "source": "fn mk() -> (int, int) {\n        return 1, 2\n    }\n    fn make() -> fn() -> int {\n        let t = mk()\n        fn inner() -> int {\n            let i = 0\n            return t[i]\n        }\n        return inner\n    }\n    fn main() {\n        let f = make()\n        print(f())\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_multi_assign",
+      "kind": "output",
+      "source": "fn quotrem(a: int, b: int) -> (int, int) {\n        return a / b, a - (a / b) * b\n    }\n    fn main() {\n        let (q, r) = quotrem(17, 5)\n        (q, r) = quotrem(20, 7)\n        print(q)\n        print(r)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "2\n6\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_param_and_call",
+      "kind": "output",
+      "source": "fn pair_it(a: int, b: int) -> (int, int) {\n        return a, b\n    }\n    fn swap(t: (int, int)) -> (int, int) {\n        return t[1], t[0]\n    }\n    fn main() {\n        let pair = pair_it(4, 5)\n        let swapped = swap(pair)\n        print(swapped[0])\n        print(swapped[1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "5\n4\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_text_member",
+      "kind": "output",
+      "source": "fn make_pair() -> (int, text) {\n        return 7, \"hi\"\n    }\n    fn main() {\n        let (n, s) = make_pair()\n        print(n)\n        print(s)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "7\nhi\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_array_member",
+      "kind": "output",
+      "source": "fn best_of(scores: [int]) -> ([int], int) {\n        let best = scores[0]\n        let i = 0\n        while (i < length(scores)) {\n            if (scores[i] > best) {\n                best = scores[i]\n            }\n            i++\n        }\n        return scores, best\n    }\n    fn main() {\n        let result = best_of([3, 9, 6])\n        print(result[1])\n        print(length(result[0]))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "9\n3\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_annotated_decl",
+      "kind": "output",
+      "source": "fn quotrem(a: int, b: int) -> (int, int) {\n        return a / b, a - (a / b) * b\n    }\n    fn main() {\n        let tagged: (int, int) = quotrem(5, 2)\n        print(tagged[0])\n        print(tagged[1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "2\n1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "modulo_basic",
+      "kind": "output",
+      "source": "fn main() {\n        print(17 % 5)\n        print(10 % 3)\n        print(-100 % 7)\n        print(7 % 100)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "2\n1\n-2\n7\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "modulo_compound",
+      "kind": "output",
+      "source": "fn main() {\n        let x = 17\n        x %= 5\n        print(x)\n        let y = 10\n        y %= 3\n        y %= 2\n        print(y)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "2\n1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "unary_minus",
+      "kind": "output",
+      "source": "fn main() {\n        let a = -5\n        print(a)\n        print(-(a))\n        print(-2 + 5)\n        print(-(3 * 4))\n        let b = -3.5\n        print(b)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "-5\n5\n3\n-12\n-3.500000\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "break_continue",
+      "kind": "output",
+      "source": "fn main() {\n        let i = 0\n        loop (5) {\n            i = i + 1\n            if (i == 2) {\n                continue\n            }\n            print(i)\n            if (i == 4) {\n                break\n            }\n        }\n        print(i)\n        let count = 0\n        while (true) {\n            count = count + 1\n            if (count == 3) {\n                continue\n            }\n            print(count)\n            if (count == 6) {\n                break\n            }\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1\n3\n4\n4\n1\n2\n4\n5\n6\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "break_in_switch_with_inner_loop",
+      "kind": "output",
+      "source": "fn main() {\n        switch (2) {\n            case 1: print(1)\n            case 2: loop (3) {\n                let k = 0\n                while (k < 2) {\n                    k = k + 1\n                    if (k == 2) {\n                        break\n                    }\n                    print(k)\n                }\n                break\n            }\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "modulo_exit_code",
+      "kind": "exit",
+      "source": "fn main() -> int {\n        let x = 100 % 7\n        if (x == 2) {\n            return 42\n        }\n        return 1\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "",
+        "exit": 42
+      }
+    },
+    {
+      "name": "foreach_array_sum",
+      "kind": "output",
+      "source": "fn main() {\n        let nums = [1, 2, 3, 4, 5]\n        let total = 0\n        foreach (x in nums) {\n            total = total + x\n        }\n        print(total)\n        let squares = 0\n        foreach (v in nums) {\n            v = v * v\n            squares = squares + v\n        }\n        print(squares)\n        print(nums[2])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "15\n55\n3\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "foreach_index_form",
+      "kind": "output",
+      "source": "fn main() {\n        let items = [10, 20, 30]\n        foreach (i, v in items) {\n            print(i)\n            print(i * v)\n        }\n        let word = \"abc\"\n        foreach (i, ch in word) {\n            print(i)\n            print(ch)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "0\n0\n1\n20\n2\n60\n0\na\n1\nb\n2\nc\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "foreach_text_chars",
+      "kind": "output",
+      "source": "fn main() {\n        let msg = \"hay\"\n        let out_len = 0\n        foreach (ch in msg) {\n            if (ch == 'a') {\n                continue\n            }\n            out_len = out_len + 1\n        }\n        print(out_len)\n        let vowel_count = 0\n        foreach (ch in \"aeiou\") {\n            if (ch == 'a' or ch == 'e' or ch == 'i' or ch == 'o' or ch == 'u') {\n                vowel_count = vowel_count + 1\n            }\n        }\n        print(vowel_count)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "2\n5\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "input_echo_and_length",
+      "kind": "input_output",
+      "source": "fn main() {\n        let a = input()\n        let b = input()\n        print(a)\n        print(length(b))\n    }",
+      "stdin": "hello\nworld",
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "hello\n5\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "input_concat",
+      "kind": "input_output",
+      "source": "fn main() {\n        let name = input()\n        let greeting = \"hi \" + name\n        print(greeting)\n    }",
+      "stdin": "ada",
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "hi ada\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "input_empty_lines",
+      "kind": "input_output",
+      "source": "fn main() {\n        let a = input()\n        let b = input()\n        print(length(a))\n        print(length(b))\n    }",
+      "stdin": "\n",
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "0\n0\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "parse_int_runtime_error",
+      "kind": "exit",
+      "source": "fn main() {\n        let n = parse_int(\"12abc\")\n        print(n)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: parse_int: invalid int '12abc'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "tostr_variants",
+      "kind": "output",
+      "source": "fn main() {\n        print(tostr(-7))\n        print(tostr(1.25))\n        print(tostr(true))\n        print(tostr(false))\n        print(tostr('k'))\n        let by: byte = 3\n        print(tostr(by))\n        print(tostr(\"x\"))\n        print(tostr(6) + \" items\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "-7\n1.250000\n1\n0\nk\n3\nx\n6 items\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "parse_and_use",
+      "kind": "output",
+      "source": "fn main() {\n        let a = parse_int(\"50\")\n        let b = parse_int(\"-4\")\n        print(a + b)\n        print(parse_int(\"007\"))\n        let d = parse_decimal(\"2.5\")\n        print(parse_decimal(\"1.1\") + d)\n        let s = tostr(parse_int(\"9\"))\n        print(s + \"!\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "46\n7\n3.600000\n9!\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "input_parse_loop",
+      "kind": "input_output",
+      "source": "fn main() {\n        let total = 0\n        let a = input()\n        total = total + parse_int(a)\n        let b = input()\n        total = total + parse_int(b)\n        print(total)\n    }",
+      "stdin": "3\n9",
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "12\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "print_mixed_args",
+      "kind": "output",
+      "source": "fn main() {\n        print(\"n =\", 5)\n        print(1, 2, 3)\n        print(\"a\" + \"b\", \"c\")\n        print(true, \n'x', 0.5)\n        let i = 8\n        print(i, i * i, i * i * i)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "n = 5\n1 2 3\nab c\n1 x 0.500000\n8 64 512\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "print_text_concat_and_multi",
+      "kind": "output",
+      "source": "fn main() {\n        let name = \"gh\"\n        let msg = \"go \" + name\n        print(msg, name, \"done\")\n        print(tostr(12), tostr(0.75), tostr('p'))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "go gh gh done\n12 0.750000 p\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "nested_helper_functions",
+      "kind": "output",
+      "source": "fn main() {\n        fn twice(v: int) -> int {\n            return v * 2\n        }\n        fn thrice(v: int) -> int {\n            return v * 3\n        }\n        print(twice(thrice(4)))\n        fn fib(n: int) -> int {\n            if (n <= 1) {\n                return n\n            }\n            return fib(n - 1) + fib(n - 2)\n        }\n        print(fib(9))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "24\n34\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "nested_multi_level",
+      "kind": "output",
+      "source": "fn top() -> int {\n        return 1\n    }\n    fn main() {\n        fn a() -> int {\n            fn b() -> int {\n                fn c() -> int {\n                    return top() + 2\n                }\n                return c() + 1\n            }\n            return b() + 1\n        }\n        print(a())\n        let sum = 0\n        loop (3) {\n            fn addtwo(v: int) -> int {\n                return v + 2\n            }\n            sum = sum + addtwo(sum)\n        }\n        print(sum)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "5\n14\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "variadic_sum",
+      "kind": "output",
+      "source": "fn sum(rest: ...int) -> int {\n        let total = 0\n        foreach (x in rest) {\n            total = total + x\n        }\n        return total\n    }\n    fn main() {\n        print(sum())\n        print(sum(1, 2, 3, 4))\n        print(sum(7))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "0\n10\n7\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "default_padding",
+      "kind": "output",
+      "source": "fn config(name: text, loud: bool = false, retries: int = 3) {\n        print(name, loud, retries)\n    }\n    fn main() {\n        config(\"a\")\n        config(\"b\", true)\n        config(\"c\", false, 9)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "a 0 3\nb 1 3\nc 0 9\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "variadic_mixed_defaults",
+      "kind": "output",
+      "source": "fn merge(prefix: text = \"-\", rest: ...int) {\n        print(prefix, length(rest))\n        if (length(rest) > 0) {\n            print(rest[0], rest[length(rest) - 1])\n        }\n    }\n    fn main() {\n        merge()\n        merge(\"+\", 5)\n        merge(\"+\", 1, 2, 3)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "- 0\n+ 1\n5 5\n+ 3\n1 3\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "variadic_exit_recursion",
+      "kind": "exit",
+      "source": "fn countdown(n: int = 5) -> int {\n        if (n <= 0) {\n            return 0\n        }\n        return countdown(n - 1)\n    }\n    fn main() -> int {\n        let c = countdown()\n        if (c == 0) {\n            return 42\n        }\n        return 1\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "",
+        "exit": 42
+      }
+    },
+    {
+      "name": "closures_hof_fold",
+      "kind": "output",
+      "source": "fn apply(f: fn(int, int) -> int, a: int, b: int) -> int {\n        return f(a, b)\n    }\n    fn add(x: int, y: int) -> int { return x + y }\n    fn mul(x: int, y: int) -> int { return x * y }\n    fn main() {\n        print(apply(add, 30, 12))\n        print(apply(mul, 6, 7))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "42\n42\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "closures_snapshot_env",
+      "kind": "output",
+      "source": "fn counter() -> fn() -> int {\n        let total = 0\n        fn bump() -> int {\n            return total\n        }\n        let f = bump\n        total = 10\n        return f\n    }\n    fn main() {\n        let c = counter()\n        print(c())\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "0\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "closures_nested_forwarding",
+      "kind": "output",
+      "source": "fn main() {\n        let outer = 5\n        fn g() -> int { return outer }\n        fn caller() -> int {\n            let f = g\n            return f()\n        }\n        print(caller())\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "5\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "closures_exit_capture",
+      "kind": "exit",
+      "source": "fn main() -> int {\n        let code = 100\n        fn pick() -> int {\n            return code\n        }\n        if (pick() == 100) {\n            return 42\n        }\n        return 1\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "",
+        "exit": 42
+      }
+    },
+    {
+      "name": "nonlocal_break_loop",
+      "kind": "output",
+      "source": "fn main() {\n        let total = 0\n        loop (5) {\n            fn bail() {\n                break\n            }\n            total = total + 1\n            if (total == 2) {\n                bail()\n            }\n        }\n        print(total)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "2\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "nonlocal_continue_for",
+      "kind": "output",
+      "source": "fn main() {\n        let total = 0\n        for (let i = 0; i < 10; i++) {\n            fn skip() {\n                continue\n            }\n            if (i == 5) {\n                skip()\n            }\n            total = total + 1\n        }\n        print(total)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "9\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "nonlocal_continue_foreach",
+      "kind": "output",
+      "source": "fn main() {\n        let total = 0\n        foreach (i, x in [\"a\", \"b\", \"c\", \"d\"]) {\n            fn skip() {\n                continue\n            }\n            if (x == \"c\") {\n                skip()\n            }\n            total = total + 1\n        }\n        print(total)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "3\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "nonlocal_break_while",
+      "kind": "output",
+      "source": "fn main() {\n        let i = 0\n        while (i < 100) {\n            fn stop() {\n                break\n            }\n            i = i + 1\n            if (i == 7) {\n                stop()\n            }\n        }\n        print(i)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "7\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "nonlocal_break_dowhile",
+      "kind": "output",
+      "source": "fn main() {\n        let j = 0\n        do {\n            fn halt() {\n                break\n            }\n            j = j + 1\n            if (j == 4) {\n                halt()\n            }\n        } while (j < 50)\n        print(j)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "4\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "nonlocal_nested_targets",
+      "kind": "output",
+      "source": "fn main() {\n        let j = 0\n        loop (3) {\n            fn bail() {\n                break\n            }\n            let k = 0\n            while (k < 100) {\n                fn inner() {\n                    continue\n                }\n                k = k + 1\n                if (k == 7) {\n                    inner()\n                }\n            }\n            print(\"inner\", k)\n            j = j + 1\n            if (j == 2) {\n                bail()\n            }\n        }\n        print(\"after\", j)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "inner 100\ninner 100\nafter 2\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "nonlocal_non_main_owner",
+      "kind": "output",
+      "source": "fn outer() {\n        loop (2) {\n            fn bail() {\n                break\n            }\n            print(\"iter\")\n            bail()\n        }\n        print(\"after\")\n    }\n    fn main() {\n        outer()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "iter\nafter\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "unicode_identifiers",
+      "kind": "output",
+      "source": "fn añadir(a: int, b: int) -> int {\n        return a + b\n    }\n    fn main() {\n        let número = 4\n        print(añadir(número, 6), \"ñ\", número)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "10 ñ 4\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_output_basic",
+      "kind": "module_output",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/math.hmx": "fn sum(a: int, b: int) -> int {\n        return a + b\n    }\n    fn twice(x: int) -> int {\n        return x * 2\n    }",
+        "main.hmx": "use \"lib/math.hmx\"\n    fn main() {\n        print(sum(1, 2))\n        print(twice(21))\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "3\n42\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_diamond_dedupe",
+      "kind": "module_output",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/d.hmx": "fn dvalue() -> int {\n        return 9\n    }",
+        "lib/e1.hmx": "use \"d.hmx\"\n    fn e1() -> int {\n        return dvalue() + 1\n    }",
+        "lib/e2.hmx": "use \"d.hmx\"\n    fn e2() -> int {\n        return dvalue() * 2\n    }",
+        "main.hmx": "use \"lib/e1.hmx\"\n    use \"lib/e2.hmx\"\n    fn main() {\n        print(e1(), e2())\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "10 18\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_exit_code",
+      "kind": "module_exit",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/code.hmx": "fn pick() -> int {\n        return 42\n    }",
+        "main.hmx": "use \"lib/code.hmx\"\n    fn main() -> int {\n        return pick()\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "",
+        "exit": 42
+      }
+    },
+    {
+      "name": "curry_partial_named",
+      "kind": "output",
+      "source": "fn add(a: int, b: int, c: int) -> int {\n        return a + b + c\n    }\n    fn main() {\n        let f = add(1)\n        print(f(2, 39))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "42\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "curry_partial_value",
+      "kind": "output",
+      "source": "fn twice(a: int, b: int) -> int {\n        return a * b\n    }\n    fn main() {\n        let f = twice\n        let ten = f(10)\n        print(ten(4))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "40\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "curry_lambda_capture",
+      "kind": "output",
+      "source": "fn scale(c: int) -> fn(int) -> int {\n        return lambda(x: int) -> int {\n            return x * c\n        }\n    }\n    fn main() {\n        let by3 = scale(3)\n        print(by3(14))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "42\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "curry_nested_lambda",
+      "kind": "output",
+      "source": "fn main() {\n        let outer = lambda(a: int) -> fn(int) -> int {\n            return lambda(b: int) -> int {\n                return a - b\n            }\n        }\n        let sub10 = outer(20)\n        print(sub10(1))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "19\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "curry_void_lambda_statement",
+      "kind": "output",
+      "source": "fn main() {\n        let tick = lambda() {\n            print(9)\n        }\n        tick()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "9\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "curry_hof_partial",
+      "kind": "output",
+      "source": "fn apply(f: fn(int) -> int, x: int) -> int {\n        return f(x)\n    }\n    fn add(a: int, b: int) -> int {\n        return a + b\n    }\n    fn main() {\n        print(apply(add(40), 2))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "42\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "curry_exit_chain",
+      "kind": "exit",
+      "source": "fn add(a: int, b: int) -> int {\n        return a + b\n    }\n    fn main() -> int {\n        let inc = add(1)\n        return inc(41)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "",
+        "exit": 42
+      }
+    },
+    {
+      "name": "tuple_literal_basic",
+      "kind": "output",
+      "source": "fn main() {\n        let t = (1, 2)\n        print(t[0], t[1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1 2\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_literal_nested",
+      "kind": "output",
+      "source": "fn main() {\n        let n = (4, (5, 6))\n        print(n[0], n[1][0], n[1][1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "4 5 6\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_literal_as_arg",
+      "kind": "output",
+      "source": "fn swap(t: (int, int)) -> (int, int) {\n        return (t[1], t[0])\n    }\n    fn main() {\n        let s = swap((3, 4))\n        print(s[0], s[1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "4 3\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_literal_fn_value_ret",
+      "kind": "output",
+      "source": "fn main() {\n        let mk = lambda(b: int) -> (int, int) {\n            return (b, b + 1)\n        }\n        let r = mk(41)\n        print(r[0], r[1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "41 42\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_literal_heterogeneous",
+      "kind": "output",
+      "source": "fn main() {\n        let mix = (42, \"hi\", true)\n        print(mix[0], mix[1], mix[2])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "42 hi 1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_literal_array_of",
+      "kind": "output",
+      "source": "fn main() {\n        let grid = [(3, 4), (5, 6)]\n        print(grid[0][0], grid[0][1], grid[1][1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "3 4 6\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_literal_foreach",
+      "kind": "output",
+      "source": "fn main() {\n        let pts = [(2, 3), (7, 8)]\n        foreach (pt in pts) {\n            print(pt[0] + pt[1])\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "5\n15\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_literal_const",
+      "kind": "output",
+      "source": "const ORIGIN = (0, 0)\n    fn main() {\n        let p = ORIGIN\n        print(p[0] + p[1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "0\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_literal_destructure",
+      "kind": "output",
+      "source": "fn main() {\n        let (a, b) = (10, 20)\n        print(a, b)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "10 20\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_literal_single_value_return",
+      "kind": "output",
+      "source": "fn pair() -> (int, int) {\n        return (7, 9)\n    }\n    fn main() {\n        let p = pair()\n        print(p[0], p[1])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "7 9\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "grouping_precedence",
+      "kind": "output",
+      "source": "fn main() {\n        print((2 + 3) * 4)\n        print(2 * (3 + 4))\n        print(10 - (3 + 4) * 2)\n        print(1 + 2 * 3)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "20\n14\n-4\n7\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "tuple_literal_of_arrays",
+      "kind": "output",
+      "source": "fn main() {\n        let duo = ([1, 2], [3, 4])\n        print(duo[0][1], duo[1][0])\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "2 3\n",
+        "stderr": "",
+        "exit": 0
+      }
+    }
+  ]
+}
