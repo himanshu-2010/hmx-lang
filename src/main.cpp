@@ -9,7 +9,19 @@
 #include <vector>
 #include <set>
 #include <algorithm>
+
+#ifndef HMX_VERSION
+#define HMX_VERSION "0.9.0"
+#endif
+
+#if !defined(_WIN32) || defined(__MINGW32__)
 #include <sys/wait.h>
+#else
+/* MSVC has no sys/wait.h; system() returns a wait-status-like int. */
+#ifndef WEXITSTATUS
+#define WEXITSTATUS(s) (((s) >> 8) & 0xFF)
+#endif
+#endif
 
 #include "ast.hpp"
 #include "type_resolver.hpp"
@@ -19,13 +31,22 @@ extern FILE* yyin;
 extern int yyparse();
 extern Program* g_program;
 
-void print_usage() {
-    fprintf(stderr, "Usage: hmx <command> <file.hmx> [options]\n");
-    fprintf(stderr, "Commands:\n");
-    fprintf(stderr, "  run   <file.hmx>        Transpile, compile, execute\n");
-    fprintf(stderr, "  build <file.hmx>        Transpile and compile only\n");
-    fprintf(stderr, "Options:\n");
-    fprintf(stderr, "  -keep-c                Keep intermediate .c file\n");
+static void print_usage(FILE* out) {
+    fprintf(out, "HMX — a small statically typed systems language (v%s)\n", HMX_VERSION);
+    fprintf(out, "\n");
+    fprintf(out, "Usage:\n");
+    fprintf(out, "  hmx <file.hmx> [options]     Transpile, compile and execute\n");
+    fprintf(out, "  hmx run   <file.hmx> [opts]  Same as above (explicit)\n");
+    fprintf(out, "  hmx build <file.hmx> [opts]  Transpile and compile to a binary only\n");
+    fprintf(out, "  hmx new   <name>             Scaffold a new .hmx file\n");
+    fprintf(out, "  hmx -h | --help              Show this help\n");
+    fprintf(out, "  hmx -v | --version           Show the version\n");
+    fprintf(out, "\n");
+    fprintf(out, "Options:\n");
+    fprintf(out, "  -keep-c                Keep the intermediate .c file\n");
+    fprintf(out, "  -o <output>            Output binary path (with build)\n");
+    fprintf(out, "\n");
+    fprintf(out, "HMX transpiles to C and needs a C compiler (gcc, cc or clang).\n");
 }
 
 std::string get_basename(const std::string& path) {
@@ -140,26 +161,108 @@ static bool load_module_uses(Program* program, const std::string& base_dir,
     return true;
 }
 
+// --- CLI helpers ---
+
+// Is `name` on PATH? (fixed, trusted names — no shell quoting risk.)
+static bool command_exists(const std::string& name) {
+#ifdef _WIN32
+    std::string cmd = "where " + name + " >nul 2>nul";
+#else
+    std::string cmd = "command -v " + name + " >/dev/null 2>&1";
+#endif
+    return std::system(cmd.c_str()) == 0;
+}
+
+// Prefer gcc, fall back to cc then clang (keeps macOS/no-gcc systems working).
+static std::string find_c_compiler() {
+    for (const char* candidate : {"gcc", "cc", "clang"}) {
+        if (command_exists(candidate)) return candidate;
+    }
+    return "";
+}
+
+static int cmd_new(std::string name) {
+    if (name.empty()) {
+        fprintf(stderr, "Usage: hmx new <name>   (creates <name>.hmx)\n");
+        return 1;
+    }
+    if (name.size() < 4 || name.compare(name.size() - 4, 4, ".hmx") != 0) {
+        name += ".hmx";
+    }
+    if (std::filesystem::exists(name)) {
+        fprintf(stderr, "Error: '%s' already exists\n", name.c_str());
+        return 1;
+    }
+    std::ofstream out(name);
+    if (!out) {
+        fprintf(stderr, "Error: cannot create '%s'\n", name.c_str());
+        return 1;
+    }
+    out << "// " << name << " — your HMX program\n"
+        << "// Run it with: hmx " << name << "\n"
+        << "\n"
+        << "fn main() {\n"
+        << "    print(\"hello, hmx\")\n"
+        << "}\n";
+    out.close();
+    printf("Created %s — run with: hmx %s\n", name.c_str(), name.c_str());
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        print_usage();
+    if (argc < 2) {
+        print_usage(stderr);
         return 1;
     }
 
-    std::string command = argv[1];
-    std::string source_file = argv[2];
+    std::string a1 = argv[1];
+    if (a1 == "-h" || a1 == "--help" || a1 == "help") {
+        print_usage(stdout);
+        return 0;
+    }
+    if (a1 == "-v" || a1 == "--version" || a1 == "version") {
+        printf("hmx %s\n", HMX_VERSION);
+        return 0;
+    }
+    if (a1 == "new") {
+        return cmd_new(argc >= 3 ? argv[2] : "");
+    }
+
+    // Bare `hmx <file.hmx>` runs by default; `run`/`build` stay explicit.
+    std::string command = "run";
+    std::string source_file;
     bool keep_c = false;
+    std::string out_override;
 
-    for (int i = 3; i < argc; i++) {
-        if (std::string(argv[i]) == "-keep-c") {
-            keep_c = true;
-        }
+    int i = 1;
+    if (a1 == "run" || a1 == "build") {
+        command = a1;
+        i = 2;
     }
-
-    if (command != "run" && command != "build") {
-        fprintf(stderr, "Error: unknown command '%s'\n", command.c_str());
-        print_usage();
+    if (i >= argc) {
+        print_usage(stderr);
         return 1;
+    }
+    source_file = argv[i++];
+
+    for (; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "-keep-c") {
+            keep_c = true;
+        } else if (a == "-o" || a == "--output") {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: %s requires a path\n", a.c_str());
+                return 1;
+            }
+            out_override = argv[++i];
+        } else if (a == "-h" || a == "--help") {
+            print_usage(stdout);
+            return 0;
+        } else {
+            fprintf(stderr, "Error: unknown option '%s'\n", a.c_str());
+            print_usage(stderr);
+            return 1;
+        }
     }
 
     if (source_file.size() < 4 || source_file.compare(source_file.size() - 4, 4, ".hmx") != 0) {
@@ -205,23 +308,41 @@ int main(int argc, char* argv[]) {
 
     std::string base = get_basename(source_file);
     std::string c_path = "build_temp.c";
-    std::string exe_path = base;
+    std::string exe_path = out_override.empty() ? base : out_override;
+
+#ifdef _WIN32
+    if (exe_path.size() < 4 || exe_path.compare(exe_path.size() - 4, 4, ".exe") != 0) {
+        exe_path += ".exe";
+    }
+#endif
+
+    std::string cc = find_c_compiler();
+    if (cc.empty()) {
+        fprintf(stderr,
+                "Error: no C compiler found (looked for gcc, cc, clang).\n"
+                "       Install gcc (or clang) to compile HMX programs.\n");
+        if (!keep_c) remove(c_path.c_str());
+        return 1;
+    }
 
     std::ofstream c_file(c_path);
     c_file << c_source;
     c_file.close();
 
-    std::string gcc_cmd = "gcc -O2 -o " + exe_path + " " + c_path + " 2>&1";
-    int gcc_result = system(gcc_cmd.c_str());
+    std::string cc_cmd = cc + " -O2 -o " + exe_path + " " + c_path + " 2>&1";
+    int cc_result = system(cc_cmd.c_str());
 
-    if (gcc_result != 0) {
-        fprintf(stderr, "Error: gcc compilation failed\n");
+    if (cc_result != 0) {
+        fprintf(stderr, "Error: %s compilation failed\n", cc.c_str());
         if (!keep_c) remove(c_path.c_str());
         return 1;
     }
 
     if (command == "run") {
-        std::string run_cmd = "./" + exe_path;
+        std::string run_cmd = exe_path;
+#ifndef _WIN32
+        run_cmd = "./" + run_cmd;
+#endif
         int run_result = system(run_cmd.c_str());
         int exit_code = WEXITSTATUS(run_result);
         if (!keep_c) {

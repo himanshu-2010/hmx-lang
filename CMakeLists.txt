@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(hmx CXX)
+project(hmx VERSION 0.9.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,3 +32,25 @@ target_include_directories(hmx PRIVATE
 )
 
 target_compile_options(hmx PRIVATE -Wall -Wextra -Wpedantic)
+
+target_compile_definitions(hmx PRIVATE HMX_VERSION="${PROJECT_VERSION}")
+
+# ── Install ─────────────────────────────────────────────────
+include(GNUInstallDirs)
+install(TARGETS hmx RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES ${CMAKE_SOURCE_DIR}/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR})
+
+# ── Packaging (cpack -G DEB) ────────────────────────────────
+set(CPACK_GENERATOR "DEB")
+set(CPACK_PACKAGE_NAME "hmx")
+set(CPACK_PACKAGE_VENDOR "HMX")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_CONTACT "Himanshu Kumar <himanshu2010.dev@gmail.com>")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "HMX — a small statically typed systems language")
+set(CPACK_PACKAGE_DESCRIPTION
+    "HMX is a small statically typed systems language that transpiles to C. "
+    "This package installs the hmx command-line compiler.")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "gcc")
+set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+include(CPack)
