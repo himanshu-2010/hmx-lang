@@ -81,9 +81,10 @@ jobs:
     # The Windows and macOS builds used to be exercised only by
     # release.yml, so a <sys/wait.h> that does not exist under MinGW-w64 sat
     # unnoticed until a release attempt died on it. Every push now compiles
-    # the compiler and runs the CLI suite (which pins exit-code
-    # propagation) on both.
-    name: ${{ matrix.label }}
+    # the compiler and runs the CLI suite (which pins exit-code propagation)
+    # on both. Two jobs rather than a matrix because a step-level `shell:`
+    # may not read the matrix context.
+    name: portability (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -92,16 +93,17 @@ jobs:
         include:
           - os: macos-14
             label: macos
-            shell: bash
           - os: windows-latest
             label: windows (MinGW)
-            shell: 'msys2 {0}'
     env:
       # A background `brew update` holding the global lock, or an
       # interactive prompt on a TTY-less runner, is what turned the v0.9.0
       # macOS release job into a six-hour stall.
       HOMEBREW_NO_AUTO_UPDATE: "1"
       NONINTERACTIVE: "1"
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -114,8 +116,34 @@ jobs:
             [ -d "$p" ] && echo "$p" >> "$GITHUB_PATH"
           done
 
-      - name: Install deps (Windows / MSYS2 MinGW)
-        if: runner.os == 'Windows'
+      - name: Configure & build
+        run: |
+          if command -v ninja >/dev/null; then
+            cmake -S . -B build -G Ninja && cmake --build build
+          else
+            cmake -S . -B build && cmake --build build --config Release
+          fi
+
+      - name: CLI suite
+        run: ./tests/run_cli_tests.sh
+
+      - name: Integration suite
+        run: ./tests/run_integration.sh
+
+  portability-windows:
+    # Same intent as the macOS half of `portability`, kept separate because the
+    # MinGW toolchain needs msys2 as the step shell and `defaults.run.shell`
+    # cannot vary per matrix entry.
+    name: portability (windows, MinGW)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: 'msys2 {0}'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps (MSYS2 MinGW)
         uses: msys2/setup-msys2@v2
         with:
           msystem: mingw64
@@ -127,20 +155,13 @@ jobs:
           update: true
 
       - name: Configure & build
-        shell: ${{ matrix.shell }}
         run: |
-          if command -v ninja >/dev/null; then
-            cmake -S . -B build -G Ninja && cmake --build build
-          else
-            cmake -S . -B build && cmake --build build --config Release
-          fi
+          cmake -S . -B build -G Ninja && cmake --build build
 
       - name: CLI suite
-        shell: ${{ matrix.shell }}
         run: ./tests/run_cli_tests.sh
 
       - name: Integration suite
-        shell: ${{ matrix.shell }}
         run: ./tests/run_integration.sh
 
   packaging:
