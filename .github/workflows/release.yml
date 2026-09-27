@@ -158,8 +158,15 @@ jobs:
         shell: bash
         run: |
           ver="${RELEASE_TAG#v}"
-          cd build && cpack -G DEB
-          mv "hmx-${ver}-Linux.deb" "hmx_${ver}_amd64.deb"
+          # cpack writes into build/, but the upload pattern below is relative
+          # to the workspace root — so the .deb stayed in build/ and matched
+          # nothing, and the release shipped without it. Move it up next to the
+          # tarball, then assert it is there: an artifact glob that matches
+          # nothing is not an error, so this release failed quietly.
+          (cd build && cpack -G DEB)
+          mv "build/hmx-${ver}-Linux.deb" "hmx_${ver}_amd64.deb"
+          test -f "hmx_${ver}_amd64.deb" || { echo "::error::.deb not produced"; exit 1; }
+          ls -l "hmx_${ver}_amd64.deb"
 
       - name: Package tarball (Linux & macOS)
         if: runner.os != 'Windows'
@@ -183,6 +190,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hmx-${{ matrix.label }}
+          # `error`, not the default `warn`: with several patterns, one of them
+          # matching nothing is not reported, so a platform can quietly
+          # contribute no archive and the release still goes green. This only
+          # fires when *every* pattern is empty, which no platform should be.
+          if-no-files-found: error
           path: |
             hmx*.tar.gz
             hmx*.zip
@@ -211,6 +223,44 @@ jobs:
             -printf '%f\n' | sort | xargs sha256sum > SHA256SUMS
           cat SHA256SUMS
           test -s SHA256SUMS
+
+      # The release is the contract every installer, tap and package manager
+      # resolves against, so name the assets that must exist rather than
+      # trusting that they were produced. This is the step that would have
+      # caught the missing .deb: it was never uploaded, and every consumer of it
+      # — install.sh on Debian/Ubuntu, the README's .deb row — 404s silently.
+      - name: Assert every expected asset is present
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          ver="${RELEASE_TAG#v}"
+          missing=0
+          for want in \
+            "hmx_${ver}_amd64.deb" \
+            "hmx-${ver}-linux-x86_64.tar.gz" \
+            "hmx-${ver}-macos-arm64.tar.gz" \
+            "hmx-${ver}-windows-x86_64.zip" \
+            SHA256SUMS
+          do
+            if [ -f "dist/$want" ]; then
+              echo "present: $want"
+            else
+              echo "::error::missing release asset: $want"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          # Nothing unexpected either: a stray archive means a naming change
+          # that the installers have not been told about.
+          extra="$(find dist -maxdepth 1 -type f -printf '%f\n' | sort \
+                   | grep -vxF -e "hmx_${ver}_amd64.deb" \
+                                -e "hmx-${ver}-linux-x86_64.tar.gz" \
+                                -e "hmx-${ver}-macos-arm64.tar.gz" \
+                                -e "hmx-${ver}-windows-x86_64.zip" \
+                                -e SHA256SUMS || true)"
+          if [ -n "$extra" ]; then
+            echo "::error::unexpected files in the release:"; echo "$extra"; exit 1
+          fi
 
       - uses: softprops/action-gh-release@v2
         with:

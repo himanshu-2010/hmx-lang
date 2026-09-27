@@ -19,25 +19,44 @@ pkgdesc="HMX — a small statically typed systems language that transpiles to C"
 arch=('x86_64')
 url="https://github.com/himanshu-2010/hmx-lang"
 license=('MIT')
-depends=('gcc' 'flex' 'bison' 'cmake')
-makedepends=('ninja' 'git')
+# gcc is a runtime dependency: `hmx run` transpiles to C and shells out to a C
+# compiler. Everything else is only needed to build hmx itself, so it belongs in
+# makedepends -- Arch installs runtime deps on the user's machine for good.
+depends=('gcc')
+makedepends=('cmake' 'ninja' 'flex' 'bison' 'git')
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/himanshu-2010/hmx-lang/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('SHA256_TO_PIN_AFTER_TAG')
+sha256sums=('7555427a06f3063674105a2ded5e7617d4cbcc80ac9fd3f384923bb13c4833af')
 
 # The source tarball is the primary input. If it is unavailable (a mirror or
 # a local checkout, e.g. when packaging straight from a git clone), fall back
 # to the repository itself. Resolved in a function rather than at file scope so
 # that `makepkg --printsrcinfo` stays free of side effects.
+#
+# The top directory inside GitHub's source tarball is named after the repository
+# and the commit ("himanshu-2010-hmx-lang-500dfa6"), not "hmx-lang". Assuming
+# the name made this fall through to the git clone on every single build while
+# still looking like it used the pinned tarball -- so the sha256sums above was
+# checked by makepkg and then never actually built from. Locate the tree rather
+# than guess at it.
 _src() {
+  local d
   if [ -f "${srcdir}/CMakeLists.txt" ]; then
     printf '%s' "${srcdir}"
-  else
-    printf '%s' "${srcdir}/hmx-lang"
+    return
   fi
+  for d in "${srcdir}"/*/; do
+    if [ -f "${d}CMakeLists.txt" ]; then
+      printf '%s' "${d%/}"
+      return
+    fi
+  done
+  printf '%s' "${srcdir}/hmx-lang"
 }
 
 prepare() {
-  if [ ! -f "${srcdir}/CMakeLists.txt" ]; then
+  # A no-op on the normal path; only fires when the tarball yielded no usable
+  # tree, which _src() then resolves to the clone destination below.
+  if [ ! -f "$(_src)/CMakeLists.txt" ]; then
     git clone --depth 1 --branch "v${pkgver}" \
       "https://github.com/himanshu-2010/hmx-lang.git" "${srcdir}/hmx-lang"
   fi

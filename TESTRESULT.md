@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-27  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 478 / 478 (64 integration + 238 negative + 143 stress + 33 CLI); web-playground vitest 455 / 455 (448 parity + 7 app); valgrind ownership matrix + all fixtures 69 / 69; packaging gate 48 / 51 (3 fail by design — the PKGBUILD, Scoop and winget digests need the release to exist)
+**Status:** ALL TESTS PASSED — native 478 / 478 (64 integration + 238 negative + 143 stress + 33 CLI); web-playground vitest 455 / 455 (448 parity + 7 app); valgrind ownership matrix + all fixtures 69 / 69; packaging gate 67 / 67 (all three manifests now carry the real digests of the published v0.10.0 release)
 
 ---
 

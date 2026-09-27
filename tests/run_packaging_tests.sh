@@ -116,10 +116,18 @@ check "release jobs have a timeout"           .github/workflows/release.yml \
 
 # ── 5) Runtime dependencies are declared honestly ────────────
 # hmx transpiles to C and shells out to the C compiler, so a package that
-# does not depend on one is broken for its users.
-for f in packaging/arch/PKBUILD; do
-    check "$f depends on a C compiler" "$f" "depends=\(.*gcc"
-    check "$f depends on flex/bison"    "$f" "depends=\(.*flex"
+# does not depend on one is broken for its users. The flip side matters just as
+# much: flex, bison and cmake are needed to *build* hmx, never to run it, and
+# Arch installs runtime deps on the user's machine for good.
+#
+# The `^depends=` anchor is load-bearing. Without it the pattern also matches
+# "makedepends=(", because `.*` happily spans the intervening entries — so a
+# check written that way passes for flex sitting in makedepends while claiming
+# to assert the opposite.
+check "PKGBUILD runtime-depends on a C compiler" packaging/arch/PKBUILD '^depends=\(.+gcc'
+for t in flex bison cmake; do
+    check "PKGBUILD build-depends on $t" packaging/arch/PKBUILD "^makedepends=\(.*$t"
+    reject "PKGBUILD does not runtime-depend on $t" packaging/arch/PKBUILD "^depends=\(.*$t"
 done
 check "brew formula depends on gcc"  packaging/brew/hmx.rb 'depends_on "gcc"'
 check "CPack deb depends on gcc"     CMakeLists.txt        'CPACK_DEBIAN_PACKAGE_DEPENDS "gcc"'
@@ -168,6 +176,27 @@ check "container workflow pushes the image" .github/workflows/container.yml 'pus
 # fine, which reads as a broken image.
 check "container smoke test runs as the host uid" .github/workflows/container.yml 'docker run --rm --user "\$uid"'
 check "container smoke test asserts the unwritable-cwd diagnostic" .github/workflows/container.yml 'cannot write build_temp\.c'
+
+# ── 10) The release actually contains what installers resolve to ──
+# v0.10.0 shipped with no .deb at all: cpack wrote it into build/, the upload
+# pattern `hmx*.deb` is relative to the workspace root, and an artifact glob
+# that matches nothing is a warning, not an error. Every consumer of that .deb
+# — install.sh on Debian/Ubuntu, the README's .deb row — resolves to a 404.
+# Two static guards, plus a runtime assertion in the workflow that names each
+# expected asset so a future omission fails the release instead of the user.
+check "release moves the .deb out of build/"      .github/workflows/release.yml 'mv "build/hmx-\$\{ver\}-Linux\.deb"'
+check "release asserts the .deb exists"          .github/workflows/release.yml 'deb not produced'
+check "release upload errors on no match"        .github/workflows/release.yml 'if-no-files-found: error'
+check "release names every expected asset"       .github/workflows/release.yml 'missing release asset'
+for l in linux-x86_64 macos-arm64 windows-x86_64; do
+    check "release builds a $l archive" .github/workflows/release.yml "label: $l\$"
+done
+check "release archive names interpolate the tag" .github/workflows/release.yml 'hmx-\$\{ver\}-\$\{\{ matrix\.label \}\}\.tar\.gz'
+check "release zip names interpolate the tag"  .github/workflows/release.yml 'hmx-\$ver-\$\{\{ matrix\.label \}\}\.zip'
+# And the installers must point at a name the release actually produces, or
+# they 404 — which is the whole reason this section exists.
+check "install.sh references the .deb" install/install.sh 'hmx_.*_amd64\.deb'
+check "install.ps1 references the windows zip" install/install.ps1 'windows-x86_64\.zip'
 
 echo
 if [ "$FAIL" -eq 0 ]; then

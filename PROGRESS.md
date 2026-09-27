@@ -1270,7 +1270,7 @@ channel), printed onto stderr that their program is supposed to own.
   reverting the cast and watching the clang case turn the suite red.
 - **Hygiene:** native **475/475** (64 / 238 / 143 / 30), valgrind **69/69**,
   ASan+LSan-clean; web vitest **455/455**, `gen-data.mts` parity 0 failures;
-  packaging **48/51**.
+  packaging **67/67**.
 
 ## `[ "$x" != "PREFIX"* ]` is not a prefix test
 The two new CLI cases were guarded with
@@ -1315,9 +1315,65 @@ that Windows cannot hold a backslash in a filename at all. A backslash is a
 perfectly legal character in a Linux filename and the emitted C is identical
 either way, so this is the one place the case can be constructed on every run.
 Verified by reverting the escaping and watching all three host compilers fail.
+
+## The release shipped with no `.deb`, and every glob that should have
+## noticed matched nothing
+The first real `v0.10.0` release published cleanly: four green jobs, three
+platform archives, a `SHA256SUMS` that verifies. Listing the assets showed three
+archives and the sums file. The `.deb` was not there — and `install.sh` resolves
+`hmx_0.10.0_amd64.deb` with `curl -fsSL` as its *primary* Debian/Ubuntu path, so
+the flagship Linux install was a hard 404.
+
+The cause is the quietest kind of CI failure there is:
+
+    (cd build && cpack -G DEB)              # writes build/hmx-0.10.0-Linux.deb
+    mv "hmx-...-Linux.deb" "hmx_..._amd64.deb"   # ...still inside build/
+    ...
+    path: |
+      hmx*.tar.gz        # relative to the workspace root — matches
+      hmx*.zip           # relative to the workspace root — matches
+      hmx*.deb           # relative to the workspace root — matches NOTHING
+
+The tarball and zip are created from the workspace root so they match; the `.deb`
+is created inside `build/` and stayed there. `actions/upload-artifact` treats an
+unmatched glob as a *warning*, so with three patterns where two match, nothing is
+reported. And `publish`'s `fail_on_unmatched_files: true` only guards
+`dist/**` — which matched, because the other two archives were in it. Every layer
+was correct in isolation and the combination shipped a release missing a file the
+README promised.
+
+Fixed on three levels, because each catches a different mistake:
+- move the `.deb` up to the workspace root next to the other archives, and
+  `test -f` it — a missing build product fails the step that should have made it;
+- `if-no-files-found: error` on the upload, so a platform that produces *nothing*
+  at all is an error rather than an empty artifact;
+- a runtime assertion in `publish` that names all five expected assets and also
+  rejects unexpected ones, so a rename cannot slip past either. Verified by
+  running that exact assertion against the real published asset list — it reports
+  the missing `.deb` and exits 1, i.e. it would have caught the release that
+  actually shipped.
+
+## The PKGBUILD was checking a tarball it never built from
+With the release out, the three manifest digests could be pinned at last. Filling
+them in exposed a second quiet bug: the source tarball's top directory is
+`himanshu-2010-hmx-lang-500dfa6` — repo name plus commit — while `_src()`
+returned `${srcdir}/hmx-lang`. So the lookup missed, `prepare()` fell through to
+its `git clone`, and every build used the clone while `makepkg` had verified the
+`sha256sums` of a tarball that went unused. `_src()` now locates the tree that
+actually contains `CMakeLists.txt` instead of guessing its name; both branches
+were checked against a simulated `srcdir`.
+
+Also split the dependency lists honestly: `depends=(gcc)` only, with flex, bison,
+cmake, ninja and git in `makedepends` — Arch installs runtime deps on the user's
+machine permanently, and none of those are needed to *run* hmx. The packaging
+check for this was passing for the wrong reason: `depends=\(.*flex` also matches
+`makedepends=(`, because `.*` spans the entries in between. Anchored to `^depends=`
+and paired with a `reject` for each build tool, and verified by putting flex back
+into the runtime list and watching the three new checks fail.
+
 - **Hygiene:** native **478/478** (64 / 238 / 143 / 33), valgrind **69/69**,
   ASan+LSan-clean; web vitest **455/455**, `gen-data.mts` parity 0 failures;
-  packaging **48/51**.
+  packaging **67/67**.
 
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
