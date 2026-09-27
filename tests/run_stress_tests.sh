@@ -9,6 +9,13 @@ mkdir -p "$TMPDIR"
 PASS=0
 FAIL=0
 
+# Line endings are not part of what a test asserts. The C runtime translates
+# a newline to CRLF when stdout is a Windows text stream, so the program's
+# output and the expected string built by $(printf ...) can disagree on every
+# line while meaning the same thing - 69 of the 142 output cases failed on
+# Windows for exactly that reason. Strip CR from both sides before comparing.
+strip_cr() { printf '%s' "$1" | tr -d '\r'; }
+
 # Name, entry path (relative to temp dir), expected output, then "path|content" pairs.
 test_module_output() {
     local test_name="$1"
@@ -30,6 +37,9 @@ test_module_output() {
     actual_output=$("$BIN" run "$file" 2>&1)
     local exit_code=$?
     set -e
+    actual_output="$(strip_cr "$actual_output")"
+    expected_output="$(strip_cr "$expected_output")"
+
     if [ $exit_code -eq 0 ] && [ "$actual_output" = "$expected_output" ]; then
         echo "PASS (Output): $test_name"
         PASS=$((PASS+1))
@@ -56,6 +66,9 @@ test_output() {
     actual_output=$("$BIN" run "$file" 2>&1)
     local exit_code=$?
     set -e
+
+    actual_output="$(strip_cr "$actual_output")"
+    expected_output="$(strip_cr "$expected_output")"
 
     if [ $exit_code -eq 0 ] && [ "$actual_output" = "$expected_output" ]; then
         echo "PASS (Output): $test_name"
@@ -140,6 +153,9 @@ test_output_with_input() {
     actual_output=$(printf '%s' "$stdin_data" | "$BIN" run "$file" 2>&1)
     local exit_code=$?
     set -e
+
+    actual_output="$(strip_cr "$actual_output")"
+    expected_output="$(strip_cr "$expected_output")"
 
     if [ $exit_code -eq 0 ] && [ "$actual_output" = "$expected_output" ]; then
         echo "PASS (Input/Output): $test_name"
