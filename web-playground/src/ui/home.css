@@ -849,7 +849,7 @@
   max-width: 1120px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 2.2fr 1fr 1fr 1.2fr;
+  grid-template-columns: 2fr 0.9fr 1fr 1fr 1.3fr;
   gap: 2.2rem;
 }
 .footer-brand .brand-logo {
@@ -880,6 +880,9 @@
   padding: 0.22rem 0;
   text-decoration: none;
   transition: color 0.15s;
+  /* The contact column carries a full email address, which is wider than
+     one grid track at small sizes — break it rather than overflow. */
+  overflow-wrap: anywhere;
 }
 .footer-col a:hover {
   color: var(--coral);

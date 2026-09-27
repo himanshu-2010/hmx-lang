@@ -903,6 +903,27 @@ a:hover {
   background: radial-gradient(circle, rgba(196, 30, 58, 0.09), transparent 66%);
 }
 
+/* ── Native cursor ──────────────────────────────────────────
+   Set by CursorTrail only when the follower is actually running: a
+   fine pointer, no reduced-motion preference. Hiding the OS cursor
+   is a real accessibility trade-off, so the flag is opt-in per
+   session by that capability check and removed again on unmount —
+   touch devices and reduced-motion users always keep their cursor.
+
+   Text entry opts back out: clicking into the code editor needs a
+   precise caret position, and a glow dot cannot give one. The text
+   caret itself (caret-color) is unaffected — only the mouse pointer. */
+html[data-native-cursor="hidden"],
+html[data-native-cursor="hidden"] * {
+  cursor: none;
+}
+html[data-native-cursor="hidden"] input,
+html[data-native-cursor="hidden"] textarea,
+html[data-native-cursor="hidden"] select,
+html[data-native-cursor="hidden"] [contenteditable="true"] {
+  cursor: auto;
+}
+
 /* ── Splash loader (fonts + boot) ────────────────────────── */
 
 .splash {

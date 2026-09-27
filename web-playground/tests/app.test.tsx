@@ -65,6 +65,19 @@ describe("app routes", () => {
     expect(portrait!.getAttribute("alt")).toBe("Portrait of Himanshu");
   });
 
+  it("links the author's contact details in the footer", async () => {
+    await renderApp();
+    const footer = rootEl.querySelector("footer");
+    expect(footer).not.toBeNull();
+    const hrefs = [...footer!.querySelectorAll("a")].map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(hrefs).toContain("mailto:himanshujsr462@gmail.com");
+    expect(hrefs).toContain("https://instagram.com/mors__369");
+    expect(hrefs).toContain("https://github.com/himanshu-2010");
+    expect(footer!.textContent).toContain("Contact");
+  });
+
   it("renders the playground at #/playground with the editor and empty state", async () => {
     window.location.hash = "#/playground";
     await renderApp();

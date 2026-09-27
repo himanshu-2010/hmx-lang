@@ -604,6 +604,24 @@ export function HomePage() {
               cmake -S . -B build
             </a>
           </div>
+          <div className="footer-col">
+            <h4>Contact</h4>
+            <a href="mailto:himanshujsr462@gmail.com">himanshujsr462@gmail.com</a>
+            <a
+              href="https://instagram.com/mors__369"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Instagram @mors__369
+            </a>
+            <a
+              href="https://github.com/himanshu-2010"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              GitHub @himanshu-2010
+            </a>
+          </div>
         </div>
         <div className="footer-bottom">
           <span>

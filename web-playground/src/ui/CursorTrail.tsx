@@ -5,6 +5,14 @@ import { useEffect, useRef, useState } from "react";
  * lerps behind it. One requestAnimationFrame loop writes straight to
  * transform/scale via refs — zero React state per frame, so it stays smooth.
  *
+ * While it is running it also hides the OS cursor (`data-native-cursor="hidden"`
+ * on <html>), so the only pointer the visitor sees is the follower. That flag
+ * is set from the same capability check that decides to render at all — a
+ * coarse pointer (touch) or reduced-motion user never gets it, and the flag is
+ * removed on unmount so the real cursor always comes back. Text-entry surfaces
+ * (see index.css) opt out and keep a real I-beam: clicking into the code
+ * editor needs a precise caret position, which a glow dot cannot give.
+ *
  * Never shown on touch/coarse pointers, disabled under reduced-motion, hidden
  * until the first pointer move, and skipped entirely in vitest.
  */
@@ -18,7 +26,12 @@ export function CursorTrail() {
     const mm = typeof window.matchMedia === "function" ? window.matchMedia : null;
     const fine = mm?.("(pointer: fine) and (hover: hover)").matches ?? false;
     const reduced = mm?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    setEnabled(fine && !reduced);
+    if (!(fine && !reduced)) return;
+    setEnabled(true);
+    document.documentElement.setAttribute("data-native-cursor", "hidden");
+    return () => {
+      document.documentElement.removeAttribute("data-native-cursor");
+    };
   }, []);
 
   useEffect(() => {
