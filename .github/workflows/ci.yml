@@ -118,6 +118,15 @@ jobs:
       - name: Integration suite
         run: ./tests/run_integration.sh
 
+      # The release workflow runs all four suites on macOS, so CI does too —
+      # and without a `> /dev/null`, because a macOS release job once sat in
+      # the integration suite for 25 minutes and the log could not say where.
+      - name: Negative suite
+        run: ./tests/run_negative_tests.sh
+
+      - name: Stress & output suite
+        run: ./tests/run_stress_tests.sh
+
   portability-windows:
     # The Windows half of the portability gate. Kept separate from the macOS
     # job because msys2 has to be the step shell, which `defaults.run.shell`

@@ -109,26 +109,49 @@ jobs:
             -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build
 
-      - name: Test (native suites + CLI)
+      # One step per suite, output not discarded. The previous version ran all
+      # four in a single step with `> /dev/null`; a macOS job then sat in the
+      # integration suite until the job timeout and the log could not say which
+      # case it was on, so the cause was unknowable from the run.
+      - name: Integration suite
         if: runner.os != 'Windows'
         shell: bash
-        run: |
-          ./tests/run_integration.sh
-          ./tests/run_negative_tests.sh
-          ./tests/run_stress_tests.sh
-          ./tests/run_cli_tests.sh
+        run: ./tests/run_integration.sh
 
-      - name: Test (native suites + CLI, Windows)
+      - name: Negative suite
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./tests/run_negative_tests.sh
+
+      - name: Stress & output suite
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./tests/run_stress_tests.sh
+
+      - name: CLI suite
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./tests/run_cli_tests.sh
+
+      - name: Integration suite (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: |
-          # No >/dev/null: a failure here once logged nothing but "exit code
-          # 1" and cost a full release run to diagnose. tee keeps the output
-          # in the log and still propagates a non-zero status.
-          ./tests/run_integration.sh    2>&1 | tee integration.log    ; test ${PIPESTATUS[0]} -eq 0
-          ./tests/run_negative_tests.sh 2>&1 | tee negative.log       ; test ${PIPESTATUS[0]} -eq 0
-          ./tests/run_stress_tests.sh   2>&1 | tee stress.log         ; test ${PIPESTATUS[0]} -eq 0
-          ./tests/run_cli_tests.sh      2>&1 | tee cli.log            ; test ${PIPESTATUS[0]} -eq 0
+        run: ./tests/run_integration.sh
+
+      - name: Negative suite (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: ./tests/run_negative_tests.sh
+
+      - name: Stress & output suite (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: ./tests/run_stress_tests.sh
+
+      - name: CLI suite (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: ./tests/run_cli_tests.sh
 
       - name: Package .deb (Linux)
         if: runner.os == 'Linux'
