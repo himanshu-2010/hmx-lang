@@ -96,7 +96,7 @@ private:
     std::vector<int> loop_scopes_;                  // scope indices of loop bodies
     std::vector<int> break_targets_;                // scope indices breakable by `break` (loop or switch case)
 
-    bool type_has_heap(const TypeDesc& d);
+    bool type_has_heap(const TypeDesc& d) const;
     bool expr_is_fresh(Expression* expr);
     // Reconstruct the full TypeDesc of an expression (tuple members, function
     // info) from per-node annotations and the scope stack where needed.
@@ -132,6 +132,11 @@ private:
     // of registering a reassigned heap parameter as owned at function scope.
     TypeDesc param_desc_of(const std::string& user_name) const;
     void declare_param_owned(const std::string& user_name);
+    // Name of the borrowed parameter a member-write lvalue reaches through a
+    // chain of field reads ("" when the target is owned storage, i.e. a local,
+    // or anything reached through an array index — the array owns its
+    // elements).
+    std::string member_write_borrowed_param(Expression* base) const;
     // Emit release statements for every owned entry in every open scope
     // (used by returns); optionally skip a moved local by C name.
     void emit_all_scope_releases(const std::string* skip);
@@ -140,6 +145,7 @@ private:
     void emit_loop_escape_releases();
     void emit_releases_at_current_scope();
     bool is_owned_local(const std::string& cname) const;
+
     int innermost_loop_scope() const;
     // ── M16 struct/enum codegen ─────────────────────────────────────────
     // C name of a struct's value type (`hmx_<Name>`), matching safe_name.

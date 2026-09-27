@@ -2010,6 +2010,39 @@ test_module_output "m16_mod_struct_enum" "main.hmx" \
         print(t + 2)
     }'
 
+# M16: a struct parameter is a BY-VALUE borrow of the caller's storage, so a
+# callee that writes through `o.f` (or `o.g.f`) must not disturb the caller, and
+# its own copy must survive the call. A write through an array field is
+# different: the copy shares the array buffer, so that one IS visible in place.
+test_output "m16_param_field_write" \
+    'struct Inner {
+        tag: text
+    }
+    struct Outer {
+        label: text
+        items: [int]
+        inner: Inner
+    }
+    fn relabel(o: Outer, t: text) -> Outer {
+        o.label = t
+        o.inner.tag = t + "!"
+        o.items[0] = 42
+        return o
+    }
+    fn main() {
+        let a = Outer("first", [1, 2], Inner("leaf"))
+        let b = relabel(a, "second")
+        print(a.label, a.inner.tag, a.items[0])
+        print(b.label, b.inner.tag, b.items[0])
+        let c = relabel(b, "third")
+        print(b.label, b.inner.tag, c.label, c.inner.tag)
+        let list: [Outer] = [a, b]
+        list[0].label = "zero"
+        list[1].inner.tag = "one"
+        print(a.label, b.inner.tag, list[0].label, list[1].inner.tag)
+    }' \
+    "$(printf 'first leaf 42\nsecond second! 42\nsecond second! third third!\nfirst second! zero one')"
+
 # M16: function-typed struct fields — declared, constructed, read back and
 # called through a local binding (the field itself is not a callee).
 test_output "m16_struct_fn_field" \

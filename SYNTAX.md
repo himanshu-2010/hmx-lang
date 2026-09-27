@@ -1875,7 +1875,12 @@ to a value is dropped. The web playground implements the same semantics
 - Function **parameters are borrowed**: the callee never releases a
   parameter's value and, if it returns that value, takes a reference first.
   Reassigning a parameter inside the callee affects only the callee's local
-  binding — the caller's value is untouched.
+  binding — the caller's value is untouched. The same holds for a write through
+  a `struct` parameter: `fn f(p: Point) { p.x = 9 }` changes the callee's copy
+  only, and the compiler takes its own reference to the struct before releasing
+  the field it overwrites. (A write through an **array** field is different: the
+  copy shares the buffer, so `p.arr[0] = 9` is visible to the caller, as any
+  shared array is.)
 - If a function needs an independent copy for itself, it can build one
   (`slice`/`substring` for a fresh range, `+` for a fresh text value).
 

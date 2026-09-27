@@ -1759,6 +1759,21 @@ void CodeGen::emit_stmt(Statement* stmt) {
         out_ << "((" << ct << "*)" << cn << "->data)[_si] = _sv; }\n";
     } else if (auto* massign = dynamic_cast<MemberAssignStmt*>(stmt)) {
         emit_line_directive(massign->line, line_file_);
+        // A write through a borrowed struct parameter first promotes that
+        // parameter to an owned copy (retaining every slot), so the releases
+        // below — the old field value and, at scope exit, the whole struct —
+        // are balanced. A no-op for locals and for anything reached through an
+        // array index.
+        {
+            std::string pname = member_write_borrowed_param(massign->base.get());
+            if (!pname.empty()) {
+                TypeDesc pd = param_desc_of(pname);
+                out_ << "    ({ " << c_type_for_desc(pd) << " _own = "
+                     << safe_name(pname) << "; " << slot_ret_name(pd)
+                     << "(&_own); " << safe_name(pname) << " = _own; });\n";
+                declare_param_owned(pname);
+            }
+        }
         // base.field <op> ... — the lvalue is `base.f<k>`. The resolver
         // guarantees a pure-read base (identifier root), so re-emitting it is
         // side-effect free.
@@ -2295,7 +2310,7 @@ void CodeGen::emit_for_component(Statement* stmt) {
 }
 
 // ── M15 reference-counting helpers ────────────────────────────────────────
-bool CodeGen::type_has_heap(const TypeDesc& d) {
+bool CodeGen::type_has_heap(const TypeDesc& d) const {
     if (d.type == TypeKind::Text || d.type == TypeKind::Array ||
         d.type == TypeKind::Function) return true;
     if (d.type == TypeKind::Tuple) {
@@ -2383,6 +2398,38 @@ void CodeGen::declare_param_owned(const std::string& user_name) {
         for (auto& e : scopes_[0]) if (e.cname == cn) return;
         scopes_[0].push_back({cn, d});
         return;
+    }
+}
+
+// A struct parameter arrives by value, so its heap-typed field slots are
+// BORROWED from the caller's argument temp. Writing through such an lvalue
+// (`p.f = v`, `p.g.f = v`) would otherwise release storage the callee does not
+// own, so the caller must promote the parameter to an owned copy first — the
+// same treatment a whole-parameter reassignment already gets.
+//
+// The chain is followed only through field reads: an array index hands the
+// target to the array, which owns its elements, so `arr[0].f = v` releases
+// normally whether `arr` is a local or a parameter. A local root needs no
+// promotion (its slots are already owned).
+std::string CodeGen::member_write_borrowed_param(Expression* base) const {
+    if (!current_fn_) return "";
+    Expression* cur = base;
+    for (;;) {
+        if (auto* mem = dynamic_cast<MemberAccessExpr*>(cur)) {
+            if (!mem->is_field) return "";
+            cur = mem->base.get();
+            continue;
+        }
+        if (dynamic_cast<ArrayIndexExpr*>(cur)) return "";
+        auto* id = dynamic_cast<Identifier*>(cur);
+        if (!id || id->is_function_reference) return "";
+        for (auto& p : current_fn_->params) {
+            if (p.name != id->name) continue;
+            // Already promoted (or wholesale reassigned): its slots are owned.
+            if (is_owned_local(safe_name(id->name))) return "";
+            return type_has_heap(codegen_param_desc(p)) ? id->name : "";
+        }
+        return "";
     }
 }
 

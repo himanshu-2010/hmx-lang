@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 464 / 464 (64 integration + 235 negative + 141 stress + 24 CLI); web-playground vitest 448 / 448 (443 parity + 5 app)
+**Status:** ALL TESTS PASSED — native 465 / 465 (64 integration + 235 negative + 142 stress + 24 CLI); web-playground vitest 449 / 449 (444 parity + 5 app)
 
 ---
 
@@ -33,11 +33,12 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 22. **Currying**: anonymous **lambda expressions** (`lambda(x: int) -> int { ... }`, plus zero-arg and void variants, with the full `fn` parameter syntax incl. defaults/variadic) and **partial application** — calling a named function or function value with `1 <= args < arity` (no defaults, no variadic) returns a closure over the prefix arguments that waits for the rest. Both combine: lambdas capture enclosing scopes by snapshot, partials compose/chain via higher-order calls, and everything lower through the existing closure machinery.
 23. **Reference-counted memory (M15)**: `text`, arrays and closure environments are refcounted; `substring`/`slice` return shared immutable views pinned by refcount; array mutation forks copy-on-write; locals own, params borrow, and every generated temporary is paired with an exact `retain`/`release`. All 424 native + 408 web + 66 valgrind cases run clean under AddressSanitizer + LeakSanitizer.
 24. **Structs / enums / type aliases (M16)**: `alias NAME = TYPE`, `struct NAME { field: TYPE }`, and `enum NAME { VARIANT }` are real top-level declarations resolved in a pre-pass (so a type may be used before it is declared) in one flat namespace with functions and variables. Structs are C value types with per-field refcounted heap slots, enums are int-backed nominal ordinals, and aliases are transparent. A shallow web copy was observably wrong for nested aggregates (`shift(v, 3)` mutated the caller's value), so the web backend reproduces the C by-value copy with generated `_sd_cp_*` helpers. 32 new `m16_*` negative cases lock the error surface (type/field/variant resolution, nominal identity, operator restrictions, duplicate type and variant declarations, nested type decls).
+25. **Struct-parameter ownership (M16 follow-up)**: writing through a borrowed `struct` parameter (`fn f(p: Point) { p.x = 9 }`) was releasing storage the callee never owned — a heap-use-after-free, found by the new valgrind ownership-matrix cases and reproduced under ASan. The member-write lvalue now promotes a borrowed struct parameter to an owned copy before overwriting a slot; an array index in the chain stops the search, because the array owns its elements.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 464 (native) + 448 (web) = 912
-> - **Passed:** 912
+> - **Total Test Cases Executed:** 465 (native) + 449 (web) = 914
+> - **Passed:** 914
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -292,7 +293,7 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (141/141 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (142/142 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -940,15 +941,41 @@ both backends.
   `factor: NOT factor •` / `factor PLUS •` / `factor MINUS •` vs `factor AS
   type`); all still resolve by shift. 179 rules, 471 states, 46 nonterminals;
   web `tables.json` regenerated.
+- **Ownership bug found by the new valgrind matrix cases, and fixed:** a struct
+  parameter arrives by value, so its field slots are borrowed from the caller's
+  argument temp — but the member-assign path released the old field
+  unconditionally. `fn rename(b: Bag) -> Bag { b.label = "renamed"; return b }`
+  dropped a reference the callee never owned: ASan reported a
+  heap-use-after-free in the tuple/closure release at `main`, and the reported
+  value was the caller's `"first"` string. The member-write lvalue now resolves
+  through its field-read chain (`member_write_borrowed_param`) and promotes a
+  borrowed struct parameter to an owned copy before overwriting a slot — the
+  same treatment a whole-parameter reassignment already had. A chain crossing
+  an array index stops the search (the array owns its elements, so
+  `p.arr[0].f = v` correctly releases in place). `type_has_heap` became const.
+  The web needed no change: it already copies struct arguments at the call site
+  and overwriting a JS array slot needs no release.
 - **Tests:** fixture `m16_structs_enums.hmx`; integration `mod_m16_types`;
   stress `m16_struct_refcount` (shared-buffer semantics — `z z`),
   `m16_enum_switch`, `m16_struct_conditional_alias`, `m16_struct_return_chain`,
-  `m16_struct_fn_field`, `m16_mod_struct_enum`; 32 negatives `m16_*`.
+  `m16_param_field_write` (callee field write leaves the caller's copy alone;
+  a shared array field is still visible), `m16_struct_fn_field`,
+  `m16_mod_struct_enum`; valgrind ownership matrix `struct_field_heap` +
+  `enum_alias_ownership` (nested by-value struct slots, param promote, array of
+  structs, struct in a tuple, closure capture of a struct, create/discard
+  churn); 32 negatives `m16_*`.
 - **Native:** integration **64/64**, negative **235/235**, stress & output
-  **141/141**, CLI **24/24** — all green (464/464).
+  **142/142**, CLI **24/24** — all green (465/465), and re-run under
+  `HMX_ASAN=1` (AddressSanitizer + LeakSanitizer) clean on the integration and
+  stress suites.
 - **Web parity (1:1):** parity data regenerated via `gen-data.mts`:
-  `stress 141 = 0 failures; negative 235 = 0; integration 64 = 0`.
-- **Web:** vitest **448/448** (443 parity + 5 app), `tsc` ✓, `vite build` ✓,
+  `stress 142 = 0 failures; negative 235 = 0; integration 64 = 0`.
+- **Web:** vitest **449/449** (444 parity + 5 app), `tsc` ✓, `vite build` ✓,
   oxlint 0 errors (11 benign warnings, all pre-existing UI).
+- **Valgrind:** the ownership matrix grew from 12 to **14** cases (the two new
+  struct/enum cases) and `--fixtures` now also covers all 64 fixtures, so CI's
+  valgrind job runs 78 programs. Valgrind is not installed in this environment,
+  so the local memory gate was AddressSanitizer + LeakSanitizer over the whole
+  integration and stress suites (clean); CI runs the valgrind job on push.
 
 ## Native-only regression report (reference)

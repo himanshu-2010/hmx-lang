@@ -282,10 +282,18 @@ prior fixtures, and lands one complete feature.
     a `MemberAccessExpr` case, so `let f = op.apply` infers instead of
     erroring) and duplicate variants in one enum are now
     `duplicate variant 'Red' in enum 'Color'`.
-  Native 464/464 + web 448/448 green (parity byte-identical); fixture
+  - Ownership bug found by the new valgrind matrix cases and fixed: a struct
+    param's field slots are borrowed from the caller's argument temp, but the
+    member-assign path released the old field unconditionally, so
+    `fn f(b: Bag) { b.label = "x" }` was a heap-use-after-free. The member-write
+    lvalue now resolves through its field-read chain to a borrowed param
+    (`member_write_borrowed_param`) and promotes it to an owned copy first (an
+    array index in the chain stops the search — the array owns its elements).
+  Native 465/465 + web 449/449 green (parity byte-identical); fixture
   `m16_structs_enums.hmx` + integration `mod_m16_types` + stress
   `m16_{struct_refcount,enum_switch,struct_conditional_alias,
-  struct_return_chain,struct_fn_field,mod_struct_enum}` + 32 negatives
+  struct_return_chain,param_field_write,struct_fn_field,mod_struct_enum}` +
+  valgrind matrix `struct_field_heap` + `enum_alias_ownership` + 32 negatives
   `m16_*`. Grammar: 9 shift/reduce conflicts (up from 6 — `factor: IDENTIFIER`
   split into `postfix_index` + a call factor, so the indexing/call ambiguity
   is now counted per postfix state); 179 rules, 471 states, 46 nonterminals.

@@ -1116,17 +1116,30 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   IDENTIFIER <op>` added for member assignment. 9 shift/reduce conflicts (was
   6) — all benign, all resolved by shift. 179 rules / 471 states / 46
   nonterminals; web `tables.json` regenerated.
+- **Ownership fix found by the new valgrind matrix cases:** a struct parameter
+  arrives by value, so its field slots are borrowed from the caller's argument
+  temp — but the member-assign path released the old field unconditionally, so
+  `fn f(b: Bag) { b.label = "x" }` dropped a reference the callee never owned
+  (heap-use-after-free, caught by ASan/LSan). The member-write lvalue now
+  resolves through its field-read chain to a borrowed parameter
+  (`member_write_borrowed_param`) and promotes it to an owned copy first
+  (`declare_param_owned` + `sd_ret_hmx_<Name>`), the same treatment a
+  whole-parameter reassignment already got. An array index in the chain stops
+  the search — the array owns its elements. `type_has_heap` became const. The
+  web needed no change (a JS array slot is just overwritten, and the call site
+  already copies the arg).
 - **Tests:** fixture `m16_structs_enums.hmx` (nested structs, enum arrays,
   switch on an enum, closures over structs, foreach over a struct field,
   function-typed fields, value-copy semantics); integration `mod_m16_types`
   (cross-module types); stress `m16_struct_refcount` (shared-buffer
   semantics), `m16_enum_switch`, `m16_struct_conditional_alias`,
-  `m16_struct_return_chain`, `m16_struct_fn_field`, `m16_mod_struct_enum`;
-  32 negatives `m16_*`.
-- **Hygiene:** native **464/464** (64 integration / 235 negative / 141 stress /
-  24 CLI); web `tsc` ✓ + `vite build` ✓ + oxlint (0 errors, 11 benign
-  warnings) + vitest **448/448** (443 parity + 5 app); `gen-data.mts` parity
-  0 failures (141/235/64).
+  `m16_struct_return_chain`, `m16_param_field_write`, `m16_struct_fn_field`,
+  `m16_mod_struct_enum`; valgrind matrix `struct_field_heap` +
+  `enum_alias_ownership`; 32 negatives `m16_*`.
+- **Hygiene:** native **465/465** (64 integration / 235 negative / 142 stress /
+  24 CLI), ASan+LSan-clean on integration and stress; web `tsc` ✓ +
+  `vite build` ✓ + oxlint (0 errors, 11 benign warnings) + vitest **449/449**
+  (444 parity + 5 app); `gen-data.mts` parity 0 failures (142/235/64).
 
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).

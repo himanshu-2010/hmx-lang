@@ -1986,6 +1986,20 @@
       }
     },
     {
+      "name": "m16_param_field_write",
+      "kind": "output",
+      "source": "struct Inner {\n        tag: text\n    }\n    struct Outer {\n        label: text\n        items: [int]\n        inner: Inner\n    }\n    fn relabel(o: Outer, t: text) -> Outer {\n        o.label = t\n        o.inner.tag = t + \"!\"\n        o.items[0] = 42\n        return o\n    }\n    fn main() {\n        let a = Outer(\"first\", [1, 2], Inner(\"leaf\"))\n        let b = relabel(a, \"second\")\n        print(a.label, a.inner.tag, a.items[0])\n        print(b.label, b.inner.tag, b.items[0])\n        let c = relabel(b, \"third\")\n        print(b.label, b.inner.tag, c.label, c.inner.tag)\n        let list: [Outer] = [a, b]\n        list[0].label = \"zero\"\n        list[1].inner.tag = \"one\"\n        print(a.label, b.inner.tag, list[0].label, list[1].inner.tag)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "first leaf 42\nsecond second! 42\nsecond second! third third!\nfirst second! zero one\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "m16_struct_fn_field",
       "kind": "output",
       "source": "struct Op {\n        name: text\n        apply: fn(int) -> int\n    }\n    fn twice(k: int) -> int {\n        return k * 2\n    }\n    fn negate(k: int) -> int {\n        return 0 - k\n    }\n    fn run(f: fn(int) -> int, k: int) -> int {\n        return f(k) + 1\n    }\n    fn main() {\n        let o = Op(\"double\", twice)\n        print(o.name)\n        let f = o.apply\n        print(f(4))\n        let g: fn(int) -> int = o.apply\n        print(g(10))\n        let pairs: [Op] = [Op(\"double\", twice), Op(\"neg\", negate)]\n        let total = 0\n        foreach (p in pairs) {\n            let call = p.apply\n            total = total + call(5)\n        }\n        print(total)\n        let chosen = pairs[1]\n        print(chosen.name, run(chosen.apply, 3))\n    }",

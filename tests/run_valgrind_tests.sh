@@ -233,6 +233,77 @@ fn main() {
 }
 '
 
+test_clean "struct_field_heap" '
+struct Bag {
+    items: [int]
+    label: text
+    owner: Inner
+}
+struct Inner {
+    tag: text
+    n: int
+}
+fn make(label: text, n: int) -> Bag {
+    return Bag([1, 2, 3], label, Inner("leaf", n))   // borrowed params retained
+}
+fn rename(b: Bag) -> Bag {                           // by-value param
+    b.label = "renamed"                              // releases the old slot
+    return b
+}
+fn main() {
+    let a = make("first", 5)
+    let b = a                                        // copy: shared buffers
+    b.items[0] = 9
+    print(a.items[0], b.items[0])
+    b.owner.tag = "stem"
+    print(a.owner.tag, b.owner.tag)                  // nested struct copies by value
+    let c = rename(a)                                // a survives the param slot release
+    print(a.label, c.label, c.owner.n)
+    let many: [Bag] = [a, c, make("third", 7)]       // element copies retain
+    push(many, make("fourth", 8))
+    print(length(many), many[3].owner.n, many[3].label)
+    let pair = (a, c)                                // tuple member slots
+    print(pair[0].label, pair[1].owner.tag)
+    let grab = lambda() -> text { return b.label }   // closure capture of a struct
+    print(grab())
+    for (let i = 0; i < 50; i++) {                   // create/discard churn
+        let tmp = make("churn", i)
+        tmp.items[0] = tmp.items[0] + 1
+    }
+    print(many[0].items[0], a.owner.n)
+}
+'
+
+test_clean "enum_alias_ownership" '
+enum State { Idle Busy Done }
+alias Status = State
+struct Task {
+    state: State
+    name: text
+    deps: [text]
+}
+fn next(s: State) -> State {
+    switch (s) {
+        case State.Idle: return State.Busy
+        case State.Busy: return State.Done
+        default:         return State.Idle
+    }
+}
+fn main() {
+    let t = Task(State.Idle, "job", ["a", "b"])
+    let st: Status = t.state                        // alias is transparent
+    print(st, next(st), t.state)
+    t.state = next(t.state)                         // enum field write
+    t.deps[0] = "c"                                 // shared buffer through a copy
+    print(t.state, t.name, t.deps[0], t.deps[1])
+    let list: [Task] = [t, Task(State.Done, "two", ["z"])]
+    foreach (x in list) { print(x.name, x.state) }
+    let alias_list = list
+    alias_list[0].deps[1] = "B"                     // element copy shares the buffer
+    print(list[0].deps[1])
+}
+'
+
 # ── Optional: run every integration fixture under valgrind ──────────────────
 
 if [ "${1:-}" = "--fixtures" ]; then

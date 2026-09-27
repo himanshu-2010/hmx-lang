@@ -110,7 +110,10 @@
   struct fields are readable, and duplicate variants in one enum are an error.
   Grammar adds `postfix_index DOT IDENTIFIER <op>` and splits
   `factor: IDENTIFIER` (conflicts 6 → 9 SR, all resolved by shift).
-  Native 464/464 + web 448/448 green (parity verbatim).
+  Native 465/465 + web 449/449 green (parity verbatim). Follow-up fix: a write
+  through a borrowed struct param released storage the callee never owned
+  (heap-use-after-free, found by the new valgrind matrix cases) — the member
+  write now promotes the param to an owned copy first.
 - **M17** generics via monomorphization (reuse `papp_mangle` instantiation infra).
 - **M18** `Option[T]` / `Result[T,E]` + `try`/`?`/`defer` on existing setjmp
   machinery; hard faults stay print+exit(1) by default, recoverable via `catch`.
