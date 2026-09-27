@@ -50,7 +50,19 @@ describe("app routes", () => {
     expect(t).toContain("Compile in your tab");
     expect(t).toContain("Try the compiler");
     expect(t).toContain("Think in types");
-    expect(t).toContain("358");
+    expect(t).toContain("468");
+  });
+
+  it("credits the author with a circular portrait", async () => {
+    await renderApp();
+    expect(text()).toContain("Himanshu");
+    const portrait = rootEl.querySelector<HTMLImageElement>(
+      "img.author-portrait",
+    );
+    expect(portrait).not.toBeNull();
+    expect(portrait!.getAttribute("src")).toBe("/himanshu.jpg");
+    // Square source + border-radius: 50% in CSS is what makes the circle.
+    expect(portrait!.getAttribute("alt")).toBe("Portrait of Himanshu");
   });
 
   it("renders the playground at #/playground with the editor and empty state", async () => {

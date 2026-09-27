@@ -8,8 +8,8 @@ import "./home.css";
 const GITHUB_URL = "https://github.com/himanshu-2010/hmx-lang";
 
 const stats = [
-  { value: "358", label: "native regression cases, all green" },
-  { value: "358", label: "web vs native — byte-identical" },
+  { value: "468", label: "native regression cases, all green" },
+  { value: "444", label: "web vs native — byte-identical" },
   { value: "134", label: "runnable examples in the docs" },
   { value: "0", label: "backend — it compiles in your tab" },
 ];
@@ -385,7 +385,7 @@ export function HomePage() {
               <div className="fact-row">
                 <span className="k">Browser twin</span>
                 <span className="v">
-                  <em>358/358</em> byte-identical cases
+                  <em>444/444</em> byte-identical cases
                 </span>
               </div>
               <div className="fact-row">
@@ -498,7 +498,7 @@ export function HomePage() {
                 binary. Exit codes, stdin, Unicode, modules — all there.
               </p>
               <div className="parity-metric">
-                358 regression cases · <b>52</b> module integrations
+                468 regression cases · <b>9</b> module integrations
               </div>
             </div>
           </Reveal>
@@ -511,7 +511,7 @@ export function HomePage() {
                 in TypeScript and run a tiny runtime inside your tab.
               </p>
               <div className="parity-metric">
-                <b>358/358</b> byte-identical vs native · <b>0</b> backend
+                <b>444/444</b> byte-identical vs native · <b>0</b> backend
               </div>
             </div>
           </Reveal>
@@ -534,6 +534,36 @@ export function HomePage() {
               <Link className="btn-ghost" to="/docs">
                 Browse the docs
               </Link>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
+      {/* ── Author ───────────────────────────────────────── */}
+      <section className="author-section" aria-label="About the author">
+        <Reveal>
+          <div className="author-card">
+            <img
+              className="author-portrait"
+              src="/himanshu.jpg"
+              alt="Portrait of Himanshu"
+              width={320}
+              height={320}
+              loading="lazy"
+              decoding="async"
+            />
+            <div className="author-text">
+              <span className="author-name">Himanshu</span>
+              <span className="author-role">
+                Designed and built HMX ·{" "}
+                <a
+                  href="https://github.com/himanshu-2010"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  @himanshu-2010
+                </a>
+              </span>
             </div>
           </div>
         </Reveal>

@@ -780,6 +780,64 @@
   margin-top: 1.9rem;
 }
 
+/* ── Author ─────────────────────────────────────────────────
+   A small credit card between the CTA and the footer: the author's
+   portrait in a circle, their name, and what they built. */
+
+.author-section {
+  padding: 0 1.5rem 4.4rem;
+}
+.author-card {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0.8rem 1.6rem 0.8rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: linear-gradient(120deg, var(--panel), var(--bg-soft));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+.author-portrait {
+  flex: none;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border-red);
+  box-shadow:
+    0 0 0 1px var(--red-glow),
+    0 0 18px var(--red-tint);
+}
+.author-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.author-name {
+  font-family: var(--font-script);
+  font-size: 1.5rem;
+  line-height: 1.15;
+  color: var(--text);
+}
+.author-role {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.author-role a {
+  color: var(--coral);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  white-space: nowrap;
+}
+.author-role a:hover {
+  border-bottom-color: currentColor;
+}
+
 /* ── Footer ───────────────────────────────────────────────── */
 
 .site-footer {
@@ -1029,6 +1087,20 @@
   .footer-grid {
     grid-template-columns: 1fr;
     gap: 1.6rem;
+  }
+  .author-section {
+    padding: 0 1rem 3.4rem;
+  }
+  /* A pill can't hold the name + handle on a phone: stack and round it. */
+  .author-card {
+    flex-direction: column;
+    text-align: center;
+    gap: 0.7rem;
+    padding: 1.1rem 1.4rem;
+    border-radius: 22px;
+  }
+  .author-text {
+    align-items: center;
   }
   .footer-bottom {
     flex-direction: column;
