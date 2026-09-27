@@ -1568,7 +1568,7 @@ test_error_module "use_module_parse_error" "main.hmx" "parsing failed in module"
 
 # M14: a type error in module top-level state cites the module file+line.
 test_error_module "module_top_state_type_err" "main.hmx" \
-    "Error \[.*lib/config\.hmx:[0-9]+\].*type mismatch" \
+    "Error \[.*lib[/\\]config\.hmx:[0-9]+\].*type mismatch" \
     "lib/config.hmx" 'let LIMIT: text = 3
     fn limit() -> int {
         return 3
@@ -1581,7 +1581,7 @@ test_error_module "module_top_state_type_err" "main.hmx" \
 # M14: module top-level state shares one namespace — a duplicate `let` across
 # two modules is rejected (second declaration cites its own module file).
 test_error_module "module_top_state_dup" "main.hmx" \
-    "Error \[.*lib/b\.hmx:[0-9]+\].*duplicate declaration of variable 'RATE'" \
+    "Error \[.*lib[/\\]b\.hmx:[0-9]+\].*duplicate declaration of variable 'RATE'" \
     "lib/a.hmx" 'let RATE = 1.0
     fn a_rate() -> decimal {
         return RATE
