@@ -108,8 +108,10 @@ jobs:
           # The uid mismatch is the case that actually bites, so assert the
           # diagnostic and not just the failure: an unwritable working
           # directory has to be named as such, not reported as a missing
-          # build_temp.c by the C compiler.
-          chmod 0700 /tmp/hmx-smoke
+          # build_temp.c by the C compiler. The mount stays world-readable and
+          # owned by the runner, so uid 12345 can read main.hmx and fails
+          # precisely on the write — a 0700 mount would fail earlier, on the
+          # source-access check, and test something else.
           if docker run --rm --user 12345:12345 -v /tmp/hmx-smoke:/src "$tag" run main.hmx 2>&1 \
              | grep -q "cannot write build_temp.c"; then
             echo "unwritable working directory is reported clearly"
