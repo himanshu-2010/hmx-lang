@@ -11,7 +11,9 @@ export enum TypeKind {
   Array = 6,
   Tuple = 7,
   Function = 8,
-  Unknown = 9,
+  Struct = 9,
+  Enum = 10,
+  Unknown = 11,
 }
 
 export interface FunctionTypeInfo {
@@ -24,13 +26,16 @@ export interface TypeDesc {
   elem: TypeDesc | null; // valid when type == Array (recursive)
   tuple_members: TypeDesc[]; // valid when type == Tuple
   fn_info: FunctionTypeInfo | null; // valid when type == Function
+  /** Nominal name of a declared type (Struct/Enum), or a transient marker for
+   * a referenced type name before the resolver expands it (Unknown + name). */
+  type_name: string;
 }
 
 export function mkType(kind: TypeKind): TypeDesc {
-  return { type: kind, elem: null, tuple_members: [], fn_info: null };
+  return { type: kind, elem: null, tuple_members: [], fn_info: null, type_name: "" };
 }
 
-const EMPTY: TypeDesc = { type: TypeKind.Unknown, elem: null, tuple_members: [], fn_info: null };
+const EMPTY: TypeDesc = { type: TypeKind.Unknown, elem: null, tuple_members: [], fn_info: null, type_name: "" };
 export function emptyTypeDesc(): TypeDesc {
   return EMPTY;
 }
@@ -38,7 +43,7 @@ export function elementOf(d: TypeDesc): TypeDesc {
   return d.elem ? d.elem : EMPTY;
 }
 export function arrayOf(e: TypeDesc): TypeDesc {
-  return { type: TypeKind.Array, elem: e, tuple_members: [], fn_info: null };
+  return { type: TypeKind.Array, elem: e, tuple_members: [], fn_info: null, type_name: "" };
 }
 
 export function typeDescEquals(a: TypeDesc, b: TypeDesc): boolean {
@@ -48,6 +53,9 @@ export function typeDescEquals(a: TypeDesc, b: TypeDesc): boolean {
     if (!typeDescEquals(a.elem, b.elem)) return false;
   }
   if (!tupleMembersEquals(a.tuple_members, b.tuple_members)) return false;
+  if (a.type === TypeKind.Struct || a.type === TypeKind.Enum) {
+    return a.type_name === b.type_name;
+  }
   if (a.type === TypeKind.Function) {
     if (a.fn_info === b.fn_info) return true;
     if (!a.fn_info || !b.fn_info) return false;
@@ -86,6 +94,9 @@ export function typeDescLess(a: TypeDesc, b: TypeDesc): boolean {
     }
     return a.tuple_members.length < b.tuple_members.length;
   }
+  if (a.type === TypeKind.Struct || a.type === TypeKind.Enum) {
+    return a.type_name < b.type_name;
+  }
   if (a.type === TypeKind.Function) {
     if (a.fn_info && b.fn_info) {
       if (!typeDescListEquals(a.fn_info.params, b.fn_info.params)) {
@@ -117,6 +128,7 @@ export function typeToC(kind: TypeKind): string {
     case TypeKind.Array: return "sd_array";
     case TypeKind.Tuple: return "sd_tuple";
     case TypeKind.Function: return "sd_closure";
+    case TypeKind.Enum: return "int";
     default: return "void";
   }
 }
@@ -130,6 +142,7 @@ export function typeToFormat(kind: TypeKind): string {
     case TypeKind.Char: return "%c";
     case TypeKind.Byte: return "%d";
     case TypeKind.Array: return "%d";
+    case TypeKind.Enum: return "%d";
     default: return "%d";
   }
 }
@@ -145,11 +158,18 @@ export function typeToString(kind: TypeKind): string {
     case TypeKind.Array: return "array";
     case TypeKind.Tuple: return "tuple";
     case TypeKind.Function: return "function";
+    case TypeKind.Struct: return "struct";
+    case TypeKind.Enum: return "enum";
     default: return "unknown";
   }
 }
 
 export function typeDescToString(d: TypeDesc): string {
+  if (d.type === TypeKind.Struct || d.type === TypeKind.Enum) {
+    return d.type_name !== "" ? d.type_name : typeToString(d.type);
+  }
+  // A not-yet-expanded named-type reference prints as its name.
+  if (d.type === TypeKind.Unknown && d.type_name !== "") return d.type_name;
   if (d.type === TypeKind.Array) {
     return "array of " + typeDescToString(elementOf(d));
   }
@@ -221,6 +241,9 @@ export enum NodeKind {
   FunctionDecl,
   LambdaExpr,
   ExprStmt,
+  MemberAccessExpr,
+  MemberAssignStmt,
+  TypeDecl,
 }
 
 export interface Expression {
@@ -316,6 +339,11 @@ export class CallExpr implements Expression {
   is_function_value_call = false;
   fn_type: TypeDesc = mkType(TypeKind.Unknown);
   array_aux: TypeDesc = mkType(TypeKind.Unknown);
+  /** struct construction, set by resolver when name is a user-declared struct type */
+  is_struct_ctor = false;
+  struct_ctor_name = "";
+  struct_ctor_fields: TypeDesc[] = [];
+  struct_ctor_desc: TypeDesc = mkType(TypeKind.Unknown);
   is_partial = false;
   partial_applied = 0;
   partial_full_params: TypeDesc[] = [];
@@ -356,6 +384,22 @@ export class ArrayIndexExpr implements Expression {
   ) {
     this.base = base;
   }
+}
+
+/** base.member — struct field access or enum member reference (`Color.Red`). */
+export class MemberAccessExpr implements Expression {
+  kind = NodeKind.MemberAccessExpr;
+  resolved_type = TypeKind.Unknown;
+  /** enum member reference (base was an enum type name) */
+  is_enum_member = false;
+  enum_type_name = "";
+  enum_index = -1;
+  /** struct field access */
+  is_field = false;
+  struct_name = "";
+  field_index = -1;
+  field_desc: TypeDesc = mkType(TypeKind.Unknown);
+  constructor(public base: Expression, public member: string) {}
 }
 
 export class VarDecl implements Statement {
@@ -450,6 +494,25 @@ export class ElementAssignStmt implements Statement {
   nl_target = false;
   nl_owner: FunctionDecl | null = null;
   constructor(public target: ArrayIndexExpr, public rhs: Expression) {}
+}
+
+/** member assignment: base.member = rhs (also compound and ++ / --). */
+export class MemberAssignStmt implements Statement {
+  kind = NodeKind.MemberAssignStmt;
+  line = 0;
+  resolved_type = TypeKind.Unknown;
+  nl_id = -1;
+  nl_target = false;
+  nl_owner: FunctionDecl | null = null;
+  struct_name = "";
+  field_index = -1;
+  field_desc: TypeDesc = mkType(TypeKind.Unknown);
+  constructor(
+    public base: Expression,
+    public member: string,
+    public op: string,
+    public rhs: Expression | null
+  ) {}
 }
 
 export class PrintStmt implements Statement {
@@ -657,6 +720,36 @@ export class ExprStmt implements Statement {
   nl_target = false;
   nl_owner: FunctionDecl | null = null;
   constructor(public expr: Expression) {}
+}
+
+// ---- M16 type declarations (alias / struct / enum) ----
+
+export enum TypeDeclKind {
+  Alias,
+  Struct,
+  Enum,
+}
+
+/** One field of a user-declared struct type. */
+export interface StructFieldInfo {
+  name: string;
+  desc: TypeDesc;
+}
+
+/** A top-level type declaration. */
+export class TypeDecl implements Statement {
+  kind = NodeKind.TypeDecl;
+  line = 0;
+  resolved_type = TypeKind.Unknown;
+  nl_id = -1;
+  nl_target = false;
+  nl_owner: FunctionDecl | null = null;
+  file = "";
+  tdecl_kind = TypeDeclKind.Alias;
+  alias_target: TypeDesc = mkType(TypeKind.Unknown);
+  fields: StructFieldInfo[] = [];
+  variants: string[] = [];
+  constructor(public name: string) {}
 }
 
 export interface Program {

@@ -1062,13 +1062,79 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   warnings) + vitest **408/408** (403 parity + 5 app); `gen-data.mts` parity
   0 failures (135/203/62).
 
+### Milestone — Structs, enums & type aliases (M16) — DONE
+- **Three new top-level declarations** (SYNTAX.md §17–19): `alias NAME = TYPE`,
+  `struct NAME { field: TYPE ... }`, `enum NAME { VARIANT ... }`. Types live in
+  one flat top-level namespace with functions and variables, and are rejected
+  inside function bodies (`type declarations are only allowed at the top level`).
+- **Two-phase resolution (forward references allowed):** the resolver runs
+  `collect_type_decls` + `expand_type_refs` *before* collecting functions, so a
+  type may be used in an annotation, parameter, return type, `struct` field, or
+  constructor call before it is declared. `expand_desc` / `resolve_named` cache
+  each declaration, so a cycle is reported once by name:
+  `alias cycle detected involving type 'A'`, `struct type 'S' cannot contain
+  itself by value` (an array/function field that mentions its own struct is
+  fine — the `by_value` flag is what separates the two).
+- **Nominal identity:** `TypeDesc` gained `type_name`; `TypeKind::Struct` /
+  `Enum` compare by name in `type_desc_equals` / `types_match`, while aliases
+  expand away to the target descriptor (`alias Orientation = Suit` *is*
+  `Suit`, transparent, no wrapping). A type name colliding with a function or
+  variable is an error.
+- **Native codegen:** a struct lowers to C `struct hmx_<Name> { f0 … fN }`; a
+  constructor is a compound literal that *moves* its arguments. Heap fields
+  retain/release exactly like tuple members (`type_has_heap`,
+  `slot_ret_name`/`slot_rel_name`), so a struct copy shares its `text`/array
+  storage and copies nested struct/tuple fields by value — `let p2 = p1;
+  p2.y = 99` leaves `p1.y` alone while a shared array stays shared. Enums are
+  plain `int` ordinals with no runtime representation; the ordinal is
+  materialized at the member-access site.
+- **Web codegen:** struct and tuple values are plain JS arrays, so a *shallow*
+  `SD.copy` was observably wrong (it aliased nested aggregates, so
+  `shift(v, 3)` mutated the caller's `v`). Replaced by a type-directed copy:
+  generated hoisted `_sd_cp_<mangle>(s) { return [ <slot or recursive copy> ]; }`
+  helpers, where a struct mangles to `st_<TypeName>` and a tuple to
+  `tp_<members>`; nested aggregate slots copy recursively, `array`/`text`/
+  function slots stay shared — the exact shape of C's by-value copy. Copies
+  happen at the C pass-by-value boundaries (`copyIfValue`), tracked with a
+  codegen-side descriptor scope stack (`pushScope`/`recordVarDesc`/
+  `varDescOf`/`paramDescOf`/`descOfExpr`).
+- **Locked enum rules:** implicit enum→int only where an `int` is consumed
+  (`print`, array index, `switch` subject, one operand of an arithmetic or
+  relational operator against an `int`). `enum ⊕ enum`, the logical operators,
+  `==` against an `int`, `let c: Color = 1`, `let n: int = Color.Red`, and
+  compound assignment to an enum variable or field are all errors. `==`/`!=`
+  are same-enum only, so nominal identity is enforced at the operator. Structs
+  have no `==`, no `print`, no `length`, no destructuring, and no arithmetic.
+- **Two resolver gaps closed while writing the spec tests:** a function-typed
+  struct field is now readable (`expr_function_type` gained a
+  `MemberAccessExpr` case, so `let f = op.apply` infers instead of erroring
+  with "initialized with function"), and a repeated variant name inside one
+  enum is now `duplicate variant 'Red' in enum 'Color'` instead of silently
+  shadowing the earlier ordinal.
+- **Grammar:** `factor: IDENTIFIER` split into `postfix_index: IDENTIFIER` +
+  a call factor so member access composes with `[]`/`.`; `postfix_index DOT
+  IDENTIFIER <op>` added for member assignment. 9 shift/reduce conflicts (was
+  6) — all benign, all resolved by shift. 179 rules / 471 states / 46
+  nonterminals; web `tables.json` regenerated.
+- **Tests:** fixture `m16_structs_enums.hmx` (nested structs, enum arrays,
+  switch on an enum, closures over structs, foreach over a struct field,
+  function-typed fields, value-copy semantics); integration `mod_m16_types`
+  (cross-module types); stress `m16_struct_refcount` (shared-buffer
+  semantics), `m16_enum_switch`, `m16_struct_conditional_alias`,
+  `m16_struct_return_chain`, `m16_struct_fn_field`, `m16_mod_struct_enum`;
+  32 negatives `m16_*`.
+- **Hygiene:** native **464/464** (64 integration / 235 negative / 141 stress /
+  24 CLI); web `tsc` ✓ + `vite build` ✓ + oxlint (0 errors, 11 benign
+  warnings) + vitest **448/448** (443 parity + 5 app); `gen-data.mts` parity
+  0 failures (141/235/64).
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.
-- bison emits six harmless shift/reduce conflicts, all resolved by shift: the `return expr`
-  vs bare `return` ambiguity (now also covering a following tuple multi-assign statement),
-  the `IDENTIFIER '[' ...` array indexing/assignment ambiguity, the `IDENTIFIER '(' ...`
-  call-vs-factor ambiguity, and the unary `not` / `+` / `-` prefix vs `factor AS` ambiguity.
+- bison emits nine harmless shift/reduce conflicts across 7 states, all resolved by shift:
+  the `return expr` vs bare `return` ambiguity (2, on `IDENTIFIER` and `(`), the
+  `postfix_index: IDENTIFIER •` indexing/assignment/call ambiguities (4 — 3 on `[`,
+  1 on `(`), and the unary `not` / `+` / `-` prefix vs `factor AS` ambiguity (1 each).
 - Duplicate declarations and missing definite returns are rejected by the type resolver.
 - `else if` chains are implemented and covered by `else_if.hmx`.
 - Ternary expressions, explicit numeric casts, and immutable `const` bindings are implemented.

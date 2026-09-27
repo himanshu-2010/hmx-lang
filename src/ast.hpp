@@ -14,6 +14,8 @@ enum class TypeKind {
     Array,
     Tuple,
     Function,
+    Struct,
+    Enum,
     Unknown
 };
 
@@ -24,6 +26,10 @@ struct TypeDesc {
     std::shared_ptr<TypeDesc> elem;                    // valid when type == Array (recursive)
     std::vector<TypeDesc> tuple_members;                // valid when type == Tuple
     std::shared_ptr<FunctionTypeInfo> fn_info = nullptr; // valid when type == Function
+    // Nominal name of a declared type. Valid when type is Struct or Enum; also
+    // used as a transient marker for referenced type names before the type
+    // resolver expands them (type == Unknown && !type_name.empty()).
+    std::string type_name;
     const TypeDesc& element() const {
         static const TypeDesc empty{};
         return elem ? *elem : empty;
@@ -44,6 +50,12 @@ struct FunctionTypeInfo {
     TypeDesc ret;
     bool operator==(const FunctionTypeInfo& other) const;
     bool operator<(const FunctionTypeInfo& other) const;
+};
+
+// One field of a user-declared struct type.
+struct StructFieldInfo {
+    std::string name;
+    TypeDesc desc;
 };
 
 std::string type_to_c(TypeKind kind);
@@ -143,6 +155,11 @@ struct CallExpr : Expression {
     bool is_function_value_call = false;   // set by resolver: name is a function-typed value
     TypeDesc fn_type;                      // function type of the value when is_function_value_call
     TypeDesc array_aux;                    // element desc of arg0 for array builtins (resolver-set)
+    // struct construction, set by resolver when name is a user-declared struct type:
+    bool is_struct_ctor = false;
+    std::string struct_ctor_name;               // nominal struct type name
+    std::vector<TypeDesc> struct_ctor_fields;   // field descriptors in declaration order
+    TypeDesc struct_ctor_desc;                  // full struct TypeDesc
     // partial application (currying), set by resolver when args < arity:
     bool is_partial = false;
     int partial_applied = 0;                                  // number of prefix args applied
@@ -181,6 +198,22 @@ struct ArrayIndexExpr : Expression {
         : name(std::move(n)), base(nullptr), index(std::move(i)) {}
     ArrayIndexExpr(ExprPtr b, ExprPtr i)
         : name(), base(std::move(b)), index(std::move(i)) {}
+};
+
+// base.member — struct field access or enum member reference (`Color.Red`).
+struct MemberAccessExpr : Expression {
+    ExprPtr base;
+    std::string member;
+    // set by resolver for enum member references (base was an enum type name):
+    bool is_enum_member = false;
+    std::string enum_type_name;
+    int enum_index = -1;
+    // set by resolver for struct field access:
+    bool is_field = false;
+    std::string struct_name;
+    int field_index = -1;
+    TypeDesc field_desc;
+    MemberAccessExpr(ExprPtr b, std::string m) : base(std::move(b)), member(std::move(m)) {}
 };
 
 struct Statement : ASTNode {
@@ -253,6 +286,18 @@ struct ArrayAssignStmt : Statement {
 struct ElementAssignStmt : Statement {
     ExprPtr target;   // ArrayIndexExpr (possibly chained)
     ExprPtr rhs;
+};
+
+// member assignment: base.member = rhs (also compound and ++ / --).
+struct MemberAssignStmt : Statement {
+    ExprPtr base;
+    std::string member;
+    std::string op;    // "=", "+=", "-=", "*=", "/=", "++", "--"
+    ExprPtr rhs;       // null for "++" / "--"
+    // filled by resolver:
+    std::string struct_name;
+    int field_index = -1;
+    TypeDesc field_desc;
 };
 
 struct PrintStmt : Statement {
@@ -369,6 +414,19 @@ struct ContinueStmt : Statement {
 
 struct ExprStmt : Statement {
     ExprPtr expr;
+};
+
+// A top-level type declaration: `alias`, `struct`, or `enum`.
+enum class TypeDeclKind { Alias, Struct, Enum };
+
+struct TypeDecl : Statement {
+    TypeDeclKind kind;
+    std::string name;
+    std::string file;                       // source .hmx file (filled by module loader)
+    TypeDesc alias_target;                  // Alias: the expanded target type
+    std::vector<StructFieldInfo> fields;    // Struct: field name + expanded descriptor
+    std::vector<std::string> variants;      // Enum: variant names
+    TypeDecl() : kind(TypeDeclKind::Alias) {}
 };
 
 struct Program : ASTNode {

@@ -116,7 +116,7 @@
     {
       "name": "c_keyword_names",
       "kind": "fixture",
-      "source": "fn double(x: int) -> int { return x * 2 }\n\nfn main() {\n    let static = 5\n    let class = 7\n    print(static + class)\n    print(double(static))\n\n    let unsigned = 3\n    let volatile = 4\n    print(unsigned * volatile)\n\n    fn inner(struct: int) -> int { return struct + 1 }\n    print(inner(unsigned))\n\n    let register = 10\n    fn uses_capture() -> int { return register * 2 }\n    print(uses_capture())\n\n    let typedef: [int] = [1, 2, 3]\n    typedef[1] = 9\n    print(typedef[1])\n    foreach (double, x in typedef) {\n        print(x)\n    }\n\n    for (let goto = 0; goto < 3; goto++) {\n        print(goto)\n    }\n\n    let (extern, union) = (30, 40)\n    print(extern + union)\n\n    let (rest_head, ...rest_tail) = [5, 6, 7]\n    print(rest_head)\n    print(rest_tail[0] + rest_tail[1])\n}",
+      "source": "fn double(x: int) -> int { return x * 2 }\n\nfn main() {\n    let static = 5\n    let class = 7\n    print(static + class)\n    print(double(static))\n\n    let unsigned = 3\n    let volatile = 4\n    print(unsigned * volatile)\n\n    fn inner(shade: int) -> int { return shade + 1 }\n    print(inner(unsigned))\n\n    let register = 10\n    fn uses_capture() -> int { return register * 2 }\n    print(uses_capture())\n\n    let typedef: [int] = [1, 2, 3]\n    typedef[1] = 9\n    print(typedef[1])\n    foreach (double, x in typedef) {\n        print(x)\n    }\n\n    for (let goto = 0; goto < 3; goto++) {\n        print(goto)\n    }\n\n    let (extern, union) = (30, 40)\n    print(extern + union)\n\n    let (rest_head, ...rest_tail) = [5, 6, 7]\n    print(rest_head)\n    print(rest_tail[0] + rest_tail[1])\n}",
       "stdin": null,
       "entry": null,
       "modules": null,
@@ -445,6 +445,20 @@
       "pattern": null,
       "expected": {
         "stdout": "8\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "m16_structs_enums",
+      "kind": "fixture",
+      "source": "// M16: structs / enums / type aliases — value semantics, nominal identity.\nalias Age = int\n\nstruct Inner {\n    tag: text\n    n: int\n}\n\nstruct Item {\n    name: text\n    weight: int\n    inner: Inner\n}\n\nstruct Bag {\n    items: [Item]\n    owner: text\n}\n\nenum Suit {\n    Spades\n    Hearts\n    Diamonds\n    Clubs\n}\n\nalias Orientation = Suit\n\nconst ORIGIN = Point(0, 0)\n\nstruct Point {\n    x: int\n    y: int\n}\n\nstruct Vec2 {\n    p: Point\n    pair: (int, text)\n    nums: [int]\n}\n\nfn total_weight(b: Bag) -> int {\n    let t = 0\n    let i = 0\n    while (i < length(b.items)) {\n        t = t + b.items[i].weight\n        i = i + 1\n    }\n    return t\n}\n\nfn describe(s: Suit) -> text {\n    switch (s) {\n        case Suit.Spades:\n            return \"spades\"\n        case 1:\n            return \"hearts\"\n        case Suit.Diamonds:\n            return \"diamonds\"\n        default:\n            return \"clubs\"\n    }\n}\n\nfn shift(v: Vec2, dx: int) -> Vec2 {\n    v.p.x = v.p.x + dx\n    return v\n}\n\nstruct Op {\n    name: text\n    apply: fn(int) -> int\n}\n\nfn twice(k: int) -> int {\n    return k * 2\n}\n\nfn shift_by(k: int) -> int {\n    return k + 100\n}\n\nfn main() {\n    let bag = Bag([Item(\"apple\", 3, Inner(\"fruit\", 1)),\n                   Item(\"rock\", 9, Inner(\"mineral\", 2))], \"kim\")\n    print(bag.items[1].inner.tag)\n    print(total_weight(bag))\n    bag.items[1].weight += 10\n    bag.items[0].weight++\n    print(total_weight(bag))\n    print(bag.owner)\n    // structs are value types at the top level; heap fields share refcounted\n    // storage like tuples/arrays.\n    let copy = bag\n    print(total_weight(copy))\n    bag.items[0].inner.n = 7\n    print(bag.items[0].inner.n)\n    // nested struct field assignment through an array element\n    bag.items[0].inner.tag = \"changed\"\n    print(bag.items[0].inner.tag)\n    print(copy.items[0].inner.tag)\n\n    // alias to struct + const struct + alias-typed field reads\n    let o: Age = 25\n    print(o + 1)\n    print(ORIGIN.x + ORIGIN.y)\n\n    // tuples and arrays inside structs\n    let v = Vec2(Point(1, 2), (7, \"seven\"), [5, 6, 7])\n    print(v.p.x, v.p.y)\n    print(v.pair[0], v.pair[1])\n    print(v.nums[1])\n    v.p.y = 20\n    let v2 = shift(v, 3)\n    print(v2.p.x)\n    print(v.p.x)\n\n    // enum ordinals, implicit enum->int, nominal identity\n    print(Suit.Hearts)\n    print(Suit.Clubs + 1)\n    print(Suit.Hearts == Suit.Hearts)\n    print(Suit.Spades != Suit.Diamonds)\n    print(describe(Orientation.Clubs))\n    let s2 = Orientation.Hearts\n    print(describe(s2))\n\n    // arrays of enums; enum as array index\n    let ranks = [Suit.Spades, Suit.Clubs]\n    print(ranks[0], ranks[1])\n    let idxs = [7, 8, 9]\n    print(idxs[ranks[0]])\n\n    // lambda capturing a struct, returning a struct\n    let base = Point(3, 4)\n    let offset = lambda(k: int) -> Point {\n        return Point(base.x + k, base.y + k)\n    }\n    let moved = offset(10)\n    print(moved.x, moved.y)\n\n    // foreach over struct elements\n    let t = 0\n    foreach (elem in bag.items) {\n        t = t + elem.weight\n    }\n    print(t)\n\n    // struct field value copy semantics\n    let p1 = Point(1, 1)\n    let p2 = p1\n    p2.y = 99\n    print(p1.y, p2.y)\n\n    // a function-typed field: stored, copied, and read back into a binding\n    let op = Op(\"double\", twice)\n    let op2 = op\n    let bound = op2.apply\n    print(op.name, bound(21))\n    let ops: [Op] = [op, Op(\"shift\", shift_by)]\n    foreach (o in ops) {\n        let call = o.apply\n        print(o.name, call(4))\n    }\n}",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "mineral\n12\n23\nkim\n23\n7\nchanged\nchanged\n26\n0\n1 2\n7 seven\n6\n4\n1\n1\n4\n1\n1\nclubs\nhearts\n0 3\n7\n13 14\n23\n1 99\ndouble 42\ndouble 8\nshift 104\n",
         "stderr": "",
         "exit": 0
       }
@@ -891,6 +905,24 @@
       "pattern": null,
       "expected": {
         "stdout": "7\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "mod_m16_types",
+      "kind": "module",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/geo.hmx": "struct Point {\n        x: int\n        y: int\n    }\n    enum Quadrant {\n        Q1\n        Q2\n        Q3\n        Q4\n    }\n    alias Coord = int\n    fn origin() -> Point {\n        return Point(0, 0)\n    }",
+        "lib/shape.hmx": "use \"geo.hmx\"\n    struct Rect {\n        tl: Point\n        w: Coord\n        h: Coord\n    }\n    fn area(r: Rect) -> int {\n        return r.w * r.h\n    }",
+        "main.hmx": "use \"lib/shape.hmx\"\n    fn main() {\n        let r = Rect(origin(), 4, 5)\n        print(area(r))\n        print(r.tl.x + r.tl.y)\n        print(Quadrant.Q3)\n        let q = Quadrant.Q2\n        print(q + 2)\n        print(q == Quadrant.Q2)\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "20\n0\n2\n3\n1\n",
         "stderr": "",
         "exit": 0
       }

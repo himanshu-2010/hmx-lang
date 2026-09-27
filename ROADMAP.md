@@ -94,7 +94,23 @@
 
 ## 5. Batch C — Abstractions
 
-- **M16** structs / enums / type aliases (value semantics, parallel C structs).
+- **M16 Structs / enums / type aliases** — **DONE 2026-09-27**: `alias NAME =
+  TYPE`, `struct NAME { field: TYPE }`, `enum NAME { VARIANT }` (SYNTAX.md
+  §17–19). Two-phase resolution (`collect_type_decls` + `expand_type_refs`
+  before function collection) allows forward references and reports alias
+  cycles / by-value self-containment once, by name; `TypeDesc::type_name`
+  gives structs and enums nominal identity in one flat namespace with
+  functions and variables, while aliases expand away transparently. Structs
+  lower to C `struct hmx_<Name> { f0 … fN }` — value types whose heap fields
+  retain/release like tuple members, so a copy shares `text`/array storage and
+  copies nested aggregates by value; the web backend reproduces that copy shape
+  with generated `_sd_cp_*` helpers (a shallow copy was observably wrong for
+  nested mutation). Enums are nominal `int` ordinals with an implicit ordinal
+  only where an `int` is consumed. Two resolver gaps closed: function-typed
+  struct fields are readable, and duplicate variants in one enum are an error.
+  Grammar adds `postfix_index DOT IDENTIFIER <op>` and splits
+  `factor: IDENTIFIER` (conflicts 6 → 9 SR, all resolved by shift).
+  Native 464/464 + web 448/448 green (parity verbatim).
 - **M17** generics via monomorphization (reuse `papp_mangle` instantiation infra).
 - **M18** `Option[T]` / `Result[T,E]` + `try`/`?`/`defer` on existing setjmp
   machinery; hard faults stay print+exit(1) by default, recoverable via `catch`.

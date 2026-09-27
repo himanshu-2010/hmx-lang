@@ -252,7 +252,7 @@ test_error "switch_non_scalar" \
                 print(1)
         }
     }' \
-    "switch value must be int, byte, or char"
+    "switch value must be int, byte, char, or enum"
 
 test_error "switch_duplicate_case" \
     'fn main() {
@@ -1701,6 +1701,348 @@ test_error "byte_mod_decimal" \
         print(b % 0.5)
     }' \
     "operator '%' not defined for type byte"
+
+# M16 type declarations (structs / enums / aliases): misuse of nominal types.
+test_error "m16_struct_nested_type_decl" \
+    'fn main() {
+        struct Inner {
+            x: int
+        }
+    }' \
+    "type declarations are only allowed at the top level"
+
+test_error "m16_alias_cycle" \
+    'alias A = B
+    alias B = A
+    fn main() {
+        let a: A = 1
+    }' \
+    "alias cycle detected involving type 'A'"
+
+test_error "m16_struct_value_self_containment" \
+    'struct Node {
+        next: Node
+    }
+    fn main() {
+        let n = Node(Node(0))
+    }' \
+    "cannot contain itself by value"
+
+test_error "m16_type_dup_decl" \
+    'struct Point {
+        x: int
+    }
+    enum Point {
+        A
+    }' \
+    "duplicate declaration of type 'Point'"
+
+test_error "m16_type_as_value" \
+    'struct Point {
+        x: int
+    }
+    fn main() {
+        let p = Point
+    }' \
+    "cannot use type 'Point' as a value"
+
+test_error "m16_struct_ctor_arity" \
+    'struct Point {
+        x: int
+        y: int
+    }
+    fn main() {
+        let p = Point(1)
+    }' \
+    "struct 'Point' constructor expects 2 arguments"
+
+test_error "m16_struct_ctor_arg_type" \
+    'struct Point {
+        x: int
+        y: int
+    }
+    fn main() {
+        let p = Point("a", 2)
+    }' \
+    "type mismatch: field 'x' of struct 'Point' expects"
+
+test_error "m16_struct_ctor_enum" \
+    'enum Color {
+        Red
+    }
+    fn main() {
+        let c = Color()
+    }' \
+    "enum type 'Color' cannot be constructed"
+
+test_error "m16_struct_field_unknown" \
+    'struct Point {
+        x: int
+    }
+    fn main() {
+        let p = Point(1)
+        print(p.z)
+    }' \
+    "struct type 'Point' has no field 'z'"
+
+test_error "m16_enum_dup_variant" \
+    'enum Color {
+        Red
+        Green
+        Red
+    }
+    fn main() {
+        print(Color.Red)
+    }' \
+    "duplicate variant 'Red' in enum 'Color'"
+
+test_error "m16_enum_variant_unknown" \
+    'enum Color {
+        Red
+        Green
+    }
+    fn main() {
+        print(Color.Magenta)
+    }' \
+    "enum type 'Color' has no variant 'Magenta'"
+
+test_error "m16_enum_member_assign" \
+    'enum Color {
+        Red
+        Green
+    }
+    fn main() {
+        Color.Red = 5
+    }' \
+    "cannot assign to enum member 'Color.Red'"
+
+test_error "m16_member_access_non_struct" \
+    'fn main() {
+        let n = 5
+        print(n.x)
+    }' \
+    "cannot access member 'x' of int"
+
+test_error "m16_print_struct" \
+    'struct Point {
+        x: int
+    }
+    fn main() {
+        let p = Point(1)
+        print(p)
+    }' \
+    "cannot print a struct value"
+
+test_error "m16_struct_eq" \
+    'struct Point {
+        x: int
+    }
+    fn main() {
+        let a = Point(1)
+        let b = Point(1)
+        print(a == b)
+    }' \
+    "operator '==' not defined for type struct"
+
+test_error "m16_struct_arith" \
+    'struct Point {
+        x: int
+    }
+    fn main() {
+        let a = Point(1)
+        print(a + a)
+    }' \
+    "not defined for type struct"
+
+test_error "m16_enum_arith_enum" \
+    'enum Color {
+        Red
+        Green
+    }
+    fn main() {
+        print(Color.Red + Color.Green)
+    }' \
+    "not defined for enum types"
+
+test_error "m16_enum_rel" \
+    'enum Color {
+        Red
+        Green
+    }
+    fn main() {
+        print(Color.Red < Color.Green)
+    }' \
+    "not defined for enum types"
+
+test_error "m16_enum_eq_int" \
+    'enum Color {
+        Red
+        Green
+    }
+    fn main() {
+        print(Color.Red == 1)
+    }' \
+    "cannot compare an enum value with an int"
+
+test_error "m16_enum_cross_compare" \
+    'enum A {
+        a1
+    }
+    enum B {
+        b1
+    }
+    fn main() {
+        print(A.a1 == B.b1)
+    }' \
+    "cannot compare enum 'A' with 'B'"
+
+test_error "m16_enum_logic" \
+    'enum Color {
+        Red
+        Green
+    }
+    fn main() {
+        print(Color.Red and Color.Green)
+    }' \
+    "not defined for enum types"
+
+test_error "m16_enum_annotated_int" \
+    'enum Color {
+        Red
+        Green
+    }
+    fn main() {
+        let c: Color = 1
+    }' \
+    "declared as enum but initialized with int"
+
+test_error "m16_struct_annotated_other" \
+    'struct P {
+        x: int
+    }
+    struct Q {
+        y: int
+    }
+    fn main() {
+        let p: P = Q(1)
+    }' \
+    "declared as P but initialized with Q"
+
+test_error "m16_enum_var_int_assign" \
+    'enum Color {
+        Red
+        Green
+    }
+    fn main() {
+        let color: Color = Color.Red
+        let n = 1
+        color = n
+    }' \
+    "type mismatch"
+
+test_error "m16_switch_enum_dup_ordinal" \
+    'enum Color {
+        Red
+        Green
+    }
+    fn main() {
+        let c = Color.Red
+        switch (c) {
+            case Color.Green:
+                print(1)
+            case 1:
+                print(2)
+        }
+    }' \
+    "duplicate switch case value"
+
+test_error "m16_switch_enum_wrong_type" \
+    'enum Color {
+        Red
+        Green
+    }
+    enum Size {
+        Small
+        Big
+    }
+    fn main() {
+        let c = Color.Red
+        switch (c) {
+            case Size.Small:
+                print(1)
+        }
+    }' \
+    "switch case enum type must match switch value type"
+
+test_error "m16_switch_enum_nonliteral_case" \
+    'enum Color {
+        Red
+        Green
+    }
+    fn f() -> Color {
+        return Color.Green
+    }
+    fn main() {
+        let c = Color.Red
+        switch (c) {
+            case f():
+                print(1)
+        }
+    }' \
+    "switch cases must be enum members or int literals"
+
+test_error "m16_const_struct_write" \
+    'struct Point {
+        x: int
+    }
+    fn main() {
+        const p = Point(1)
+        p.x = 5
+    }' \
+    "cannot modify immutable variable 'p'"
+
+test_error "m16_return_struct_in_void" \
+    'struct Point {
+        x: int
+    }
+    fn normalize() {
+        return Point(1, 2)
+    }' \
+    "return value in void function"
+
+test_error "m16_member_assign_wrong_type" \
+    'struct Point {
+        x: int
+    }
+    fn main() {
+        let p = Point(1)
+        p.x = "hi"
+    }' \
+    "cannot assign text to field 'x'"
+
+test_error "m16_enum_field_compound" \
+    'enum Color {
+        Red
+        Green
+    }
+    struct Pixel {
+        color: Color
+    }
+    fn main() {
+        let px = Pixel(Color.Red)
+        px.color += 1
+    }' \
+    "compound assignment is not allowed on enum fields"
+
+test_error "m16_struct_length" \
+    'struct Point {
+        x: int
+    }
+    fn main() {
+        let p = Point(1)
+        print(length(p))
+    }' \
+    "builtin 'length' expects text or array, got struct"
 
 # M15 runtime error paths (reference-counted runtime diagnostics).
 test_error "runtime_split_empty_sep" \

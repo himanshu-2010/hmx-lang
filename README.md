@@ -52,6 +52,12 @@ The current compiler supports:
   - Destructuring also works on arrays and text, with an optional `...rest` to capture the remainder
   - Destructuring patterns nest: `((a, b), ...rest) = e` over nested tuples, arrays of tuples, nested arrays, and text elements
   - Nested tuple types (`((int, int), int)`) and arrays of tuples (`[(int, int)]`)
+- `struct` declarations with value semantics and per-field refcounted heap slots
+  - Construction `Point(1, 2)`, field reads `p.x`, field assignment `p.x = v` and `p.x += 1`
+  - Structs are first class: parameters, return values, array elements, closure captures, and function-typed fields
+- `enum` declarations: `int`-backed nominal ordinals, usable in `switch`, arrays, and structs
+  - `Color.Red` variants, `==` / `!=` between values of the same enum, and an implicit ordinal where an `int` is expected (`print`, array index, one arithmetic/relational operand)
+- `alias` type declarations: transparent names for any type, including structs and enums
 - Compile-time type checking with line-numbered diagnostics
 - Duplicate declaration detection and definite-return checking
 - Native executables and propagated `main` exit codes
@@ -66,13 +72,13 @@ production compiler. See [SYNTAX.md](SYNTAX.md) for the authoritative reference 
 
 `npm install && npm run dev` opens the playground editor locally. The web
 compiler is a TypeScript port of the front half (lexer → LALR parser tables →
-resolver) plus a new JavaScript backend, and its gate is parity with the 358
+resolver) plus a new JavaScript backend, and its gate is parity with the 440
 native test cases (work in progress across M2–M4):
 
 ```bash
 npm install
 npm run dev        # local dev server
-npm test           # vitest — grows into the 358-case parity harness
+npm test           # vitest — the 443-case parity harness + app tests
 npm run build      # type-check + production build → dist/
 npm start          # serve the production build (Antideploy's Procfile command)
 npm run lint       # oxlint
@@ -572,10 +578,11 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals | 52/52 passed |
-| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors | 190/190 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence | 116/116 passed |
-| Total | 358 test cases | 358/358 passed |
+| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals, structs/enums/aliases, refcounted text views & copy-on-write | 64/64 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions) | 235/235 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics | 141/141 passed |
+| CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes | 24/24 passed |
+| Total | 464 test cases | 464/464 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

@@ -44,12 +44,17 @@ import {
   ConditionalExpr,
   CastExpr,
   BinaryExpr,
+  MemberAccessExpr,
+  MemberAssignStmt,
+  TypeDecl,
+  TypeDeclKind,
   NotExpr,
   NegExpr,
   ExprKind,
   TypeKind,
   type TypeDesc,
   type Program,
+  type Param,
   type Statement,
   type Expression,
   type DestructPattern,
@@ -141,6 +146,40 @@ export class CodeGenJs {
   private currentFn: FunctionDecl | null = null;
   private pappSigs = new Map<string, PappSig>();
   private tempCounter = 0;
+  // M16: struct type declarations by name. Field descriptors are already
+  // expanded by the resolver, so this answers "does a value of this type own
+  // heap storage?" for the value-copy boundaries (mirrors struct_types_ in the
+  // C backend, which needed it to pick retain/release helpers).
+  private structTypes = new Map<string, TypeDecl>();
+  private heapVisiting = new Set<string>();
+  // Aggregate copy helpers, registered while the body is emitted and printed
+  // afterwards. `function` declarations hoist, so emission order is free.
+  private copyFns = new Map<string, TypeDesc>();
+
+  /** Does a value of this type own reference-counted storage? Mirrors
+   * CodeGen::type_has_heap — array/text/function are owned, aggregates are heap
+   * iff any part is, scalars never are. */
+  private typeHasHeap(d: TypeDesc): boolean {
+    if (d.type === TypeKind.Array || d.type === TypeKind.Text || d.type === TypeKind.Function) {
+      return true;
+    }
+    if (d.type === TypeKind.Tuple) {
+      return d.tuple_members.some((m) => this.typeHasHeap(m));
+    }
+    if (d.type === TypeKind.Struct) {
+      const td = this.structTypes.get(d.type_name);
+      if (!td) return false;
+      // By-value self-containment is rejected by the resolver and array/function
+      // fields answer `true` immediately, so this terminates; the guard also
+      // covers mutually-referencing struct pairs defensively.
+      if (this.heapVisiting.has(d.type_name)) return false;
+      this.heapVisiting.add(d.type_name);
+      const res = td.fields.some((f) => this.typeHasHeap(f.desc));
+      this.heapVisiting.delete(d.type_name);
+      return res;
+    }
+    return false;
+  }
 
   // ------------------------------------------------------------------ setup
 
@@ -170,7 +209,9 @@ export class CodeGenJs {
 
   private envValue(c: { name: string; desc: TypeDesc }): string {
     const read = this.captureRead(c.name);
-    return c.desc.type === TypeKind.Tuple ? `SD.copy(${read})` : read;
+    // The env struct copies captures by value, same shape as any other
+    // aggregate boundary.
+    return this.aggregateCopyCall(c.desc, read);
   }
 
   private envArg(callee: FunctionDecl): string {
@@ -188,6 +229,12 @@ export class CodeGenJs {
     const topLevel: Statement[] = [];
 
     for (const stmt of program.statements) {
+      if (stmt instanceof TypeDecl) {
+        // Struct declarations carry no runtime state; alias/enum decls are
+        // compile-time only. Register structs for type_has_heap lookups.
+        if (stmt.tdecl_kind === TypeDeclKind.Struct) this.structTypes.set(stmt.name, stmt);
+        continue;
+      }
       if (stmt instanceof FunctionDecl) {
         this.allFns.push(stmt);
         this.fnDeclsSeen.add(stmt);
@@ -221,6 +268,7 @@ export class CodeGenJs {
 
     this.ol("function _sd_entry() {");
     this.ind++;
+    this.pushScope();
     for (const s of topLevel) this.emitStmt(s);
     const mainFn = this.fnsByName.get("main") ?? null;
     if (mainFn) {
@@ -228,12 +276,14 @@ export class CodeGenJs {
       for (const s of mainFn.body) this.emitStmt(s);
       this.currentFn = null;
     }
+    this.popScope();
     if (!mainFn || !mainFn.has_return_type) this.ol("return 0;");
     this.ind--;
     this.ol("}");
 
     this.ol("var _sd_rc = _sd_entry();");
     this.ol("return typeof _sd_rc === 'number' ? _sd_rc : 0;");
+    this.emitCopyFns();
     return this.out;
   }
 
@@ -284,6 +334,9 @@ export class CodeGenJs {
     } else if (stmt instanceof ElementAssignStmt) {
       this.collectLambdasExpr(stmt.target);
       this.collectLambdasExpr(stmt.rhs);
+    } else if (stmt instanceof MemberAssignStmt) {
+      this.collectLambdasExpr(stmt.base);
+      if (stmt.rhs) this.collectLambdasExpr(stmt.rhs);
     } else if (stmt instanceof PrintStmt) {
       for (const a of stmt.args) this.collectLambdasExpr(a);
     } else if (stmt instanceof ReturnStmt) {
@@ -342,6 +395,8 @@ export class CodeGenJs {
     } else if (expr instanceof ArrayIndexExpr) {
       if (expr.base) this.collectLambdasExpr(expr.base);
       this.collectLambdasExpr(expr.index);
+    } else if (expr instanceof MemberAccessExpr) {
+      this.collectLambdasExpr(expr.base);
     } else if (expr instanceof BinaryExpr) {
       this.collectLambdasExpr(expr.left);
       this.collectLambdasExpr(expr.right);
@@ -364,6 +419,11 @@ export class CodeGenJs {
       let s = "tup";
       for (const m of d.tuple_members) s += `_${this.pappMangleType(m)}`;
       return s;
+    }
+    // Nominal types mangle by name (mirrors mangle_type_name in the C backend)
+    // so `(Point)` and `(int, Point)` get distinct, stable helper names.
+    if (d.type === TypeKind.Struct || d.type === TypeKind.Enum) {
+      return `nom_${d.type_name}`;
     }
     if (d.type === TypeKind.Function) {
       let s = "fn";
@@ -418,11 +478,143 @@ export class CodeGenJs {
 
   // ------------------------------------------------------------ expressions
 
-  private copyIfTuple(expr: Expression | null): string {
+  /** Emit `expr` at a C pass-by-value boundary. Tuples and structs are the two
+   * aggregate value types; C copies them by value, which recurses into nested
+   * aggregates but shares pointer (heap) fields. `_sd_cp_*` helpers reproduce
+   * that shape: nested aggregate slots are copied, array/text/function slots
+   * are shared. */
+  private copyIfValue(expr: Expression | null): string {
     if (!expr) throw new Error("internal error: null expression");
-    const s = this.emitExpr(expr);
-    if (expr.resolved_type === TypeKind.Tuple) return `SD.copy(${s})`;
+    const t = expr.resolved_type;
+    if (t !== TypeKind.Tuple && t !== TypeKind.Struct) return this.emitExpr(expr);
+    return this.aggregateCopyCall(this.descOfExpr(expr), this.emitExpr(expr));
+  }
+
+  /** Slot descriptors of an aggregate: struct fields or tuple members. */
+  private aggregateMembers(d: TypeDesc): TypeDesc[] {
+    if (d.type === TypeKind.Struct) {
+      const td = this.structTypes.get(d.type_name);
+      if (!td) throw new Error(`internal error: unknown struct type '${d.type_name}'`);
+      return td.fields.map((f) => f.desc);
+    }
+    return d.tuple_members;
+  }
+
+  private copyMangle(d: TypeDesc): string {
+    if (d.type === TypeKind.Struct) return `st_${d.type_name}`;
+    let s = "tp";
+    for (const m of d.tuple_members) s += `_${this.pappMangleType(m)}`;
     return s;
+  }
+
+  private aggregateCopyCall(d: TypeDesc, src: string): string {
+    if (d.type !== TypeKind.Tuple && d.type !== TypeKind.Struct) return src;
+    const m = this.copyMangle(d);
+    // Register before building the body; `emitCopyFns` visits each entry once
+    // and by-value aggregate cycles are rejected by the resolver, so this
+    // terminates.
+    if (!this.copyFns.has(m)) this.copyFns.set(m, d);
+    return `_sd_cp_${m}(${src})`;
+  }
+
+  private emitCopyFns(): void {
+    if (this.copyFns.size === 0) return;
+    for (const [m, d] of this.copyFns) {
+      const parts = this.aggregateMembers(d).map((mm, i) =>
+        this.aggregateCopyCall(mm, `_s[${i}]`)
+      );
+      this.ol(`function _sd_cp_${m}(_s) { return [${parts.join(", ")}]; }`);
+    }
+    this.ol("");
+  }
+
+  // ------------------------------------------------- descriptors & scopes
+
+  private varDescs: Map<string, TypeDesc>[] = [];
+
+  private pushScope(): void {
+    this.varDescs.push(new Map());
+  }
+
+  private popScope(): void {
+    this.varDescs.pop();
+  }
+
+  private recordVarDesc(name: string, d: TypeDesc): void {
+    if (this.varDescs.length > 0) this.varDescs[this.varDescs.length - 1].set(name, d);
+  }
+
+  private findVarDesc(name: string): TypeDesc | null {
+    for (let i = this.varDescs.length - 1; i >= 0; i--) {
+      const d = this.varDescs[i].get(name);
+      if (d) return d;
+    }
+    return null;
+  }
+
+  /** Full descriptor of a declared variable (mirrors var_desc_of in the C
+   * backend): the annotation's shape lives in the parallel fields. */
+  private varDescOf(v: VarDecl): TypeDesc {
+    const d = mkType(v.annotation);
+    if (v.annotation === TypeKind.Array) d.elem = v.elem_desc;
+    else if (v.annotation === TypeKind.Tuple) d.tuple_members = v.tuple_members;
+    else if (v.annotation === TypeKind.Function) d.fn_info = v.annotation_desc.fn_info;
+    else if (v.annotation === TypeKind.Struct || v.annotation === TypeKind.Enum) {
+      d.type_name = v.annotation_desc.type_name;
+    }
+    return d;
+  }
+
+  private paramDescOf(p: Param): TypeDesc {
+    const d = mkType(p.type);
+    if (p.type === TypeKind.Array) d.elem = p.elem_desc;
+    else if (p.type === TypeKind.Tuple) d.tuple_members = p.tuple_members;
+    else if (p.type === TypeKind.Function) d.fn_info = p.desc.fn_info;
+    else if (p.type === TypeKind.Struct || p.type === TypeKind.Enum) {
+      d.type_name = p.desc.type_name;
+    }
+    return d;
+  }
+
+  /** Reconstruct an aggregate expression's full descriptor from the annotations
+   * the resolver stored plus the emitted scope stack (mirrors desc_of_expr). */
+  private descOfExpr(expr: Expression): TypeDesc {
+    const d = mkType(expr.resolved_type);
+    if (expr instanceof Identifier) {
+      if (this.currentFn && this.isCapture(this.currentFn, expr.name)) {
+        for (const c of this.currentFn.captures) {
+          if (c.name === expr.name) return c.desc;
+        }
+      }
+      const vd = this.findVarDesc(expr.name);
+      if (vd) return vd;
+      if (this.currentFn) {
+        for (const p of this.currentFn.params) {
+          if (p.name === expr.name) return this.paramDescOf(p);
+        }
+      }
+      throw new Error(
+        `internal error: cannot resolve ${d.type === TypeKind.Struct ? "struct" : "tuple"} variable '${
+          expr.name
+        }' for ownership tracking`
+      );
+    }
+    if (expr instanceof TupleLiteral) {
+      d.tuple_members = expr.resolved_members;
+      return d;
+    }
+    if (expr instanceof ArrayIndexExpr) return expr.elem;
+    if (expr instanceof ConditionalExpr) return this.descOfExpr(expr.then_expr);
+    if (expr instanceof MemberAccessExpr && expr.is_field) return expr.field_desc;
+    if (expr instanceof CallExpr) {
+      if (expr.is_struct_ctor) return expr.struct_ctor_desc;
+      if (expr.is_function_value_call && expr.fn_type.fn_info) return expr.fn_type.fn_info.ret;
+      const fn = this.fnsByName.get(expr.name);
+      if (fn) return fn.return_desc;
+    }
+    throw new Error(
+      `internal error: cannot resolve ${d.type === TypeKind.Struct ? "struct" : "tuple"} descriptor`
+    );
   }
 
   private emitExpr(expr: Expression): string {
@@ -450,13 +642,14 @@ export class CodeGenJs {
     if (expr instanceof NegExpr) return `(-(${this.emitExpr(expr.operand)}))`;
     if (expr instanceof ArrayLiteral) {
       if (expr.elements.length === 0) return "[]";
-      return `[${expr.elements.map((e) => this.copyIfTuple(e)).join(", ")}]`;
+      return `[${expr.elements.map((e) => this.copyIfValue(e)).join(", ")}]`;
     }
     if (expr instanceof TupleLiteral) {
       return `[${expr.values
         .map((v, i) => {
           const s = this.emitExpr(v);
-          return expr.resolved_members[i] && expr.resolved_members[i].type === TypeKind.Tuple
+          const m = expr.resolved_members[i];
+          return m && (m.type === TypeKind.Tuple || m.type === TypeKind.Struct)
             ? `SD.copy(${s})`
             : s;
         })
@@ -488,6 +681,14 @@ export class CodeGenJs {
     }
     if (expr instanceof ConditionalExpr) {
       return `(${this.emitExpr(expr.condition)} ? ${this.emitExpr(expr.then_expr)} : ${this.emitExpr(expr.else_expr)})`;
+    }
+    if (expr instanceof MemberAccessExpr) {
+      // `base.member`: an enum member reference is a compile-time ordinal; a
+      // struct field read is a slot of the aggregate array. The read *borrows*
+      // the owning value (mirrors expr_is_fresh() == false in the C backend),
+      // so unlike tuples a field read is never copied.
+      if (expr.is_enum_member) return `${expr.enum_index}`;
+      return `(${this.emitExpr(expr.base)})[${expr.field_index}]`;
     }
     if (expr instanceof CastExpr) {
       // `SD.num` converts char (JS string) operands to their code; toChar
@@ -525,6 +726,15 @@ export class CodeGenJs {
   }
 
   private emitCall(call: CallExpr): string {
+    // M16 struct construction: `Name(args)` builds a fresh aggregate. The C
+    // backend emits a compound literal that *moves* heap-valued args into the
+    // new value; sharing the JS reference is the same thing.
+    if (call.is_struct_ctor) {
+      if (call.args.length !== call.struct_ctor_fields.length) {
+        throw new Error(`internal error: struct ctor arity mismatch for '${call.struct_ctor_name}'`);
+      }
+      return `[${call.args.map((a) => this.emitExpr(a)).join(", ")}]`;
+    }
     switch (call.name) {
       case "length":
         return `(${this.emitExpr(call.args[0])}).length`;
@@ -537,7 +747,7 @@ export class CodeGenJs {
       case "split":
         return `SD.split(${this.emitExpr(call.args[0])}, ${this.emitExpr(call.args[1])})`;
       case "push":
-        return `SD.push(${this.emitExpr(call.args[0])}, ${this.copyIfTuple(call.args[1])})`;
+        return `SD.push(${this.emitExpr(call.args[0])}, ${this.copyIfValue(call.args[1])})`;
       case "pop":
         return `SD.pop(${this.emitExpr(call.args[0])})`;
       case "sort": {
@@ -582,7 +792,7 @@ export class CodeGenJs {
         }
         orig = `{ f: ${this.fnJsName(fn)}, e: ${this.envHeapArg(fn)} }`;
       }
-      const applied = call.args.map((a) => this.copyIfTuple(a));
+      const applied = call.args.map((a) => this.copyIfValue(a));
       const envFields = [`f: ${orig}`];
       for (let i = 0; i < applied.length; i++) envFields.push(`a${i}: ${applied[i]}`);
       return `{ f: ${mangle}, e: { ${envFields.join(", ")} } }`;
@@ -619,9 +829,9 @@ export class CodeGenJs {
     const fixed = variadicIndex === -1 ? callee.params.length : variadicIndex;
     for (let i = 0; i < fixed; i++) {
       if (i < call.args.length) {
-        parts.push(this.copyIfTuple(call.args[i]));
+        parts.push(this.copyIfValue(call.args[i]));
       } else {
-        parts.push(this.copyIfTuple(callee.params[i].default_value));
+        parts.push(this.copyIfValue(callee.params[i].default_value));
       }
     }
     if (variadicIndex !== -1) {
@@ -630,8 +840,8 @@ export class CodeGenJs {
         const rest = call.args
           .slice(fixed)
           .map((a) =>
-            elem.type === TypeKind.Tuple
-              ? this.copyIfTuple(a)
+            elem.type === TypeKind.Tuple || elem.type === TypeKind.Struct
+              ? this.copyIfValue(a)
               : this.emitExpr(a)
           )
           .join(", ");
@@ -648,8 +858,9 @@ export class CodeGenJs {
   private emitStmt(stmt: Statement): void {
     if (stmt instanceof VarDecl) {
       this.ol(
-        `${stmt.is_mutable ? "let" : "const"} ${this.mVar(stmt.name)} = ${this.copyIfTuple(stmt.initializer)};`
+        `${stmt.is_mutable ? "let" : "const"} ${this.mVar(stmt.name)} = ${this.copyIfValue(stmt.initializer)};`
       );
+      this.recordVarDesc(stmt.name, this.varDescOf(stmt));
     } else if (stmt instanceof AssignStmt) {
       const isByte = stmt.resolved_type === TypeKind.Byte;
       if (stmt.op === "++" || stmt.op === "--") {
@@ -664,12 +875,14 @@ export class CodeGenJs {
           `${this.mVar(stmt.name)} = (${this.mVar(stmt.name)} ${stmt.op} ${this.emitExpr(stmt.rhs!)}) & 0xFF;`
         );
       } else {
-        this.ol(`${this.mVar(stmt.name)} ${stmt.op} ${this.copyIfTuple(stmt.rhs)};`);
+        this.ol(`${this.mVar(stmt.name)} ${stmt.op} ${this.copyIfValue(stmt.rhs)};`);
       }
     } else if (stmt instanceof ArrayAssignStmt) {
       this.ol(
-        `SD.idxSet(${this.mVar(stmt.name)}, ${this.emitExpr(stmt.index)}, ${this.copyIfTuple(stmt.rhs)});`
+        `SD.idxSet(${this.mVar(stmt.name)}, ${this.emitExpr(stmt.index)}, ${this.copyIfValue(stmt.rhs)});`
       );
+    } else if (stmt instanceof MemberAssignStmt) {
+      this.emitMemberAssign(stmt);
     } else if (stmt instanceof ElementAssignStmt) {
       this.emitElementAssign(stmt);
     } else if (stmt instanceof DestructDecl) {
@@ -681,7 +894,15 @@ export class CodeGenJs {
         .map((a) => {
           const t = a.resolved_type;
           const e = this.emitExpr(a);
-          if (t === TypeKind.Int || t === TypeKind.Bool || t === TypeKind.Byte) return `SD.fI(${e})`;
+          // Enums are int-backed: native formats them with %d.
+          if (
+            t === TypeKind.Int ||
+            t === TypeKind.Bool ||
+            t === TypeKind.Byte ||
+            t === TypeKind.Enum
+          ) {
+            return `SD.fI(${e})`;
+          }
           if (t === TypeKind.Decimal) return `SD.fD(${e})`;
           return e;
         })
@@ -694,27 +915,31 @@ export class CodeGenJs {
         const vals = stmt.values
           .map((v, i) => {
             const s = this.emitExpr(v);
-            return stmt.return_tuple_members[i] &&
-              stmt.return_tuple_members[i].type === TypeKind.Tuple
+            const m = stmt.return_tuple_members[i];
+            return m && (m.type === TypeKind.Tuple || m.type === TypeKind.Struct)
               ? `SD.copy(${s})`
               : s;
           })
           .join(", ");
         this.ol(`return [${vals}];`);
       } else if (stmt.values.length === 1) {
-        this.ol(`return ${this.copyIfTuple(stmt.values[0])};`);
+        this.ol(`return ${this.copyIfValue(stmt.values[0])};`);
       } else {
         this.ol("return;");
       }
     } else if (stmt instanceof IfStmt) {
       this.ol(`if (${this.emitExpr(stmt.condition)}) {`);
       this.ind++;
+      this.pushScope();
       for (const s of stmt.then_body) this.emitStmt(s);
+      this.popScope();
       this.ind--;
       if (stmt.has_else) {
         this.ol("} else {");
         this.ind++;
+        this.pushScope();
         for (const s of stmt.else_body) this.emitStmt(s);
+        this.popScope();
         this.ind--;
         this.ol("}");
       } else {
@@ -735,7 +960,9 @@ export class CodeGenJs {
           this.ol(`case ${label}:`);
         }
         this.ind++;
+        this.pushScope();
         for (const s of c.body) this.emitStmt(s);
+        this.popScope();
         this.ol("break;");
         this.ind--;
       }
@@ -751,9 +978,9 @@ export class CodeGenJs {
         stmt.body,
         () => {
           // Element binding (mirrors C: declared per iteration, before body).
-          const elemIsTuple = stmt.elem.type === TypeKind.Tuple;
           const src = `(${itExpr})[${idx}]`;
-          this.ol(`let ${this.mVar(stmt.value_name)} = ${elemIsTuple ? `SD.copy(${src})` : src};`);
+          this.ol(`let ${this.mVar(stmt.value_name)} = ${this.aggregateCopyCall(stmt.elem, src)};`);
+          this.recordVarDesc(stmt.value_name, stmt.elem);
         }
       );
     } else if (stmt instanceof WhileStmt) {
@@ -772,9 +999,32 @@ export class CodeGenJs {
     }
   }
 
+  private emitMemberAssign(ma: MemberAssignStmt): void {
+    // `base.field <op> rhs` — the lvalue is `base[k]`. The resolver guarantees
+    // a pure-read base (identifier root), so re-emitting it is side-effect free.
+    const lvalue = `(${this.emitExpr(ma.base)})[${ma.field_index}]`;
+    const isByte = ma.field_desc.type === TypeKind.Byte;
+    if (ma.op === "++" || ma.op === "--") {
+      if (isByte) {
+        // uint8 wrap-around, matching the native unsigned char field store.
+        this.ol(`${lvalue} = (${lvalue} ${ma.op === "++" ? "+" : "-"} 1) & 0xFF;`);
+      } else {
+        this.ol(`${lvalue}${ma.op};`);
+      }
+    } else if (isByte && ma.op !== "=") {
+      this.ol(`${lvalue} = (${lvalue} ${ma.op} ${this.emitExpr(ma.rhs!)}) & 0xFF;`);
+    } else {
+      // Plain `=` and the scalar compound ops share one form. A heap-valued
+      // field assignment replaces the slot; the C backend releases the old
+      // value here (`slot_rel_name(&lvalue)`), which is a no-op for the JS
+      // collector.
+      this.ol(`${lvalue} ${ma.op} ${this.emitExpr(ma.rhs!)};`);
+    }
+  }
+
   private emitElementAssign(ea: ElementAssignStmt): void {
     const t = ea.target;
-    const rhs = this.copyIfTuple(ea.rhs);
+    const rhs = this.copyIfValue(ea.rhs);
     if (t.is_tuple) {
       if (t.tuple_dynamic) {
         const base = t.base ? this.emitExpr(t.base) : this.captureRead(t.name);
@@ -808,7 +1058,9 @@ export class CodeGenJs {
       this.ind++;
     }
     if (beforeBody) beforeBody();
+    this.pushScope();
     for (const s of body) this.emitStmt(s);
+    this.popScope();
     if (nlTarget) {
       this.ind--;
       this.ol(`} catch (_sd_e) {`);
@@ -826,7 +1078,8 @@ export class CodeGenJs {
 
   private emitForComponent(stmt: Statement): string {
     if (stmt instanceof VarDecl) {
-      return `${stmt.is_mutable ? "let" : "const"} ${this.mVar(stmt.name)} = ${this.copyIfTuple(stmt.initializer)}`;
+      this.recordVarDesc(stmt.name, this.varDescOf(stmt));
+      return `${stmt.is_mutable ? "let" : "const"} ${this.mVar(stmt.name)} = ${this.copyIfValue(stmt.initializer)}`;
     }
     if (stmt instanceof AssignStmt) {
       const isByte = stmt.resolved_type === TypeKind.Byte;
@@ -839,7 +1092,7 @@ export class CodeGenJs {
       if (isByte && stmt.op !== "=") {
         return `${this.mVar(stmt.name)} = (${this.mVar(stmt.name)} ${stmt.op} ${this.emitExpr(stmt.rhs!)}) & 0xFF`;
       }
-      return `${this.mVar(stmt.name)} ${stmt.op} ${this.copyIfTuple(stmt.rhs)}`;
+      return `${this.mVar(stmt.name)} ${stmt.op} ${this.copyIfValue(stmt.rhs)}`;
     }
     return "";
   }
@@ -851,7 +1104,7 @@ export class CodeGenJs {
     declare: boolean
   ): void {
     const tmp = `_sd_d${this.tempCounter++}`;
-    const value = this.copyIfTuple(rhs);
+    const value = this.copyIfValue(rhs);
     this.ol(`const ${tmp} = ${value};`);
     // The C emitter threads the full TypeDesc down so nested members resolve
     // against their own tuple_members/elem, not the top-level destruct's.
@@ -893,6 +1146,7 @@ export class CodeGenJs {
           this.ol(
             `${declare ? "let " : ""}${this.mVar(slot.name)} = SD.slice(${src}, ${n}, (${src}).length);`
           );
+          if (declare) this.recordVarDesc(slot.name, elem);
           continue;
         }
         const memberSrc = `(${src})[${fixI}]`;
@@ -918,6 +1172,7 @@ export class CodeGenJs {
         this.ol(
           `${declare ? "let " : ""}${this.mVar(slot.name)} = SD.substring(${src}, ${n}, (${src}).length);`
         );
+        if (declare) this.recordVarDesc(slot.name, mkType(TypeKind.Text));
         continue;
       }
       const memberSrc = `(${src})[${fixI}]`;
@@ -931,9 +1186,10 @@ export class CodeGenJs {
   }
 
   private emitBinding(slot: DestructPattern, rhs: string, desc: TypeDesc, declare: boolean): void {
-    const value = desc.type === TypeKind.Tuple ? `SD.copy(${rhs})` : rhs;
+    const value = this.aggregateCopyCall(desc, rhs);
     if (declare) {
       this.ol(`let ${this.mVar(slot.name)} = ${value};`);
+      this.recordVarDesc(slot.name, desc);
     } else {
       this.ol(`${this.mVar(slot.name)} = ${value};`);
     }
@@ -948,7 +1204,10 @@ export class CodeGenJs {
     );
     this.ind++;
     this.currentFn = fn;
+    this.pushScope();
+    for (const p of fn.params) this.recordVarDesc(p.name, this.paramDescOf(p));
     for (const s of fn.body) this.emitStmt(s);
+    this.popScope();
     this.currentFn = null;
     this.ind--;
     this.ol("}");

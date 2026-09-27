@@ -4,7 +4,9 @@
 #include <unordered_set>
 
 static TypeDesc param_type_desc(const FunctionDecl::Param& p) {
-    if (p.desc.type != TypeKind::Unknown) return p.desc;
+    // A named-type reference ({Unknown, type_name}) is a transient marker the
+    // expansion pass resolves; surface it so callers see the name pre-expansion.
+    if (p.desc.type != TypeKind::Unknown || !p.desc.type_name.empty()) return p.desc;
     TypeDesc d;
     d.type = p.type;
     d.elem = p.elem_desc.elem;
@@ -324,6 +326,10 @@ TypeDesc TypeResolver::expr_element_desc(Expression* expr) {
     if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->elem.type == TypeKind::Array) return idx->elem.element();
     }
+    if (auto* mem = dynamic_cast<MemberAccessExpr*>(expr)) {
+        if (mem->is_field && mem->field_desc.type == TypeKind::Array)
+            return mem->field_desc.element();
+    }
     return TypeDesc{};
 }
 
@@ -337,6 +343,47 @@ TypeDesc TypeResolver::expr_desc(Expression* expr) {
         return d;
     }
     if (k == TypeKind::Function) return expr_function_type(expr);
+    if (k == TypeKind::Struct || k == TypeKind::Enum) {
+        // Nominal descriptor: carry the declared type name so member access
+        // and nominal equality checks can use it.
+        if (auto* id = dynamic_cast<Identifier*>(expr)) {
+            const Symbol* s = find_symbol(id->name);
+            if (!s) s = find_outer_symbol(id->name);
+            if (s && (s->type == TypeKind::Struct || s->type == TypeKind::Enum))
+                return s->desc;
+        }
+        if (auto* call = dynamic_cast<CallExpr*>(expr)) {
+            if (call->is_struct_ctor) return call->struct_ctor_desc;
+            if (call->is_function_value_call && call->fn_type.fn_info &&
+                (call->fn_type.fn_info->ret.type == TypeKind::Struct ||
+                 call->fn_type.fn_info->ret.type == TypeKind::Enum))
+                return call->fn_type.fn_info->ret;
+            const FunctionSig* sig = get_function(call->name);
+            if (sig && (sig->return_type == TypeKind::Struct ||
+                        sig->return_type == TypeKind::Enum))
+                return sig->return_desc;
+        }
+        if (auto* mem = dynamic_cast<MemberAccessExpr*>(expr)) {
+            if (mem->is_enum_member) {
+                TypeDesc d;
+                d.type = TypeKind::Enum;
+                d.type_name = mem->enum_type_name;
+                return d;
+            }
+            if (mem->is_field) return mem->field_desc;
+        }
+        if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
+            if (idx->elem.type == TypeKind::Struct || idx->elem.type == TypeKind::Enum)
+                return idx->elem;
+        }
+        if (auto* cond = dynamic_cast<ConditionalExpr*>(expr)) {
+            // Both branches carry the same nominal type (resolver-enforced).
+            return expr_desc(cond->then_expr.get());
+        }
+        TypeDesc d;  // fallback (e.g. function returning a struct)
+        d.type = k;
+        return d;
+    }
     TypeDesc d;
     d.type = k;
     return d;
@@ -361,6 +408,10 @@ std::vector<TypeDesc> TypeResolver::expr_tuple_members(Expression* expr) {
     if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->resolved_type == TypeKind::Tuple) return idx->elem.tuple_members;
     }
+    if (auto* mem = dynamic_cast<MemberAccessExpr*>(expr)) {
+        if (mem->is_field && mem->field_desc.type == TypeKind::Tuple)
+            return mem->field_desc.tuple_members;
+    }
     return {};
 }
 
@@ -380,6 +431,10 @@ TypeDesc TypeResolver::expr_function_type(Expression* expr) {
             return call->fn_type.fn_info->ret;
         const FunctionSig* sig = get_function(call->name);
         if (sig && sig->return_type == TypeKind::Function) return sig->return_desc;
+    }
+    if (auto* mem = dynamic_cast<MemberAccessExpr*>(expr)) {
+        if (mem->is_field && mem->field_desc.type == TypeKind::Function)
+            return mem->field_desc;
     }
     return TypeDesc{};
 }
@@ -424,6 +479,9 @@ bool TypeResolver::types_match(const TypeDesc& a, const TypeDesc& b) const {
     if (a.type != b.type) return false;
     if (a.type == TypeKind::Array) return a.element() == b.element();
     if (a.type == TypeKind::Tuple) return a.tuple_members == b.tuple_members;
+    // Structs and enums are nominal: identity is the declared type name.
+    if (a.type == TypeKind::Struct || a.type == TypeKind::Enum)
+        return a.type_name == b.type_name;
     return true;
 }
 
@@ -436,7 +494,11 @@ void TypeResolver::bind_destruct_slot(const DestructPattern& slot,
                    vd.tuple_members);
         } else {
             define(slot.name, vd.type, is_mutable, vd.element(), {},
-                   vd.type == TypeKind::Function ? vd : TypeDesc{});
+                   (vd.type == TypeKind::Function ||
+                    vd.type == TypeKind::Struct ||
+                    vd.type == TypeKind::Enum)
+                       ? vd
+                       : TypeDesc{});
         }
         return;
     }
@@ -598,6 +660,10 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         if (!sym) {
             sym = find_outer_symbol(id->name);
             if (!sym) {
+                if (type_decls_.count(id->name)) {
+                    throw err(line(),
+                        "cannot use type '" + id->name + "' as a value");
+                }
                 auto fit = functions_.find(id->name);
                 if (fit != functions_.end() && fit->first != "main") {
                     require_function_value(id->name);
@@ -619,6 +685,64 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
     } else if (auto* call = dynamic_cast<CallExpr*>(expr)) {
         if (call->name == "main") {
             throw err(line(), "cannot call function 'main'");
+        }
+        // M16: struct construction — `Name(args)` where Name is a user type.
+        if (type_decls_.count(call->name)) {
+            TypeDecl* t = type_decls_[call->name];
+            TypeDesc target;
+            if (t->kind == TypeDeclKind::Struct) {
+                target.type = TypeKind::Struct;
+                target.type_name = t->name;
+            } else if (t->kind == TypeDeclKind::Alias) {
+                target = resolve_named(t->name, /*by_value=*/true);
+                if (target.type == TypeKind::Enum) {
+                    throw err(line(),
+                        "enum type '" + call->name + "' cannot be constructed");
+                }
+                if (target.type != TypeKind::Struct) {
+                    throw err(line(),
+                        "cannot construct type '" + call->name + "'");
+                }
+            } else {
+                throw err(line(),
+                    "enum type '" + call->name + "' cannot be constructed");
+            }
+            const TypeDecl& st = *type_decls_[target.type_name];
+            if (st.kind != TypeDeclKind::Struct) {
+                throw err(line(),
+                    "internal: constructor for type '" + call->name + "' is not a struct");
+            }
+            if (call->args.size() != st.fields.size()) {
+                throw err(line(),
+                    "struct '" + st.name + "' constructor expects " +
+                    std::to_string(st.fields.size()) + " arguments, got " +
+                    std::to_string(call->args.size()));
+            }
+            for (size_t i = 0; i < st.fields.size(); i++) {
+                resolve_expr(call->args[i].get());
+                TypeDesc ad = expr_desc(call->args[i].get());
+                if (ad.type == TypeKind::Unknown) {
+                    throw err(line(),
+                        "cannot infer type of argument " + std::to_string(i + 1) +
+                        " to struct constructor '" + st.name + "'");
+                }
+                if (!types_match(ad, st.fields[i].desc)) {
+                    throw err(line(),
+                        "type mismatch: field '" + st.fields[i].name +
+                        "' of struct '" + st.name + "' expects " +
+                        type_desc_to_string(st.fields[i].desc) + ", got " +
+                        type_desc_to_string(ad));
+                }
+            }
+            std::vector<TypeDesc> fields;
+            for (const auto& f : st.fields) fields.push_back(f.desc);
+            call->is_struct_ctor = true;
+            call->struct_ctor_name = target.type_name;
+            call->struct_ctor_fields = fields;
+            call->struct_ctor_desc = target;
+            result = TypeKind::Struct;
+            expr->resolved_type = result;
+            return result;
         }
         if (call->name == "length" || call->name == "substring" ||
             call->name == "input" || call->name == "tostr" ||
@@ -1061,7 +1185,7 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             TypeDesc bd = expr_desc(idx->base.get());
             if (bd.type == TypeKind::Array) {
                 TypeKind it = resolve_expr(idx->index.get());
-                if (it != TypeKind::Int) {
+                if (it != TypeKind::Int && it != TypeKind::Enum) {
                     throw err(line(),
                         "array index must be int, got " + type_to_string(it));
                 }
@@ -1094,7 +1218,7 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         }
         if (sym->type == TypeKind::Array) {
             TypeKind it = resolve_expr(idx->index.get());
-            if (it != TypeKind::Int) {
+            if (it != TypeKind::Int && it != TypeKind::Enum) {
                 throw err(line(),
                     "array index must be int, got " + type_to_string(it));
             }
@@ -1121,6 +1245,77 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             throw err(line(),
                 "variable '" + idx->name + "' is not an array");
         }
+    } else if (auto* mem = dynamic_cast<MemberAccessExpr*>(expr)) {
+        // base.member — enum member reference (base = enum type name) or
+        // struct field access (base = struct value).
+        if (auto* base_id = dynamic_cast<Identifier*>(mem->base.get())) {
+            auto tit = type_decls_.find(base_id->name);
+            if (tit != type_decls_.end()) {
+                TypeDesc enum_desc;
+                TypeDecl* td = tit->second;
+                if (td->kind == TypeDeclKind::Enum) {
+                    enum_desc.type = TypeKind::Enum;
+                    enum_desc.type_name = td->name;
+                } else if (td->kind == TypeDeclKind::Alias) {
+                    TypeDesc decomp = resolve_named(td->name, /*by_value=*/true);
+                    if (decomp.type == TypeKind::Enum) enum_desc = decomp;
+                }
+                if (enum_desc.type == TypeKind::Enum) {
+                    const TypeDecl* et = type_decls_[enum_desc.type_name];
+                    if (et->kind != TypeDeclKind::Enum) {
+                        throw err(line(), "internal: '" + enum_desc.type_name +
+                            "' is not an enum");
+                    }
+                    int vi = -1;
+                    for (size_t i = 0; i < et->variants.size(); i++) {
+                        if (et->variants[i] == mem->member) { vi = (int)i; break; }
+                    }
+                    if (vi < 0) {
+                        throw err(line(),
+                            "enum type '" + enum_desc.type_name +
+                            "' has no variant '" + mem->member + "'");
+                    }
+                    mem->is_enum_member = true;
+                    mem->enum_type_name = enum_desc.type_name;
+                    mem->enum_index = vi;
+                    expr->resolved_type = TypeKind::Enum;
+                    return TypeKind::Enum;
+                }
+                throw err(line(),
+                    "cannot use type '" + base_id->name + "' as a value");
+            }
+        }
+        TypeKind bt = resolve_expr(mem->base.get());
+        if (bt == TypeKind::Unknown) {
+            throw err(line(), "cannot resolve type in member access");
+        }
+        TypeDesc bd = expr_desc(mem->base.get());
+        if (bd.type != TypeKind::Struct) {
+            throw err(line(),
+                "cannot access member '" + mem->member + "' of " +
+                type_desc_to_string(bd));
+        }
+        auto sit = type_decls_.find(bd.type_name);
+        if (sit == type_decls_.end() ||
+            sit->second->kind != TypeDeclKind::Struct) {
+            throw err(line(),
+                "internal: unknown struct type '" + bd.type_name + "'");
+        }
+        const auto& fields = sit->second->fields;
+        int fi = -1;
+        for (size_t i = 0; i < fields.size(); i++) {
+            if (fields[i].name == mem->member) { fi = (int)i; break; }
+        }
+        if (fi < 0) {
+            throw err(line(),
+                "struct type '" + bd.type_name + "' has no field '" +
+                mem->member + "'");
+        }
+        mem->is_field = true;
+        mem->struct_name = bd.type_name;
+        mem->field_index = fi;
+        mem->field_desc = fields[fi].desc;
+        result = mem->field_desc.type;
     } else if (auto* conditional = dynamic_cast<ConditionalExpr*>(expr)) {
         TypeKind condition_type = resolve_expr(conditional->condition.get());
         if (condition_type != TypeKind::Bool) {
@@ -1169,6 +1364,51 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         if (lt == TypeKind::Tuple || rt == TypeKind::Tuple) {
             throw err(line(),
                 "operator '" + bin->op + "' not defined for type tuple");
+        }
+        if (lt == TypeKind::Struct || rt == TypeKind::Struct) {
+            throw err(line(),
+                "operator '" + bin->op + "' not defined for type struct");
+        }
+        // M16: enum operands. Two enums: only ==/!= across the same enum
+        // (nominal). Enum + int: implicit enum->int for arithmetic and
+        // relational operators; ==/!= with an int is rejected.
+        if (lt == TypeKind::Enum || rt == TypeKind::Enum) {
+            if (lt == TypeKind::Enum && rt == TypeKind::Enum) {
+                if (bin->op != "==" && bin->op != "!=") {
+                    throw err(line(),
+                        "operator '" + bin->op +
+                        "' not defined for enum types (only == and != allowed)");
+                }
+                TypeDesc ld = expr_desc(bin->left.get());
+                TypeDesc rd = expr_desc(bin->right.get());
+                if (ld.type_name != rd.type_name) {
+                    throw err(line(),
+                        "type mismatch: cannot compare enum '" +
+                        type_desc_to_string(ld) + "' with '" +
+                        type_desc_to_string(rd) + "'");
+                }
+                result = TypeKind::Bool;
+                expr->resolved_type = result;
+                return result;
+            }
+            TypeKind other = (lt == TypeKind::Enum) ? rt : lt;
+            if (other != TypeKind::Int) {
+                throw err(line(),
+                    "type mismatch in binary expression: " +
+                    type_to_string(lt) + " " + bin->op + " " + type_to_string(rt));
+            }
+            if (bin->op == "==" || bin->op == "!=") {
+                throw err(line(),
+                    std::string("cannot compare an enum value with an int; ") +
+                    "compare it with another enum value instead");
+            }
+            if (bin->kind == ExprKind::Logical) {
+                throw err(line(),
+                    "operator '" + bin->op + "' not defined for enum types");
+            }
+            result = bin->kind == ExprKind::Arithmetic ? TypeKind::Int : TypeKind::Bool;
+            expr->resolved_type = result;
+            return result;
         }
         if (lt != rt) {
             bool byte_numeric_mix =
@@ -1311,6 +1551,17 @@ void TypeResolver::resolve_var_decl(VarDecl* var) {
             }
             define(var->name, TypeKind::Tuple, var->is_mutable, {},
                    var->tuple_members);
+        } else if (var->annotation == TypeKind::Struct ||
+                   var->annotation == TypeKind::Enum) {
+            TypeDesc init_desc = expr_desc(var->initializer.get());
+            if (!types_match(init_desc, var->annotation_desc)) {
+                throw err(var->line,
+                    "type mismatch: variable '" + var->name + "' declared as " +
+                    type_desc_to_string(var->annotation_desc) +
+                    " but initialized with " + type_desc_to_string(init_desc));
+            }
+            define(var->name, var->annotation, var->is_mutable, {},
+                   {}, var->annotation_desc);
         } else {
             define(var->name, var->annotation, var->is_mutable);
         }
@@ -1342,6 +1593,11 @@ void TypeResolver::resolve_var_decl(VarDecl* var) {
                 throw err(var->line,
                     "cannot infer function type for '" + var->name + "'; use an annotation like fn(int) -> int");
             }
+            var->annotation_desc = init_desc;
+            define(var->name, init_type, var->is_mutable, {}, {}, init_desc);
+        } else if (init_type == TypeKind::Struct ||
+                   init_type == TypeKind::Enum) {
+            TypeDesc init_desc = expr_desc(var->initializer.get());
             var->annotation_desc = init_desc;
             define(var->name, init_type, var->is_mutable, {}, {}, init_desc);
         } else {
@@ -1383,7 +1639,10 @@ void TypeResolver::resolve_destruct_decl(DestructDecl* td) {
 bool TypeResolver::resolve_stmt(Statement* stmt) {
     current_line_ = stmt->line;
     bool always_returns = false;
-    if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
+    if (dynamic_cast<TypeDecl*>(stmt) != nullptr) {
+        throw err(stmt->line,
+            "type declarations are only allowed at the top level");
+    } else if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
         resolve_var_decl(var);
     } else if (auto* aassign = dynamic_cast<ArrayAssignStmt*>(stmt)) {
         const Symbol* sym = find_symbol(aassign->name);
@@ -1472,6 +1731,14 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                     "type mismatch: cannot assign " + type_to_string(rhs_type) +
                     " to " + type_to_string(var_type));
             }
+            if (var_type == TypeKind::Struct || var_type == TypeKind::Enum) {
+                TypeDesc rd = expr_desc(assign->rhs.get());
+                if (!types_match(rd, symbol->desc)) {
+                    throw err(stmt->line,
+                        "type mismatch: cannot assign " + type_desc_to_string(rd) +
+                        " to " + type_desc_to_string(symbol->desc));
+                }
+            }
             if (var_type == TypeKind::Array) {
                 TypeDesc rd = expr_element_desc(assign->rhs.get());
                 if (rd != symbol->elem) {
@@ -1521,6 +1788,124 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                     type_to_string(rhs_type));
             }
         }
+    } else if (auto* massign = dynamic_cast<MemberAssignStmt*>(stmt)) {
+        // Reject assignment to an enum member (`Color.Red = ...`).
+        if (auto* base_id = dynamic_cast<Identifier*>(massign->base.get())) {
+            auto bit = type_decls_.find(base_id->name);
+            if (bit != type_decls_.end()) {
+                TypeDesc probe;
+                if (bit->second->kind == TypeDeclKind::Enum) {
+                    probe.type = TypeKind::Enum;
+                    probe.type_name = bit->second->name;
+                } else if (bit->second->kind == TypeDeclKind::Alias) {
+                    TypeDesc decomp = resolve_named(bit->second->name,
+                                                    /*by_value=*/true);
+                    if (decomp.type == TypeKind::Enum) probe = decomp;
+                }
+                if (probe.type == TypeKind::Enum) {
+                    throw err(stmt->line,
+                        "cannot assign to enum member '" + base_id->name +
+                        "." + massign->member + "'");
+                }
+            }
+        }
+        TypeKind bt = resolve_expr(massign->base.get());
+        if (bt == TypeKind::Unknown) {
+            throw err(stmt->line, "cannot resolve type in member assignment");
+        }
+        TypeDesc bd = expr_desc(massign->base.get());
+        if (bd.type != TypeKind::Struct) {
+            throw err(stmt->line,
+                "cannot assign to member '" + massign->member + "' of " +
+                type_desc_to_string(bd));
+        }
+        auto sit = type_decls_.find(bd.type_name);
+        if (sit == type_decls_.end() ||
+            sit->second->kind != TypeDeclKind::Struct) {
+            throw err(stmt->line,
+                "internal: unknown struct type '" + bd.type_name + "'");
+        }
+        const auto& fields = sit->second->fields;
+        int fi = -1;
+        for (size_t i = 0; i < fields.size(); i++) {
+            if (fields[i].name == massign->member) { fi = (int)i; break; }
+        }
+        if (fi < 0) {
+            throw err(stmt->line,
+                "struct type '" + bd.type_name + "' has no field '" +
+                massign->member + "'");
+        }
+        // Root-identifier walk for immutability / capture checks.
+        std::string root_name;
+        Expression* cur = massign->base.get();
+        while (true) {
+            if (auto* m = dynamic_cast<MemberAccessExpr*>(cur)) {
+                cur = m->base.get();
+            } else if (auto* ai = dynamic_cast<ArrayIndexExpr*>(cur)) {
+                cur = ai->base.get();
+                if (!cur) { root_name = ai->name; break; }
+            } else if (auto* id = dynamic_cast<Identifier*>(cur)) {
+                root_name = id->name;
+                break;
+            } else {
+                break;
+            }
+        }
+        if (root_name.empty()) {
+            throw err(stmt->line,
+                "cannot modify a struct held in an expression; assign through a variable");
+        }
+        const Symbol* tsym = find_symbol(root_name);
+        if (!tsym && is_in_outer_scopes(root_name)) {
+            throw err(stmt->line,
+                "cannot modify captured variable '" + root_name + "'");
+        }
+        if (tsym && !tsym->is_mutable) {
+            throw err(stmt->line,
+                "cannot modify immutable variable '" + root_name + "'");
+        }
+        const TypeDesc& fd = fields[fi].desc;
+        if (massign->op == "++" || massign->op == "--") {
+            if (fd.type != TypeKind::Int && fd.type != TypeKind::Decimal &&
+                fd.type != TypeKind::Byte) {
+                throw err(stmt->line,
+                    "operator '" + massign->op + "' requires int or decimal, got " +
+                    type_desc_to_string(fd));
+            }
+        } else if (massign->op == "=") {
+            resolve_expr(massign->rhs.get());
+            TypeDesc rd = expr_desc(massign->rhs.get());
+            if (!types_match(rd, fd)) {
+                throw err(stmt->line,
+                    "type mismatch: cannot assign " + type_desc_to_string(rd) +
+                    " to field '" + massign->member + "' (expects " +
+                    type_desc_to_string(fd) + ")");
+            }
+        } else {
+            if (fd.type == TypeKind::Enum) {
+                throw err(stmt->line,
+                    "compound assignment is not allowed on enum fields");
+            }
+            if (fd.type != TypeKind::Int && fd.type != TypeKind::Decimal &&
+                fd.type != TypeKind::Byte) {
+                throw err(stmt->line,
+                    "operator '" + massign->op + "' requires int or decimal, got " +
+                    type_desc_to_string(fd));
+            }
+            TypeKind vt = resolve_expr(massign->rhs.get());
+            bool rhs_ok = vt == fd.type ||
+                (fd.type == TypeKind::Byte &&
+                 (vt == TypeKind::Int || vt == TypeKind::Byte));
+            if (!rhs_ok) {
+                throw err(stmt->line,
+                    "type mismatch in compound assignment: " +
+                    type_desc_to_string(fd) + " " + massign->op + " " +
+                    type_to_string(vt));
+            }
+        }
+        massign->struct_name = bd.type_name;
+        massign->field_index = fi;
+        massign->field_desc = fd;
     } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
         for (auto& arg : print->args) {
             TypeKind pt = resolve_expr(arg.get());
@@ -1535,6 +1920,10 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             if (pt == TypeKind::Tuple) {
                 throw err(stmt->line,
                     "cannot print a tuple; destructure it or index its elements");
+            }
+            if (pt == TypeKind::Struct) {
+                throw err(stmt->line,
+                    "cannot print a struct value");
             }
         }
     } else if (auto* expr_stmt = dynamic_cast<ExprStmt*>(stmt)) {
@@ -1602,7 +1991,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                     "foreach cannot infer element type for this array");
             }
             fe->elem = ed;
-            define(fe->value_name, ed.type, true, ed.element(), ed.tuple_members);
+            define(fe->value_name, ed.type, true, ed.element(), ed.tuple_members, ed);
         } else {
             fe->elem = TypeDesc{TypeKind::Char, {}, {}, {}};
             define(fe->value_name, TypeKind::Char);
@@ -1683,14 +2072,17 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         always_returns = ifs->has_else && then_returns && else_returns;
     } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
         TypeKind switch_type = resolve_expr(sw->value.get());
+        bool enum_switch = switch_type == TypeKind::Enum;
         if (switch_type != TypeKind::Int && switch_type != TypeKind::Byte &&
-            switch_type != TypeKind::Char) {
+            switch_type != TypeKind::Char && switch_type != TypeKind::Enum) {
             throw err(stmt->line,
-                "switch value must be int, byte, or char, got " +
+                "switch value must be int, byte, char, or enum, got " +
                 type_to_string(switch_type));
         }
+        TypeDesc switch_desc = expr_desc(sw->value.get());
         bool has_default = false;
         std::vector<int> seen_values;
+        bool all_cases_return = true;
         switch_entry_loop_depths_.push_back(loop_depth_);
         for (auto& c : sw->cases) {
             if (c.is_default) {
@@ -1700,17 +2092,39 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 has_default = true;
             } else {
                 TypeKind case_type = resolve_expr(c.value.get());
-                if (case_type != switch_type) {
-                    throw err(stmt->line,
-                        "switch case type must match switch value type");
-                }
                 int case_value = 0;
-                if (auto* number = dynamic_cast<NumberLiteral*>(c.value.get())) {
-                    case_value = number->value;
-                } else if (auto* character = dynamic_cast<CharLiteral*>(c.value.get())) {
-                    case_value = static_cast<unsigned char>(character->value);
+                if (enum_switch) {
+                    // Cases may be enum members of the switched enum (nominal
+                    // match, codegen uses the ordinal) or int literals
+                    // (implicit enum->int).
+                    if (auto* mem = dynamic_cast<MemberAccessExpr*>(c.value.get())) {
+                        if (!mem->is_enum_member) {
+                            throw err(stmt->line,
+                                "switch case must be an enum member or int literal");
+                        }
+                        if (mem->enum_type_name != switch_desc.type_name) {
+                            throw err(stmt->line,
+                                "switch case enum type must match switch value type");
+                        }
+                        case_value = mem->enum_index;
+                    } else if (auto* number = dynamic_cast<NumberLiteral*>(c.value.get())) {
+                        case_value = number->value;
+                    } else {
+                        throw err(stmt->line,
+                            "switch cases must be enum members or int literals");
+                    }
                 } else {
-                    throw err(stmt->line, "switch cases must be literal values");
+                    if (case_type != switch_type) {
+                        throw err(stmt->line,
+                            "switch case type must match switch value type");
+                    }
+                    if (auto* number = dynamic_cast<NumberLiteral*>(c.value.get())) {
+                        case_value = number->value;
+                    } else if (auto* character = dynamic_cast<CharLiteral*>(c.value.get())) {
+                        case_value = static_cast<unsigned char>(character->value);
+                    } else {
+                        throw err(stmt->line, "switch cases must be literal values");
+                    }
                 }
                 if (std::find(seen_values.begin(), seen_values.end(), case_value) != seen_values.end()) {
                     throw err(stmt->line, "duplicate switch case value");
@@ -1718,10 +2132,12 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 seen_values.push_back(case_value);
             }
             push_scope();
-            resolve_block(c.body);
+            bool case_returns = resolve_block(c.body);
             pop_scope();
+            if (!case_returns) all_cases_return = false;
         }
         switch_entry_loop_depths_.pop_back();
+        always_returns = has_default && all_cases_return;
     } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
         if (!in_function_) {
             throw err(stmt->line, "return outside of function");
@@ -1782,6 +2198,16 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 throw err(stmt->line,
                     "type mismatch: return " + type_to_string(vt) +
                     " but function returns " + type_to_string(current_return_));
+            }
+            if (current_return_ == TypeKind::Struct ||
+                current_return_ == TypeKind::Enum) {
+                TypeDesc rt = expr_desc(ret->values[0].get());
+                if (!types_match(rt, current_return_desc_)) {
+                    throw err(stmt->line,
+                        "type mismatch: return " + type_desc_to_string(rt) +
+                        " but function returns " +
+                        type_desc_to_string(current_return_desc_));
+                }
             }
             if (current_return_ == TypeKind::Function) {
                 TypeDesc rt = expr_function_type(ret->values[0].get());
@@ -1925,6 +2351,280 @@ void TypeResolver::collect_functions(Program& program) {
     }
 }
 
+// --- M16: type declarations (alias / struct / enum) ---
+
+void TypeResolver::collect_type_decls(Program& program) {
+    for (auto& stmt : program.statements) {
+        auto* t = dynamic_cast<TypeDecl*>(stmt.get());
+        if (!t) continue;
+        if (type_decls_.count(t->name)) {
+            throw err(t->line,
+                "duplicate declaration of type '" + t->name + "'", t->file);
+        }
+        // Variants are looked up by name within one enum, so a repeat would
+        // silently shadow the earlier ordinal.
+        if (t->kind == TypeDeclKind::Enum) {
+            std::unordered_set<std::string> seen;
+            for (auto& v : t->variants) {
+                if (!seen.insert(v).second) {
+                    throw err(t->line,
+                        "duplicate variant '" + v + "' in enum '" + t->name + "'",
+                        t->file);
+                }
+            }
+        }
+        type_decls_[t->name] = t;
+    }
+}
+
+TypeDesc TypeResolver::expand_desc(const TypeDesc& d, bool by_value) {
+    if (d.type == TypeKind::Unknown && !d.type_name.empty())
+        return resolve_named(d.type_name, by_value);
+    if (d.type == TypeKind::Array) {
+        TypeDesc out = d;
+        TypeDesc e = expand_desc(d.element(), /*by_value=*/false);
+        out.elem = std::make_shared<TypeDesc>(e);
+        return out;
+    }
+    if (d.type == TypeKind::Tuple) {
+        TypeDesc out = d;
+        for (auto& m : out.tuple_members) m = expand_desc(m, /*by_value=*/true);
+        return out;
+    }
+    if (d.type == TypeKind::Function && d.fn_info) {
+        TypeDesc out = d;
+        auto ni = std::make_shared<FunctionTypeInfo>(*d.fn_info);
+        for (auto& p : ni->params) p = expand_desc(p, /*by_value=*/false);
+        ni->ret = expand_desc(ni->ret, /*by_value=*/false);
+        out.fn_info = ni;
+        return out;
+    }
+    return d;
+}
+
+TypeDesc TypeResolver::resolve_named(const std::string& name, bool by_value) {
+    auto it = type_decls_.find(name);
+    if (it == type_decls_.end()) {
+        throw err(line(), "undefined type '" + name + "'");
+    }
+    TypeDecl* t = it->second;
+    switch (t->kind) {
+        case TypeDeclKind::Alias: {
+            if (expanding_aliases_.count(name)) {
+                throw err(t->line,
+                    "alias cycle detected involving type '" + name + "'", t->file);
+            }
+            expanding_aliases_.insert(name);
+            TypeDesc out = expand_desc(t->alias_target, /*by_value=*/true);
+            expanding_aliases_.erase(name);
+            return out;
+        }
+        case TypeDeclKind::Struct: {
+            if (by_value && building_structs_.count(name)) {
+                throw err(t->line,
+                    "struct type '" + name + "' cannot contain itself by value", t->file);
+            }
+            auto cached = expanded_structs_.find(name);
+            if (cached != expanded_structs_.end()) return cached->second;
+            TypeDesc out;
+            out.type = TypeKind::Struct;
+            out.type_name = name;
+            // Cache before expanding fields so (indirect, heap) self-references
+            // resolve to the descriptor instead of recursing forever.
+            expanded_structs_[name] = out;
+            building_structs_.insert(name);
+            for (auto& f : t->fields) {
+                f.desc = expand_desc(f.desc, /*by_value=*/true);
+            }
+            building_structs_.erase(name);
+            return out;
+        }
+        case TypeDeclKind::Enum: {
+            TypeDesc out;
+            out.type = TypeKind::Enum;
+            out.type_name = name;
+            return out;
+        }
+    }
+    return TypeDesc{};
+}
+
+void TypeResolver::expand_type_refs(Program& program) {
+    // Force-expand every declared type (in declaration order) so unused types
+    // are still validated and all descriptors are cached.
+    for (auto& stmt : program.statements) {
+        if (auto* t = dynamic_cast<TypeDecl*>(stmt.get())) {
+            current_line_ = t->line;
+            if (!t->file.empty()) current_file_ = t->file;
+            resolve_named(t->name, /*by_value=*/true);
+        }
+    }
+    // Expand every annotation/parameter/return reference in the program.
+    for (auto& stmt : program.statements) {
+        expand_type_refs_stmt(stmt.get());
+    }
+}
+
+void TypeResolver::expand_type_refs_stmt(Statement* stmt) {
+    std::string saved_file = current_file_;
+    if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
+        if (var->has_annotation) {
+            current_line_ = var->line;
+            if (!var->file.empty()) current_file_ = var->file;
+            TypeDesc d;
+            if (var->annotation_desc.type != TypeKind::Unknown ||
+                !var->annotation_desc.type_name.empty()) {
+                d = var->annotation_desc;
+            } else {
+                d.type = var->annotation;
+                if (d.type == TypeKind::Array) {
+                    if (var->elem_desc.type != TypeKind::Unknown ||
+                        !var->elem_desc.type_name.empty())
+                        d.elem = std::make_shared<TypeDesc>(var->elem_desc);
+                } else if (d.type == TypeKind::Tuple) {
+                    d.tuple_members = var->tuple_members;
+                }
+            }
+            TypeDesc e = expand_desc(d, /*by_value=*/true);
+            var->annotation = e.type;
+            var->elem_desc = (e.type == TypeKind::Array) ? e.element() : TypeDesc{};
+            var->tuple_members = (e.type == TypeKind::Tuple) ? e.tuple_members
+                                                             : std::vector<TypeDesc>{};
+            var->annotation_desc = (e.type == TypeKind::Function ||
+                                    e.type == TypeKind::Struct ||
+                                    e.type == TypeKind::Enum) ? e : TypeDesc{};
+        }
+        if (var->initializer) expand_type_refs_expr(var->initializer.get());
+    } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
+        current_line_ = fn->line;
+        if (!fn->file.empty()) current_file_ = fn->file;
+        for (auto& p : fn->params) sync_param_desc(p);
+        sync_return_desc(fn->has_return_type, fn->return_type, fn->return_desc,
+                         fn->return_elem, fn->return_tuple_members);
+        for (auto& s : fn->body) expand_type_refs_stmt(s.get());
+    } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
+        for (auto& s : ifs->then_body) expand_type_refs_stmt(s.get());
+        for (auto& s : ifs->else_body) expand_type_refs_stmt(s.get());
+    } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
+        for (auto& c : sw->cases)
+            for (auto& s : c.body) expand_type_refs_stmt(s.get());
+    } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
+        for (auto& s : loop->body) expand_type_refs_stmt(s.get());
+    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
+        for (auto& s : fe->body) expand_type_refs_stmt(s.get());
+    } else if (auto* w = dynamic_cast<WhileStmt*>(stmt)) {
+        for (auto& s : w->body) expand_type_refs_stmt(s.get());
+    } else if (auto* f = dynamic_cast<ForStmt*>(stmt)) {
+        if (f->init) expand_type_refs_stmt(f->init.get());
+        if (f->update) expand_type_refs_stmt(f->update.get());
+        for (auto& s : f->body) expand_type_refs_stmt(s.get());
+    } else if (auto* dw = dynamic_cast<DoWhileStmt*>(stmt)) {
+        for (auto& s : dw->body) expand_type_refs_stmt(s.get());
+    } else if (auto* es = dynamic_cast<ExprStmt*>(stmt)) {
+        if (es->expr) expand_type_refs_expr(es->expr.get());
+    } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
+        if (td->rhs) expand_type_refs_expr(td->rhs.get());
+    } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
+        if (ma->rhs) expand_type_refs_expr(ma->rhs.get());
+    } else if (auto* as = dynamic_cast<AssignStmt*>(stmt)) {
+        if (as->rhs) expand_type_refs_expr(as->rhs.get());
+    } else if (auto* aa = dynamic_cast<ArrayAssignStmt*>(stmt)) {
+        if (aa->index) expand_type_refs_expr(aa->index.get());
+        if (aa->rhs) expand_type_refs_expr(aa->rhs.get());
+    } else if (auto* ea = dynamic_cast<ElementAssignStmt*>(stmt)) {
+        if (ea->target) expand_type_refs_expr(ea->target.get());
+        if (ea->rhs) expand_type_refs_expr(ea->rhs.get());
+    } else if (auto* massign = dynamic_cast<MemberAssignStmt*>(stmt)) {
+        if (massign->base) expand_type_refs_expr(massign->base.get());
+        if (massign->rhs) expand_type_refs_expr(massign->rhs.get());
+    } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
+        for (auto& v : ret->values) expand_type_refs_expr(v.get());
+    } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
+        for (auto& a : print->args) expand_type_refs_expr(a.get());
+    } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
+        if (ifs->condition) expand_type_refs_expr(ifs->condition.get());
+    } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
+        if (sw->value) expand_type_refs_expr(sw->value.get());
+        for (auto& c : sw->cases)
+            if (c.value) expand_type_refs_expr(c.value.get());
+    } else if (auto* while_stmt = dynamic_cast<WhileStmt*>(stmt)) {
+        if (while_stmt->condition) expand_type_refs_expr(while_stmt->condition.get());
+    } else if (auto* dw = dynamic_cast<DoWhileStmt*>(stmt)) {
+        if (dw->condition) expand_type_refs_expr(dw->condition.get());
+    } else if (auto* f = dynamic_cast<ForStmt*>(stmt)) {
+        if (f->condition) expand_type_refs_expr(f->condition.get());
+    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
+        if (fe->iterable) expand_type_refs_expr(fe->iterable.get());
+    } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
+        if (loop->count) expand_type_refs_expr(loop->count.get());
+    }
+    current_file_ = saved_file;
+}
+
+void TypeResolver::expand_type_refs_expr(Expression* expr) {
+    if (auto* lam = dynamic_cast<LambdaExpr*>(expr)) {
+        current_line_ = lam->line;
+        for (auto& p : lam->params) sync_param_desc(p);
+        sync_return_desc(lam->has_return_type, lam->return_type, lam->return_desc,
+                         lam->return_elem, lam->return_tuple_members);
+        for (auto& s : lam->body) expand_type_refs_stmt(s.get());
+        return;
+    }
+    if (auto* arr = dynamic_cast<ArrayLiteral*>(expr)) {
+        for (auto& e : arr->elements) expand_type_refs_expr(e.get());
+    } else if (auto* tup = dynamic_cast<TupleLiteral*>(expr)) {
+        for (auto& v : tup->values) expand_type_refs_expr(v.get());
+    } else if (auto* call = dynamic_cast<CallExpr*>(expr)) {
+        for (auto& a : call->args) expand_type_refs_expr(a.get());
+    } else if (auto* bin = dynamic_cast<BinaryExpr*>(expr)) {
+        expand_type_refs_expr(bin->left.get());
+        expand_type_refs_expr(bin->right.get());
+    } else if (auto* not_expr = dynamic_cast<NotExpr*>(expr)) {
+        expand_type_refs_expr(not_expr->operand.get());
+    } else if (auto* neg = dynamic_cast<NegExpr*>(expr)) {
+        expand_type_refs_expr(neg->operand.get());
+    } else if (auto* cond = dynamic_cast<ConditionalExpr*>(expr)) {
+        expand_type_refs_expr(cond->condition.get());
+        expand_type_refs_expr(cond->then_expr.get());
+        expand_type_refs_expr(cond->else_expr.get());
+    } else if (auto* cast = dynamic_cast<CastExpr*>(expr)) {
+        expand_type_refs_expr(cast->operand.get());
+    } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
+        if (idx->base) expand_type_refs_expr(idx->base.get());
+        expand_type_refs_expr(idx->index.get());
+    } else if (auto* mem = dynamic_cast<MemberAccessExpr*>(expr)) {
+        expand_type_refs_expr(mem->base.get());
+    }
+}
+
+void TypeResolver::sync_param_desc(FunctionDecl::Param& p) {
+    if (p.variadic) {
+        if (p.elem_desc.type != TypeKind::Unknown || !p.elem_desc.type_name.empty()) {
+            TypeDesc e = expand_desc(p.elem_desc, /*by_value=*/true);
+            p.elem_desc = e;
+            p.desc = TypeDesc::array_of(e);
+        }
+        return;
+    }
+    TypeDesc e = expand_desc(p.desc, /*by_value=*/true);
+    p.desc = e;
+    p.type = e.type;
+    p.elem_desc = (e.type == TypeKind::Array) ? e.element() : TypeDesc{};
+    p.tuple_members = (e.type == TypeKind::Tuple) ? e.tuple_members
+                                                  : std::vector<TypeDesc>{};
+}
+
+void TypeResolver::sync_return_desc(bool has_return, TypeKind& return_type,
+                                    TypeDesc& return_desc, TypeDesc& return_elem,
+                                    std::vector<TypeDesc>& return_tuple) {
+    if (!has_return) return;
+    TypeDesc e = expand_desc(return_desc, /*by_value=*/true);
+    return_desc = e;
+    return_type = e.type;
+    return_elem = (e.type == TypeKind::Array) ? e.element() : TypeDesc{};
+    if (e.type == TypeKind::Tuple) return_tuple = e.tuple_members;
+}
+
 void TypeResolver::collect_functions_stmt(Statement* stmt) {
     auto recurse = [this](const std::vector<StmtPtr>& list) {
         for (auto& s : list) collect_functions_stmt(s.get());
@@ -1933,6 +2633,11 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
         if (functions_.count(fn->name)) {
             throw err(fn->line,
                 "duplicate declaration of function '" + fn->name + "'", fn->file);
+        }
+        if (type_decls_.count(fn->name)) {
+            throw err(fn->line,
+                "cannot declare function '" + fn->name +
+                "': a type with that name already exists", fn->file);
         }
         FunctionSig sig;
         std::vector<TypeDesc> param_descs;
@@ -2023,6 +2728,8 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
 void TypeResolver::resolve(Program& program) {
     entry_file_ = program.source_file;
     current_file_ = program.source_file;
+    collect_type_decls(program);
+    expand_type_refs(program);
     collect_functions(program);
     analyze_nonlocal_exits(program);
     push_scope();
@@ -2038,11 +2745,23 @@ void TypeResolver::resolve(Program& program) {
         if (auto* var = dynamic_cast<VarDecl*>(stmt.get())) {
             current_line_ = var->line;
             if (!var->file.empty()) current_file_ = var->file;
+            if (type_decls_.count(var->name)) {
+                throw err(var->line,
+                    "cannot declare variable '" + var->name +
+                    "': a type with that name already exists");
+            }
             resolve_var_decl(var);
             top_state.insert(stmt.get());
         } else if (auto* d = dynamic_cast<DestructDecl*>(stmt.get())) {
             current_line_ = d->line;
             if (!d->file.empty()) current_file_ = d->file;
+            for (const auto& pat : d->patterns) {
+                if (type_decls_.count(pat.name)) {
+                    throw err(d->line,
+                        "cannot declare variable '" + pat.name +
+                        "': a type with that name already exists");
+                }
+            }
             resolve_destruct_decl(d);
             top_state.insert(stmt.get());
         }
@@ -2052,6 +2771,7 @@ void TypeResolver::resolve(Program& program) {
     // main). Top-level state is already registered above.
     for (auto& stmt : program.statements) {
         if (top_state.count(stmt.get())) continue;
+        if (dynamic_cast<TypeDecl*>(stmt.get())) continue;
         resolve_stmt(stmt.get());
     }
     pop_scope();

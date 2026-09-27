@@ -7,6 +7,9 @@ bool TypeDesc::operator==(const TypeDesc& other) const {
         if (*elem != *other.elem) return false;
     }
     if (tuple_members != other.tuple_members) return false;
+    if (type == TypeKind::Struct || type == TypeKind::Enum) {
+        return type_name == other.type_name;
+    }
     if (type == TypeKind::Function) {
         if (fn_info == other.fn_info) return true;
         if (!fn_info || !other.fn_info) return false;
@@ -23,6 +26,9 @@ bool TypeDesc::operator<(const TypeDesc& other) const {
         if (*elem != *other.elem) return *elem < *other.elem;
     }
     if (tuple_members != other.tuple_members) return tuple_members < other.tuple_members;
+    if (type == TypeKind::Struct || type == TypeKind::Enum) {
+        return type_name < other.type_name;
+    }
     if (type == TypeKind::Function) {
         if (fn_info && other.fn_info) {
             if (fn_info->params != other.fn_info->params)
@@ -54,6 +60,7 @@ std::string type_to_c(TypeKind kind) {
         case TypeKind::Array:   return "sd_array";
         case TypeKind::Tuple:   return "sd_tuple";
         case TypeKind::Function: return "sd_closure";
+        case TypeKind::Enum:    return "int";
         default:                return "void";
     }
 }
@@ -67,6 +74,7 @@ std::string type_to_format(TypeKind kind) {
         case TypeKind::Char:    return "%c";
         case TypeKind::Byte:    return "%d";
         case TypeKind::Array:   return "%d";
+        case TypeKind::Enum:    return "%d";
         default:                return "%d";
     }
 }
@@ -82,11 +90,18 @@ std::string type_to_string(TypeKind kind) {
         case TypeKind::Array:   return "array";
         case TypeKind::Tuple:   return "tuple";
         case TypeKind::Function: return "function";
+        case TypeKind::Struct:  return "struct";
+        case TypeKind::Enum:    return "enum";
         default:                return "unknown";
     }
 }
 
 std::string type_desc_to_string(const TypeDesc& desc) {
+    if (desc.type == TypeKind::Struct || desc.type == TypeKind::Enum) {
+        return desc.type_name.empty() ? type_to_string(desc.type) : desc.type_name;
+    }
+    // A not-yet-expanded named-type reference prints as its name.
+    if (desc.type == TypeKind::Unknown && !desc.type_name.empty()) return desc.type_name;
     if (desc.type == TypeKind::Array) {
         return "array of " + type_desc_to_string(desc.element());
     }

@@ -1708,7 +1708,7 @@ test_output "keyword_var_and_fn_names" \
          let unsigned = 3
          let volatile = 4
          print(unsigned * volatile)
-         fn inner(struct: int) -> int { return struct + 1 }
+         fn inner(shade: int) -> int { return shade + 1 }
          print(inner(unsigned))
      }' \
     "$(printf '12\n10\n12\n4')"
@@ -1825,9 +1825,9 @@ test_output "m15_refcount_lifecycle" \
             if (length(tmp) == 3) { pop(tmp) }
             let v = substring(s, 0, 1)
             if (v == "n") { ok = ok + 1 }
-            let alias = tmp
-            alias[0] = i * 2
-            if (alias[0] == i * 2) { ok = ok + 1 }
+            let dup = tmp
+            dup[0] = i * 2
+            if (dup[0] == i * 2) { ok = ok + 1 }
         }
         print(ok)
         print(length(acc))
@@ -1863,14 +1863,187 @@ test_output "m15_param_borrow" \
         let r = decorate(m)
         print(r, m)
         let arr: [int] = [1, 2]
-        let alias = arr
-        alias[0] = 5
+        let dup = arr
+        dup[0] = 5
         print(arr[0])
         let s = slice(arr, 0, 1)
         s[0] = 50
         print(arr[0], s[0])
     }' \
     "$(printf 'hey hey\n5\n5 50')"
+
+# M16: structs are value types; heap fields are refcounted like tuples/arrays.
+# Direct array stores COW-detach; field rebinds release the old value.
+test_output "m16_struct_refcount" \
+    'struct Node {
+        name: text
+        next: int
+    }
+    fn bump(n: Node, k: int) -> Node {
+        n.next = n.next + k
+        return n
+    }
+    fn main() {
+        let a = Node("root", 1)
+        let b = a
+        a.next = 2
+        print(a.next, b.next)
+        let c = bump(a, 10)
+        print(a.next, c.next)
+        print(c.name)
+        let arr: [Node] = [Node("x", 1), Node("y", 2)]
+        let copy = arr
+        arr[0] = Node("z", 9)
+        print(length(arr), length(copy))
+        print(arr[0].name, copy[0].name)
+        let p = Node("shared", 0)
+        let q = p
+        p.name = "mutated"
+        print(q.name)
+    }' \
+    "$(printf '2 1\n2 12\nroot\n2 2\nz z\nshared')"
+
+# M16: enum ordinals, implicit enum->int, nominal switch cases.
+test_output "m16_enum_switch" \
+    'enum Dir {
+        N
+        E
+        S
+        W
+    }
+    fn name(d: Dir) -> text {
+        switch (d) {
+            case Dir.N:
+                return "north"
+            case 1:
+                return "east"
+            case Dir.S:
+                return "south"
+            default:
+                return "west"
+        }
+    }
+    fn main() {
+        let d = Dir.S
+        print(name(d))
+        print(Dir.W + 1)
+        print(Dir.N == Dir.N)
+        let arr = [Dir.N, Dir.W]
+        print(name(arr[1]))
+        let i = 0
+        print(name(arr[i]))
+        print(Dir.E + 1)
+        print(Dir.E + 1 == Dir.N + 2)
+    }' \
+    "$(printf 'south\n4\n1\nwest\nnorth\n2\n1')"
+
+# M16: struct values flow through conditionals, aliases chain to named types.
+test_output "m16_struct_conditional_alias" \
+    'struct P {
+        x: int
+    }
+    alias P2 = P
+    alias Int2 = int
+    alias MyInt = Int2
+    enum C {
+        red
+        green
+        blue
+    }
+    alias Col = C
+    fn main() {
+        let p = P(5)
+        let q = p.x > 3 ? P2(1) : P2(2)
+        print(q.x)
+        print(p.x)
+        let n: MyInt = 3
+        print(n + 1)
+        let c: Col = Col.blue
+        print(c)
+        print(c + 1)
+    }' \
+    "$(printf '1\n5\n4\n2\n3')"
+
+# M16: returning a struct transfers the owned value; consumer rebuilds.
+test_output "m16_struct_return_chain" \
+    'struct Box {
+        label: text
+        value: int
+    }
+    fn wrap(label: text, value: int) -> Box {
+        let b = Box(label, value)
+        return b
+    }
+    fn inner(b: Box) -> int {
+        return b.value * 2
+    }
+    fn main() {
+        let b1 = wrap("a", 21)
+        print(b1.label, inner(b1))
+        let b2 = wrap("b", 7)
+        print(b2.label, b2.value)
+        let many: [Box] = [wrap("c", 1), wrap("d", 3)]
+        print(length(many))
+        print(many[1].label, inner(many[1]))
+    }' \
+    "$(printf 'a 42\nb 7\n2\nd 6')"
+
+# M16: cross-module struct/enum/alias with refcounted heap field cycles.
+test_module_output "m16_mod_struct_enum" "main.hmx" \
+    "$(printf '7\n3')" \
+    "lib/geo.hmx" 'struct Pt {
+        x: int
+        y: int
+    }
+    enum Team {
+        Alpha
+        Beta
+    }
+    fn mk(x: int, y: int) -> Pt {
+        return Pt(x, y)
+    }' \
+    "main.hmx" 'use "lib/geo.hmx"
+    fn main() {
+        let p = mk(3, 4)
+        print(p.x + p.y)
+        let t = Team.Beta
+        print(t + 2)
+    }'
+
+# M16: function-typed struct fields — declared, constructed, read back and
+# called through a local binding (the field itself is not a callee).
+test_output "m16_struct_fn_field" \
+    'struct Op {
+        name: text
+        apply: fn(int) -> int
+    }
+    fn twice(k: int) -> int {
+        return k * 2
+    }
+    fn negate(k: int) -> int {
+        return 0 - k
+    }
+    fn run(f: fn(int) -> int, k: int) -> int {
+        return f(k) + 1
+    }
+    fn main() {
+        let o = Op("double", twice)
+        print(o.name)
+        let f = o.apply
+        print(f(4))
+        let g: fn(int) -> int = o.apply
+        print(g(10))
+        let pairs: [Op] = [Op("double", twice), Op("neg", negate)]
+        let total = 0
+        foreach (p in pairs) {
+            let call = p.apply
+            total = total + call(5)
+        }
+        print(total)
+        let chosen = pairs[1]
+        print(chosen.name, run(chosen.apply, 3))
+    }' \
+    "$(printf 'double\n8\n20\n5\nneg -2')"
 
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"

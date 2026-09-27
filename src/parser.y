@@ -34,6 +34,7 @@ Program* g_program = nullptr;
     std::vector<SwitchCase>* cases;
     std::vector<TypeDesc>* tlist;
     std::vector<std::string>* strlist;
+    std::vector<StructFieldInfo>* fields;
     IdList* idlist;
     DestructPattern* dpat;
     TypeDesc* tdesc;
@@ -52,12 +53,13 @@ Program* g_program = nullptr;
 %token ELLIPSIS
 %token AS
 %token USE
+%token STRUCT ENUM ALIAS DOT
 
 %type <ival> NUMBER
 %type <fval> DECIMAL
 %type <sval> STRING CHAR IDENTIFIER
 %type <expr> expression conditional logical_or logical_and equality relational additive term factor postfix_index
-%type <stmt> statement var_decl assign_stmt print_stmt loop_stmt foreach_stmt while_stmt for_stmt do_while_stmt if_stmt switch_stmt return_stmt call_stmt fn_decl break_stmt continue_stmt
+%type <stmt> statement var_decl assign_stmt print_stmt loop_stmt foreach_stmt while_stmt for_stmt do_while_stmt if_stmt switch_stmt return_stmt call_stmt fn_decl break_stmt continue_stmt type_decl
 %type <stmt> for_init for_update
 %type <params> param_list
 %type <param> param
@@ -66,8 +68,10 @@ Program* g_program = nullptr;
 %type <tlist> tuple_elem_list
 %type <idlist> id_list
 %type <dpat> pattern_item
-%type <tdesc> param_type
+%type <tdesc> param_type named_ref
 %type <tlist> fn_type_params
+%type <fields> struct_fields
+%type <strlist> enum_variants
 %type <program> program
 %type <stmts> stmt_list
 %type <strlist> use_list
@@ -139,6 +143,83 @@ statement
     | break_stmt   { $$ = $1; }
     | continue_stmt { $$ = $1; }
     | fn_decl      { $$ = $1; }
+    | type_decl    { $$ = $1; }
+    ;
+
+type_decl
+    : ALIAS IDENTIFIER '=' param_type
+        {
+            auto* t = new TypeDecl();
+            t->kind = TypeDeclKind::Alias;
+            t->name = $2;
+            t->alias_target = *$4;
+            delete $4;
+            t->line = yylineno;
+            free($2);
+            $$ = t;
+        }
+    | STRUCT IDENTIFIER '{' struct_fields '}'
+        {
+            auto* t = new TypeDecl();
+            t->kind = TypeDeclKind::Struct;
+            t->name = $2;
+            t->fields = std::move(*$4);
+            delete $4;
+            t->line = yylineno;
+            free($2);
+            $$ = t;
+        }
+    | ENUM IDENTIFIER '{' enum_variants '}'
+        {
+            auto* t = new TypeDecl();
+            t->kind = TypeDeclKind::Enum;
+            t->name = $2;
+            t->variants = std::move(*$4);
+            delete $4;
+            t->line = yylineno;
+            free($2);
+            $$ = t;
+        }
+    ;
+
+struct_fields
+    : struct_fields IDENTIFIER ':' param_type
+        {
+            StructFieldInfo f;
+            f.name = std::string($2);
+            f.desc = *$4;
+            delete $4;
+            free($2);
+            $1->push_back(std::move(f));
+            $$ = $1;
+        }
+    | IDENTIFIER ':' param_type
+        {
+            auto* v = new std::vector<StructFieldInfo>();
+            StructFieldInfo f;
+            f.name = std::string($1);
+            f.desc = *$3;
+            delete $3;
+            free($1);
+            v->push_back(std::move(f));
+            $$ = v;
+        }
+    ;
+
+enum_variants
+    : enum_variants IDENTIFIER
+        {
+            $1->push_back(std::string($2));
+            free($2);
+            $$ = $1;
+        }
+    | IDENTIFIER
+        {
+            auto* v = new std::vector<std::string>();
+            v->push_back(std::string($1));
+            free($1);
+            $$ = v;
+        }
     ;
 
 break_stmt
@@ -304,6 +385,34 @@ var_decl
             v->name = $2; v->has_annotation = true; v->annotation = TypeKind::Byte;
             v->is_mutable = false; v->initializer = ExprPtr($6); v->line = yylineno;
             free($2); $$ = v;
+        }
+    | LET IDENTIFIER ':' named_ref '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->is_mutable = true;
+            v->annotation = $4->type;
+            v->annotation_desc = *$4;
+            delete $4;
+            v->initializer = ExprPtr($6);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
+        }
+    | CONST IDENTIFIER ':' named_ref '=' expression
+        {
+            auto* v = new VarDecl();
+            v->name = $2;
+            v->has_annotation = true;
+            v->is_mutable = false;
+            v->annotation = $4->type;
+            v->annotation_desc = *$4;
+            delete $4;
+            v->initializer = ExprPtr($6);
+            v->line = yylineno;
+            free($2);
+            $$ = v;
         }
     | LET IDENTIFIER ':' '[' param_type ']' '=' expression
         {
@@ -546,6 +655,94 @@ assign_stmt
             a->target = ExprPtr(new ArrayIndexExpr(ExprPtr($1), ExprPtr($3)));
             a->rhs = ExprPtr($6);
             a->line = yylineno;
+            $$ = a;
+        }
+    | postfix_index DOT IDENTIFIER '=' expression
+        {
+            auto* a = new MemberAssignStmt();
+            a->base = ExprPtr($1);
+            a->member = std::string($3);
+            a->op = "=";
+            a->rhs = ExprPtr($5);
+            a->line = yylineno;
+            free($3);
+            $$ = a;
+        }
+    | postfix_index DOT IDENTIFIER PLUS_EQ expression
+        {
+            auto* a = new MemberAssignStmt();
+            a->base = ExprPtr($1);
+            a->member = std::string($3);
+            a->op = "+=";
+            a->rhs = ExprPtr($5);
+            a->line = yylineno;
+            free($3);
+            $$ = a;
+        }
+    | postfix_index DOT IDENTIFIER MINUS_EQ expression
+        {
+            auto* a = new MemberAssignStmt();
+            a->base = ExprPtr($1);
+            a->member = std::string($3);
+            a->op = "-=";
+            a->rhs = ExprPtr($5);
+            a->line = yylineno;
+            free($3);
+            $$ = a;
+        }
+    | postfix_index DOT IDENTIFIER STAR_EQ expression
+        {
+            auto* a = new MemberAssignStmt();
+            a->base = ExprPtr($1);
+            a->member = std::string($3);
+            a->op = "*=";
+            a->rhs = ExprPtr($5);
+            a->line = yylineno;
+            free($3);
+            $$ = a;
+        }
+    | postfix_index DOT IDENTIFIER SLASH_EQ expression
+        {
+            auto* a = new MemberAssignStmt();
+            a->base = ExprPtr($1);
+            a->member = std::string($3);
+            a->op = "/=";
+            a->rhs = ExprPtr($5);
+            a->line = yylineno;
+            free($3);
+            $$ = a;
+        }
+    | postfix_index DOT IDENTIFIER MOD_EQ expression
+        {
+            auto* a = new MemberAssignStmt();
+            a->base = ExprPtr($1);
+            a->member = std::string($3);
+            a->op = "%=";
+            a->rhs = ExprPtr($5);
+            a->line = yylineno;
+            free($3);
+            $$ = a;
+        }
+    | postfix_index DOT IDENTIFIER INCR
+        {
+            auto* a = new MemberAssignStmt();
+            a->base = ExprPtr($1);
+            a->member = std::string($3);
+            a->op = "++";
+            a->rhs = nullptr;
+            a->line = yylineno;
+            free($3);
+            $$ = a;
+        }
+    | postfix_index DOT IDENTIFIER DECR
+        {
+            auto* a = new MemberAssignStmt();
+            a->base = ExprPtr($1);
+            a->member = std::string($3);
+            a->op = "--";
+            a->rhs = nullptr;
+            a->line = yylineno;
+            free($3);
             $$ = a;
         }
     | '(' id_list ')' '=' expression
@@ -813,6 +1010,13 @@ param_type
     | TYPE_BOOL    { $$ = new TypeDesc{TypeKind::Bool, {}, {}, {}}; }
     | TYPE_CHAR    { $$ = new TypeDesc{TypeKind::Char, {}, {}, {}}; }
     | TYPE_BYTE    { $$ = new TypeDesc{TypeKind::Byte, {}, {}, {}}; }
+    | IDENTIFIER
+        {
+            auto* td = new TypeDesc{};
+            td->type_name = std::string($1);
+            free($1);
+            $$ = td;
+        }
     | '[' param_type ']'
         {
             $$ = new TypeDesc(TypeDesc::array_of(*$2));
@@ -843,6 +1047,21 @@ param_type
             info->ret = *$5;
             delete $5;
             td->fn_info = std::shared_ptr<FunctionTypeInfo>(info);
+            $$ = td;
+        }
+    ;
+
+named_ref
+    : IDENTIFIER
+        {
+            // Annotation for a user-declared type name (`let p: Point`). The
+            // parser cannot resolve the name yet — module-merged type
+            // declarations are only visible to the resolver — so it records
+            // the name and the resolver expands it. type stays Unknown as the
+            // transient marker; resolution sets it to the concrete kind.
+            auto* td = new TypeDesc{};
+            td->type_name = std::string($1);
+            free($1);
             $$ = td;
         }
     ;
@@ -1211,12 +1430,6 @@ factor
         {
             $$ = $2;
         }
-    | IDENTIFIER
-        {
-            auto* id = new Identifier(std::string($1));
-            free($1);
-            $$ = id;
-        }
     | IDENTIFIER '(' args ')'
         {
             auto* call = new CallExpr(std::string($1), std::move(*$3));
@@ -1330,7 +1543,13 @@ factor
     ;
 
 postfix_index
-    : IDENTIFIER '[' expression ']'
+    : IDENTIFIER
+        {
+            auto* id = new Identifier(std::string($1));
+            free($1);
+            $$ = id;
+        }
+    | IDENTIFIER '[' expression ']'
         {
             auto* idx = new ArrayIndexExpr(std::string($1), ExprPtr($3));
             free($1);
@@ -1339,6 +1558,12 @@ postfix_index
     | postfix_index '[' expression ']'
         {
             $$ = new ArrayIndexExpr(ExprPtr($1), ExprPtr($3));
+        }
+    | postfix_index DOT IDENTIFIER
+        {
+            // Struct field access (`p.x`) or enum member reference (`Color.Red`).
+            $$ = new MemberAccessExpr(ExprPtr($1), std::string($3));
+            free($3);
         }
     ;
 

@@ -140,6 +140,8 @@ static void assign_file(Statement* stmt, const std::string& file) {
         recurse(fn->body);
     } else if (auto* v = dynamic_cast<VarDecl*>(stmt)) {
         if (v->file.empty()) v->file = file;
+    } else if (auto* td = dynamic_cast<TypeDecl*>(stmt)) {
+        if (td->file.empty()) td->file = file;
     } else if (auto* d = dynamic_cast<DestructDecl*>(stmt)) {
         if (d->file.empty()) d->file = file;
     } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {

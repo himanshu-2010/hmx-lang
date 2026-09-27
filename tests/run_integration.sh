@@ -160,6 +160,43 @@ test_module "mod_state_entry_to_module" "main.hmx" \
         print(get_count())
     }'
 
+# M16: structs, enums and aliases cross module boundaries (single top-level
+# namespace; module files can reference each other's types and constants).
+test_module "mod_m16_types" "main.hmx" \
+    "lib/geo.hmx" 'struct Point {
+        x: int
+        y: int
+    }
+    enum Quadrant {
+        Q1
+        Q2
+        Q3
+        Q4
+    }
+    alias Coord = int
+    fn origin() -> Point {
+        return Point(0, 0)
+    }' \
+    "lib/shape.hmx" 'use "geo.hmx"
+    struct Rect {
+        tl: Point
+        w: Coord
+        h: Coord
+    }
+    fn area(r: Rect) -> int {
+        return r.w * r.h
+    }' \
+    "main.hmx" 'use "lib/shape.hmx"
+    fn main() {
+        let r = Rect(origin(), 4, 5)
+        print(area(r))
+        print(r.tl.x + r.tl.y)
+        print(Quadrant.Q3)
+        let q = Quadrant.Q2
+        print(q + 2)
+        print(q == Quadrant.Q2)
+    }'
+
 echo ""
 echo "Passed: $PASS, Failed: $FAIL"
 [ $FAIL -eq 0 ]

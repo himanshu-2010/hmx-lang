@@ -344,10 +344,10 @@
       "stdin": null,
       "entry": null,
       "modules": null,
-      "pattern": "switch value must be int, byte, or char",
+      "pattern": "switch value must be int, byte, char, or enum",
       "expected": {
         "stdout": "",
-        "stderr": "Error [line 5]: switch value must be int, byte, or char, got text\n",
+        "stderr": "Error [line 5]: switch value must be int, byte, char, or enum, got text\n",
         "exit": 1
       }
     },
@@ -2819,6 +2819,454 @@
       "expected": {
         "stdout": "",
         "stderr": "Error [line 3]: operator '%' not defined for type byte\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_struct_nested_type_decl",
+      "kind": "negative",
+      "source": "fn main() {\n        struct Inner {\n            x: int\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type declarations are only allowed at the top level",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: type declarations are only allowed at the top level\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_alias_cycle",
+      "kind": "negative",
+      "source": "alias A = B\n    alias B = A\n    fn main() {\n        let a: A = 1\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "alias cycle detected involving type 'A'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 1]: alias cycle detected involving type 'A'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_struct_value_self_containment",
+      "kind": "negative",
+      "source": "struct Node {\n        next: Node\n    }\n    fn main() {\n        let n = Node(Node(0))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot contain itself by value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: struct type 'Node' cannot contain itself by value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_type_dup_decl",
+      "kind": "negative",
+      "source": "struct Point {\n        x: int\n    }\n    enum Point {\n        A\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "duplicate declaration of type 'Point'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: duplicate declaration of type 'Point'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_type_as_value",
+      "kind": "negative",
+      "source": "struct Point {\n        x: int\n    }\n    fn main() {\n        let p = Point\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot use type 'Point' as a value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: cannot use type 'Point' as a value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_struct_ctor_arity",
+      "kind": "negative",
+      "source": "struct Point {\n        x: int\n        y: int\n    }\n    fn main() {\n        let p = Point(1)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "struct 'Point' constructor expects 2 arguments",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: struct 'Point' constructor expects 2 arguments, got 1\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_struct_ctor_arg_type",
+      "kind": "negative",
+      "source": "struct Point {\n        x: int\n        y: int\n    }\n    fn main() {\n        let p = Point(\"a\", 2)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch: field 'x' of struct 'Point' expects",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: type mismatch: field 'x' of struct 'Point' expects int, got text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_struct_ctor_enum",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n    }\n    fn main() {\n        let c = Color()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "enum type 'Color' cannot be constructed",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: enum type 'Color' cannot be constructed\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_struct_field_unknown",
+      "kind": "negative",
+      "source": "struct Point {\n        x: int\n    }\n    fn main() {\n        let p = Point(1)\n        print(p.z)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "struct type 'Point' has no field 'z'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: struct type 'Point' has no field 'z'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_enum_dup_variant",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n        Red\n    }\n    fn main() {\n        print(Color.Red)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "duplicate variant 'Red' in enum 'Color'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: duplicate variant 'Red' in enum 'Color'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_enum_variant_unknown",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n    }\n    fn main() {\n        print(Color.Magenta)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "enum type 'Color' has no variant 'Magenta'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: enum type 'Color' has no variant 'Magenta'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_enum_member_assign",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n    }\n    fn main() {\n        Color.Red = 5\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot assign to enum member 'Color.Red'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: cannot assign to enum member 'Color.Red'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_member_access_non_struct",
+      "kind": "negative",
+      "source": "fn main() {\n        let n = 5\n        print(n.x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot access member 'x' of int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: cannot access member 'x' of int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_print_struct",
+      "kind": "negative",
+      "source": "struct Point {\n        x: int\n    }\n    fn main() {\n        let p = Point(1)\n        print(p)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot print a struct value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: cannot print a struct value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_struct_eq",
+      "kind": "negative",
+      "source": "struct Point {\n        x: int\n    }\n    fn main() {\n        let a = Point(1)\n        let b = Point(1)\n        print(a == b)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "operator '==' not defined for type struct",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: operator '==' not defined for type struct\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_struct_arith",
+      "kind": "negative",
+      "source": "struct Point {\n        x: int\n    }\n    fn main() {\n        let a = Point(1)\n        print(a + a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "not defined for type struct",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: operator '+' not defined for type struct\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_enum_arith_enum",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n    }\n    fn main() {\n        print(Color.Red + Color.Green)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "not defined for enum types",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: operator '+' not defined for enum types (only == and != allowed)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_enum_rel",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n    }\n    fn main() {\n        print(Color.Red < Color.Green)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "not defined for enum types",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: operator '<' not defined for enum types (only == and != allowed)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_enum_eq_int",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n    }\n    fn main() {\n        print(Color.Red == 1)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot compare an enum value with an int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: cannot compare an enum value with an int; compare it with another enum value instead\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_enum_cross_compare",
+      "kind": "negative",
+      "source": "enum A {\n        a1\n    }\n    enum B {\n        b1\n    }\n    fn main() {\n        print(A.a1 == B.b1)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot compare enum 'A' with 'B'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 8]: type mismatch: cannot compare enum 'A' with 'B'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_enum_logic",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n    }\n    fn main() {\n        print(Color.Red and Color.Green)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "not defined for enum types",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: operator '&&' not defined for enum types (only == and != allowed)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_enum_annotated_int",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n    }\n    fn main() {\n        let c: Color = 1\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "declared as enum but initialized with int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: type mismatch: variable 'c' declared as enum but initialized with int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_struct_annotated_other",
+      "kind": "negative",
+      "source": "struct P {\n        x: int\n    }\n    struct Q {\n        y: int\n    }\n    fn main() {\n        let p: P = Q(1)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "declared as P but initialized with Q",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 9]: type mismatch: variable 'p' declared as P but initialized with Q\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_enum_var_int_assign",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n    }\n    fn main() {\n        let color: Color = Color.Red\n        let n = 1\n        color = n\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 9]: type mismatch: cannot assign int to enum\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_switch_enum_dup_ordinal",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n    }\n    fn main() {\n        let c = Color.Red\n        switch (c) {\n            case Color.Green:\n                print(1)\n            case 1:\n                print(2)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "duplicate switch case value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 12]: duplicate switch case value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_switch_enum_wrong_type",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n    }\n    enum Size {\n        Small\n        Big\n    }\n    fn main() {\n        let c = Color.Red\n        switch (c) {\n            case Size.Small:\n                print(1)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "switch case enum type must match switch value type",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 14]: switch case enum type must match switch value type\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_switch_enum_nonliteral_case",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n    }\n    fn f() -> Color {\n        return Color.Green\n    }\n    fn main() {\n        let c = Color.Red\n        switch (c) {\n            case f():\n                print(1)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "switch cases must be enum members or int literals",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 13]: switch cases must be enum members or int literals\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_const_struct_write",
+      "kind": "negative",
+      "source": "struct Point {\n        x: int\n    }\n    fn main() {\n        const p = Point(1)\n        p.x = 5\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot modify immutable variable 'p'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: cannot modify immutable variable 'p'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_return_struct_in_void",
+      "kind": "negative",
+      "source": "struct Point {\n        x: int\n    }\n    fn normalize() {\n        return Point(1, 2)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "return value in void function",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: return value in void function\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_member_assign_wrong_type",
+      "kind": "negative",
+      "source": "struct Point {\n        x: int\n    }\n    fn main() {\n        let p = Point(1)\n        p.x = \"hi\"\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot assign text to field 'x'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: type mismatch: cannot assign text to field 'x' (expects int)\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_enum_field_compound",
+      "kind": "negative",
+      "source": "enum Color {\n        Red\n        Green\n    }\n    struct Pixel {\n        color: Color\n    }\n    fn main() {\n        let px = Pixel(Color.Red)\n        px.color += 1\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "compound assignment is not allowed on enum fields",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 11]: compound assignment is not allowed on enum fields\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_struct_length",
+      "kind": "negative",
+      "source": "struct Point {\n        x: int\n    }\n    fn main() {\n        let p = Point(1)\n        print(length(p))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "builtin 'length' expects text or array, got struct",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: builtin 'length' expects text or array, got struct\n",
         "exit": 1
       }
     },

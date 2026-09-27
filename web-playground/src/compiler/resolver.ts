@@ -5,6 +5,7 @@
 import type {
   Expression,
   FunctionTypeInfo,
+  Param,
   Program,
   Statement,
   TypeDesc,
@@ -35,6 +36,8 @@ import {
   IfStmt,
   LambdaExpr,
   LoopStmt,
+  MemberAccessExpr,
+  MemberAssignStmt,
   MultiAssignStmt,
   NegExpr,
   NotExpr,
@@ -44,6 +47,8 @@ import {
   StringLiteral,
   SwitchStmt,
   TupleLiteral,
+  TypeDecl,
+  TypeDeclKind,
   TypeKind,
   VarDecl,
   WhileStmt,
@@ -62,7 +67,9 @@ import {
 // ---------------------------------------------------------------------------
 
 function paramTypeDesc(p: { desc: TypeDesc; type: TypeKind; elem_desc: TypeDesc; tuple_members: TypeDesc[] }): TypeDesc {
-  if (p.desc.type !== TypeKind.Unknown) return p.desc;
+  // A named-type reference ({Unknown, type_name}) is a transient marker the
+  // expansion pass resolves; surface it so callers see the name pre-expansion.
+  if (p.desc.type !== TypeKind.Unknown || p.desc.type_name !== "") return p.desc;
   const d = mkType(p.type);
   d.elem = p.elem_desc.elem;
   d.tuple_members = p.tuple_members;
@@ -177,6 +184,13 @@ export class TypeResolver {
   private next_loop_id_ = 0;
   private lambda_counter_ = 0;
   private lambda_fns_: FunctionDecl[] = [];
+  // M16: user-declared types (alias/struct/enum), collected from the merged
+  // program before anything else. One namespace shared with functions and
+  // top-level variables; collisions are errors.
+  private type_decls_ = new Map<string, TypeDecl>();
+  private expanded_structs_ = new Map<string, TypeDesc>(); // nominal name -> full struct desc
+  private building_structs_ = new Set<string>(); // names whose fields are being expanded (direct chain)
+  private expanding_aliases_ = new Set<string>(); // names of aliases mid-expansion (cycle detection)
 
   // ---- scope helpers ----
 
@@ -486,6 +500,9 @@ export class TypeResolver {
     if (expr instanceof ArrayIndexExpr) {
       if (expr.elem.type === TypeKind.Array) return elementOf(expr.elem);
     }
+    if (expr instanceof MemberAccessExpr) {
+      if (expr.is_field && expr.field_desc.type === TypeKind.Array) return elementOf(expr.field_desc);
+    }
     return mkType(TypeKind.Unknown);
   }
 
@@ -498,6 +515,42 @@ export class TypeResolver {
       return d;
     }
     if (k === TypeKind.Function) return this.exprFunctionType(expr);
+    if (k === TypeKind.Struct || k === TypeKind.Enum) {
+      // Nominal descriptor: carry the declared type name so member access
+      // and nominal equality checks can use it.
+      if (expr instanceof Identifier) {
+        let s = this.findSymbol(expr.name);
+        if (!s) s = this.findOuterSymbol(expr.name);
+        if (s && (s.type === TypeKind.Struct || s.type === TypeKind.Enum)) return s.desc;
+      }
+      if (expr instanceof CallExpr) {
+        if (expr.is_struct_ctor) return expr.struct_ctor_desc;
+        if (expr.is_function_value_call && expr.fn_type.fn_info &&
+            (expr.fn_type.fn_info.ret.type === TypeKind.Struct ||
+             expr.fn_type.fn_info.ret.type === TypeKind.Enum))
+          return expr.fn_type.fn_info.ret;
+        const sig = this.getFunction(expr.name);
+        if (sig && (sig.return_type === TypeKind.Struct || sig.return_type === TypeKind.Enum))
+          return sig.return_desc;
+      }
+      if (expr instanceof MemberAccessExpr) {
+        if (expr.is_enum_member) {
+          const d = mkType(TypeKind.Enum);
+          d.type_name = expr.enum_type_name;
+          return d;
+        }
+        if (expr.is_field) return expr.field_desc;
+      }
+      if (expr instanceof ArrayIndexExpr) {
+        if (expr.elem.type === TypeKind.Struct || expr.elem.type === TypeKind.Enum)
+          return expr.elem;
+      }
+      if (expr instanceof ConditionalExpr) {
+        // Both branches carry the same nominal type (resolver-enforced).
+        return this.exprDesc(expr.then_expr);
+      }
+      return mkType(k); // fallback
+    }
     const d = mkType(k);
     return d;
   }
@@ -520,6 +573,9 @@ export class TypeResolver {
     if (expr instanceof ArrayIndexExpr) {
       if (expr.resolved_type === TypeKind.Tuple) return expr.elem.tuple_members;
     }
+    if (expr instanceof MemberAccessExpr) {
+      if (expr.is_field && expr.field_desc.type === TypeKind.Tuple) return expr.field_desc.tuple_members;
+    }
     return [];
   }
 
@@ -538,6 +594,9 @@ export class TypeResolver {
       if (expr.is_function_value_call && expr.fn_type.fn_info) return expr.fn_type.fn_info.ret;
       const sig = this.getFunction(expr.name);
       if (sig && sig.return_type === TypeKind.Function) return sig.return_desc;
+    }
+    if (expr instanceof MemberAccessExpr) {
+      if (expr.is_field && expr.field_desc.type === TypeKind.Function) return expr.field_desc;
     }
     return mkType(TypeKind.Unknown);
   }
@@ -581,6 +640,8 @@ export class TypeResolver {
     if (a.type !== b.type) return false;
     if (a.type === TypeKind.Array) return typeDescEquals(elementOf(a), elementOf(b));
     if (a.type === TypeKind.Tuple) return typeDescListEquals(a.tuple_members, b.tuple_members);
+    // Structs and enums are nominal: identity is the declared type name.
+    if (a.type === TypeKind.Struct || a.type === TypeKind.Enum) return a.type_name === b.type_name;
     return true;
   }
 
@@ -601,7 +662,9 @@ export class TypeResolver {
           is_mutable,
           elementOf(vd),
           [],
-          vd.type === TypeKind.Function ? vd : mkType(TypeKind.Unknown)
+          vd.type === TypeKind.Function || vd.type === TypeKind.Struct || vd.type === TypeKind.Enum
+            ? vd
+            : mkType(TypeKind.Unknown)
         );
       }
       return;
@@ -613,7 +676,7 @@ export class TypeResolver {
     if (!sym.is_mutable) {
       throw this.err(line, `cannot modify immutable variable '${slot.name}'`);
     }
-    const have: TypeDesc = { type: sym.type, elem: sym.elem, tuple_members: sym.tuple_members, fn_info: null };
+    const have: TypeDesc = { type: sym.type, elem: sym.elem, tuple_members: sym.tuple_members, fn_info: null, type_name: "" };
     if (!this.typesMatch(have, vd)) {
       throw this.err(
         line,
@@ -762,6 +825,9 @@ export class TypeResolver {
       if (!sym) {
         sym = this.findOuterSymbol(expr.name);
         if (!sym) {
+          if (this.type_decls_.has(expr.name)) {
+            throw this.err(this.line(), `cannot use type '${expr.name}' as a value`);
+          }
           const fit = this.functions_.get(expr.name);
           if (fit && fit !== undefined && fit !== null && expr.name !== "main") {
             this.requireFunctionValue(expr.name);
@@ -982,6 +1048,59 @@ export class TypeResolver {
       }
       if (expr.name === "main") {
         throw this.err(this.line(), "cannot call function 'main'");
+      }
+      // M16: struct construction — `Name(args)` where Name is a user type.
+      const tdecl = this.type_decls_.get(expr.name);
+      if (tdecl) {
+        let target = mkType(TypeKind.Unknown);
+        if (tdecl.tdecl_kind === TypeDeclKind.Struct) {
+          target = mkType(TypeKind.Struct);
+          target.type_name = tdecl.name;
+        } else if (tdecl.tdecl_kind === TypeDeclKind.Alias) {
+          target = this.resolveNamedType(tdecl.name, true);
+          if (target.type === TypeKind.Enum) {
+            throw this.err(this.line(), `enum type '${expr.name}' cannot be constructed`);
+          }
+          if (target.type !== TypeKind.Struct) {
+            throw this.err(this.line(), `cannot construct type '${expr.name}'`);
+          }
+        } else {
+          throw this.err(this.line(), `enum type '${expr.name}' cannot be constructed`);
+        }
+        const st = this.type_decls_.get(target.type_name)!;
+        if (st.tdecl_kind !== TypeDeclKind.Struct) {
+          throw this.err(this.line(), `internal: constructor for type '${expr.name}' is not a struct`);
+        }
+        if (expr.args.length !== st.fields.length) {
+          throw this.err(
+            this.line(),
+            `struct '${st.name}' constructor expects ${stdToStr(st.fields.length)} arguments, got ${stdToStr(expr.args.length)}`
+          );
+        }
+        for (let i = 0; i < st.fields.length; i++) {
+          this.resolveExpr(expr.args[i]);
+          const ad = this.exprDesc(expr.args[i]);
+          if (ad.type === TypeKind.Unknown) {
+            throw this.err(
+              this.line(),
+              `cannot infer type of argument ${stdToStr(i + 1)} to struct constructor '${st.name}'`
+            );
+          }
+          if (!this.typesMatch(ad, st.fields[i].desc)) {
+            throw this.err(
+              this.line(),
+              `type mismatch: field '${st.fields[i].name}' of struct '${st.name}' expects ${typeDescToString(st.fields[i].desc)}, got ${typeDescToString(ad)}`
+            );
+          }
+        }
+        const fields: TypeDesc[] = st.fields.map((f) => f.desc);
+        expr.is_struct_ctor = true;
+        expr.struct_ctor_name = target.type_name;
+        expr.struct_ctor_fields = fields;
+        expr.struct_ctor_desc = target;
+        result = TypeKind.Struct;
+        expr.resolved_type = result;
+        return result;
       }
       // -- call by function name --
       const sig = this.getFunction(expr.name);
@@ -1217,7 +1336,7 @@ export class TypeResolver {
         const bd = this.exprDesc(expr.base);
         if (bd.type === TypeKind.Array) {
           const it = this.resolveExpr(expr.index);
-          if (it !== TypeKind.Int) {
+          if (it !== TypeKind.Int && it !== TypeKind.Enum) {
             throw this.err(this.line(), `array index must be int, got ${typeToString(it)}`);
           }
           expr.elem = elementOf(bd);
@@ -1245,7 +1364,7 @@ export class TypeResolver {
       }
       if (sym.type === TypeKind.Array) {
         const it = this.resolveExpr(expr.index);
-        if (it !== TypeKind.Int) {
+        if (it !== TypeKind.Int && it !== TypeKind.Enum) {
           throw this.err(this.line(), `array index must be int, got ${typeToString(it)}`);
         }
         if (sym.elem.type === TypeKind.Unknown) {
@@ -1266,7 +1385,78 @@ export class TypeResolver {
       } else {
         throw this.err(this.line(), `variable '${expr.name}' is not an array`);
       }
-    } else if (expr instanceof ConditionalExpr) {
+    } else if (expr instanceof MemberAccessExpr) {
+        // base.member — enum member reference (base = enum type name) or
+        // struct field access (base = struct value).
+        if (expr.base instanceof Identifier) {
+          const tit = this.type_decls_.get(expr.base.name);
+          if (tit) {
+            let enumDesc = mkType(TypeKind.Unknown);
+            const td = tit;
+            if (td.tdecl_kind === TypeDeclKind.Enum) {
+              enumDesc = mkType(TypeKind.Enum);
+              enumDesc.type_name = td.name;
+            } else if (td.tdecl_kind === TypeDeclKind.Alias) {
+              const decomp = this.resolveNamedType(td.name, true);
+              if (decomp.type === TypeKind.Enum) enumDesc = decomp;
+            }
+            if (enumDesc.type === TypeKind.Enum) {
+              const et = this.type_decls_.get(enumDesc.type_name)!;
+              if (et.tdecl_kind !== TypeDeclKind.Enum) {
+                throw this.err(this.line(), `internal: '${enumDesc.type_name}' is not an enum`);
+              }
+              let vi = -1;
+              for (let i = 0; i < et.variants.length; i++) {
+                if (et.variants[i] === expr.member) { vi = i; break; }
+              }
+              if (vi < 0) {
+                throw this.err(
+                  this.line(),
+                  `enum type '${enumDesc.type_name}' has no variant '${expr.member}'`
+                );
+              }
+              expr.is_enum_member = true;
+              expr.enum_type_name = enumDesc.type_name;
+              expr.enum_index = vi;
+              result = TypeKind.Enum;
+              expr.resolved_type = result;
+              return result;
+            }
+            throw this.err(this.line(), `cannot use type '${expr.base.name}' as a value`);
+          }
+        }
+        const bt = this.resolveExpr(expr.base);
+        if (bt === TypeKind.Unknown) {
+          throw this.err(this.line(), "cannot resolve type in member access");
+        }
+        const bd = this.exprDesc(expr.base);
+        if (bd.type !== TypeKind.Struct) {
+          throw this.err(
+            this.line(),
+            `cannot access member '${expr.member}' of ${typeDescToString(bd)}`
+          );
+        }
+        const stt = this.type_decls_.get(bd.type_name);
+        if (!stt || stt.tdecl_kind !== TypeDeclKind.Struct) {
+          throw this.err(this.line(), `internal: unknown struct type '${bd.type_name}'`);
+        }
+        const sfields = stt.fields;
+        let sfi = -1;
+        for (let i = 0; i < sfields.length; i++) {
+          if (sfields[i].name === expr.member) { sfi = i; break; }
+        }
+        if (sfi < 0) {
+          throw this.err(
+            this.line(),
+            `struct type '${bd.type_name}' has no field '${expr.member}'`
+          );
+        }
+        expr.is_field = true;
+        expr.struct_name = bd.type_name;
+        expr.field_index = sfi;
+        expr.field_desc = sfields[sfi].desc;
+        result = expr.field_desc.type;
+      } else if (expr instanceof ConditionalExpr) {
       const conditionType = this.resolveExpr(expr.condition);
       if (conditionType !== TypeKind.Bool) {
         throw this.err(this.line(), `ternary condition must be bool, got ${typeToString(conditionType)}`);
@@ -1313,6 +1503,52 @@ export class TypeResolver {
       }
       if (lt === TypeKind.Tuple || rt === TypeKind.Tuple) {
         throw this.err(this.line(), `operator '${expr.op}' not defined for type tuple`);
+      }
+      if (lt === TypeKind.Struct || rt === TypeKind.Struct) {
+        throw this.err(this.line(), `operator '${expr.op}' not defined for type struct`);
+      }
+      // M16: enum operands. Two enums: only ==/!= across the same enum
+      // (nominal). Enum + int: implicit enum->int for arithmetic and
+      // relational operators; ==/!= with an int is rejected.
+      if (lt === TypeKind.Enum || rt === TypeKind.Enum) {
+        if (lt === TypeKind.Enum && rt === TypeKind.Enum) {
+          if (expr.op !== "==" && expr.op !== "!=") {
+            throw this.err(
+              this.line(),
+              `operator '${expr.op}' not defined for enum types (only == and != allowed)`
+            );
+          }
+          const ld = this.exprDesc(expr.left);
+          const rd = this.exprDesc(expr.right);
+          if (ld.type_name !== rd.type_name) {
+            throw this.err(
+              this.line(),
+              `type mismatch: cannot compare enum '${typeDescToString(ld)}' with '${typeDescToString(rd)}'`
+            );
+          }
+          result = TypeKind.Bool;
+          expr.resolved_type = result;
+          return result;
+        }
+        const other = lt === TypeKind.Enum ? rt : lt;
+        if (other !== TypeKind.Int) {
+          throw this.err(
+            this.line(),
+            `type mismatch in binary expression: ${typeToString(lt)} ${expr.op} ${typeToString(rt)}`
+          );
+        }
+        if (expr.op === "==" || expr.op === "!=") {
+          throw this.err(
+            this.line(),
+            "cannot compare an enum value with an int; compare it with another enum value instead"
+          );
+        }
+        if (expr.ekind === ExprKind.Logical) {
+          throw this.err(this.line(), `operator '${expr.op}' not defined for enum types`);
+        }
+        result = expr.ekind === ExprKind.Arithmetic ? TypeKind.Int : TypeKind.Bool;
+        expr.resolved_type = result;
+        return result;
       }
       if (lt !== rt) {
         const byteNumericMix =
@@ -1459,6 +1695,15 @@ export class TypeResolver {
           );
         }
         this.define(vd.name, TypeKind.Tuple, vd.is_mutable, mkType(TypeKind.Unknown), [...vd.tuple_members]);
+      } else if (vd.annotation === TypeKind.Struct || vd.annotation === TypeKind.Enum) {
+        const initDesc = this.exprDesc(vd.initializer);
+        if (!this.typesMatch(initDesc, vd.annotation_desc)) {
+          throw this.err(
+            vd.line,
+            `type mismatch: variable '${vd.name}' declared as ${typeDescToString(vd.annotation_desc)} but initialized with ${typeDescToString(initDesc)}`
+          );
+        }
+        this.define(vd.name, vd.annotation, vd.is_mutable, mkType(TypeKind.Unknown), [], vd.annotation_desc);
       } else {
         this.define(vd.name, vd.annotation, vd.is_mutable);
       }
@@ -1495,6 +1740,10 @@ export class TypeResolver {
             `cannot infer function type for '${vd.name}'; use an annotation like fn(int) -> int`
           );
         }
+        vd.annotation_desc = initDesc;
+        this.define(vd.name, initType, vd.is_mutable, mkType(TypeKind.Unknown), [], initDesc);
+      } else if (initType === TypeKind.Struct || initType === TypeKind.Enum) {
+        const initDesc = this.exprDesc(vd.initializer);
         vd.annotation_desc = initDesc;
         this.define(vd.name, initType, vd.is_mutable, mkType(TypeKind.Unknown), [], initDesc);
       } else {
@@ -1536,7 +1785,9 @@ export class TypeResolver {
   resolveStatement(stmt: Statement): boolean {
     this.current_line_ = stmt.line;
     let always_returns = false;
-    if (stmt instanceof FunctionDecl) {
+    if (stmt instanceof TypeDecl) {
+      throw this.err(stmt.line, "type declarations are only allowed at the top level");
+    } else if (stmt instanceof FunctionDecl) {
       this.resolveFunctionDecl(stmt);
       always_returns = false;
     } else if (stmt instanceof VarDecl) {
@@ -1658,6 +1909,15 @@ export class TypeResolver {
             );
           }
         }
+        if ((varType === TypeKind.Struct || varType === TypeKind.Enum) && symbol) {
+          const rd = this.exprDesc(assign.rhs!);
+          if (!this.typesMatch(rd, symbol.desc)) {
+            throw this.err(
+              stmt.line,
+              `type mismatch: cannot assign ${typeDescToString(rd)} to ${typeDescToString(symbol.desc)}`
+            );
+          }
+        }
       } else {
         if (
           assign.op === "%=" &&
@@ -1687,6 +1947,128 @@ export class TypeResolver {
           );
         }
       }
+    } else if (stmt instanceof MemberAssignStmt) {
+      const massign = stmt;
+      // Reject assignment to an enum member (`Color.Red = ...`).
+      if (massign.base instanceof Identifier) {
+        const bite = this.type_decls_.get(massign.base.name);
+        if (bite) {
+          let probe = mkType(TypeKind.Unknown);
+          if (bite.tdecl_kind === TypeDeclKind.Enum) {
+            probe = mkType(TypeKind.Enum);
+            probe.type_name = bite.name;
+          } else if (bite.tdecl_kind === TypeDeclKind.Alias) {
+            const decomp = this.resolveNamedType(bite.name, true);
+            if (decomp.type === TypeKind.Enum) probe = decomp;
+          }
+          if (probe.type === TypeKind.Enum) {
+            throw this.err(
+              stmt.line,
+              `cannot assign to enum member '${massign.base.name}.${massign.member}'`
+            );
+          }
+        }
+      }
+      const mbt = this.resolveExpr(massign.base);
+      if (mbt === TypeKind.Unknown) {
+        throw this.err(stmt.line, "cannot resolve type in member assignment");
+      }
+      const mbd = this.exprDesc(massign.base);
+      if (mbd.type !== TypeKind.Struct) {
+        throw this.err(
+          stmt.line,
+          `cannot assign to member '${massign.member}' of ${typeDescToString(mbd)}`
+        );
+      }
+      const mast = this.type_decls_.get(mbd.type_name);
+      if (!mast || mast.tdecl_kind !== TypeDeclKind.Struct) {
+        throw this.err(stmt.line, `internal: unknown struct type '${mbd.type_name}'`);
+      }
+      const mfields = mast.fields;
+      let mfi = -1;
+      for (let i = 0; i < mfields.length; i++) {
+        if (mfields[i].name === massign.member) { mfi = i; break; }
+      }
+      if (mfi < 0) {
+        throw this.err(
+          stmt.line,
+          `struct type '${mbd.type_name}' has no field '${massign.member}'`
+        );
+      }
+      // Root-identifier walk for immutability / capture checks.
+      let rootName = "";
+      let cur: Expression | null = massign.base;
+      while (cur) {
+        if (cur instanceof MemberAccessExpr) {
+          cur = cur.base;
+        } else if (cur instanceof ArrayIndexExpr) {
+          if (cur.base) {
+            cur = cur.base;
+          } else {
+            rootName = cur.name;
+            break;
+          }
+        } else if (cur instanceof Identifier) {
+          rootName = cur.name;
+          break;
+        } else {
+          break;
+        }
+      }
+      if (rootName === "") {
+        throw this.err(
+          stmt.line,
+          "cannot modify a struct held in an expression; assign through a variable"
+        );
+      }
+      const tsym = this.findSymbol(rootName);
+      if (!tsym && this.isInOuterScopes(rootName)) {
+        throw this.err(stmt.line, `cannot modify captured variable '${rootName}'`);
+      }
+      if (tsym && !tsym.is_mutable) {
+        throw this.err(stmt.line, `cannot modify immutable variable '${rootName}'`);
+      }
+      const mfd = mfields[mfi].desc;
+      if (massign.op === "++" || massign.op === "--") {
+        if (mfd.type !== TypeKind.Int && mfd.type !== TypeKind.Decimal && mfd.type !== TypeKind.Byte) {
+          throw this.err(
+            stmt.line,
+            `operator '${massign.op}' requires int or decimal, got ${typeDescToString(mfd)}`
+          );
+        }
+      } else if (massign.op === "=") {
+        this.resolveExpr(massign.rhs!);
+        const mrd = this.exprDesc(massign.rhs!);
+        if (!this.typesMatch(mrd, mfd)) {
+          throw this.err(
+            stmt.line,
+            `type mismatch: cannot assign ${typeDescToString(mrd)} to field '${massign.member}' (expects ${typeDescToString(mfd)})`
+          );
+        }
+      } else {
+        if (mfd.type === TypeKind.Enum) {
+          throw this.err(stmt.line, "compound assignment is not allowed on enum fields");
+        }
+        if (mfd.type !== TypeKind.Int && mfd.type !== TypeKind.Decimal && mfd.type !== TypeKind.Byte) {
+          throw this.err(
+            stmt.line,
+            `operator '${massign.op}' requires int or decimal, got ${typeDescToString(mfd)}`
+          );
+        }
+        const mvt = this.resolveExpr(massign.rhs!);
+        const mrhsOk =
+          mvt === mfd.type ||
+          (mfd.type === TypeKind.Byte && (mvt === TypeKind.Int || mvt === TypeKind.Byte));
+        if (!mrhsOk) {
+          throw this.err(
+            stmt.line,
+            `type mismatch in compound assignment: ${typeDescToString(mfd)} ${massign.op} ${typeToString(mvt)}`
+          );
+        }
+      }
+      massign.struct_name = mbd.type_name;
+      massign.field_index = mfi;
+      massign.field_desc = mfd;
     } else if (stmt instanceof PrintStmt) {
       for (const arg of stmt.args) {
         const pt = this.resolveExpr(arg);
@@ -1698,6 +2080,9 @@ export class TypeResolver {
         }
         if (pt === TypeKind.Tuple) {
           throw this.err(stmt.line, "cannot print a tuple; destructure it or index its elements");
+        }
+        if (pt === TypeKind.Struct) {
+          throw this.err(stmt.line, "cannot print a struct value");
         }
       }
     } else if (stmt instanceof ExprStmt) {
@@ -1764,7 +2149,7 @@ export class TypeResolver {
           throw this.err(stmt.line, "foreach cannot infer element type for this array");
         }
         fe.elem = ed;
-        this.define(fe.value_name, ed.type, true, elementOf(ed), ed.tuple_members);
+        this.define(fe.value_name, ed.type, true, elementOf(ed), ed.tuple_members, ed);
       } else {
         fe.elem = mkType(TypeKind.Char);
         this.define(fe.value_name, TypeKind.Char);
@@ -1841,11 +2226,14 @@ export class TypeResolver {
       always_returns = stmt.has_else && thenReturns && elseReturns;
     } else if (stmt instanceof SwitchStmt) {
       const switchType = this.resolveExpr(stmt.value);
-      if (switchType !== TypeKind.Int && switchType !== TypeKind.Byte && switchType !== TypeKind.Char) {
-        throw this.err(stmt.line, `switch value must be int, byte, or char, got ${typeToString(switchType)}`);
+      const enumSwitch = switchType === TypeKind.Enum;
+      if (switchType !== TypeKind.Int && switchType !== TypeKind.Byte && switchType !== TypeKind.Char && switchType !== TypeKind.Enum) {
+        throw this.err(stmt.line, `switch value must be int, byte, char, or enum, got ${typeToString(switchType)}`);
       }
+      const switchDesc = this.exprDesc(stmt.value);
       let hasDefault = false;
       const seenValues: number[] = [];
+      let allCasesReturn = true;
       this.switch_entry_loop_depths_.push(this.loop_depth_);
       for (const c of stmt.cases) {
         if (c.is_default) {
@@ -1855,16 +2243,34 @@ export class TypeResolver {
           hasDefault = true;
         } else {
           const caseType = this.resolveExpr(c.value!);
-          if (caseType !== switchType) {
-            throw this.err(stmt.line, "switch case type must match switch value type");
-          }
           let caseValue = 0;
-          if (c.value instanceof NumberLiteral) {
-            caseValue = c.value.value;
-          } else if (c.value instanceof CharLiteral) {
-            caseValue = c.value.value.charCodeAt(0);
+          if (enumSwitch) {
+            // Cases may be enum members of the switched enum (nominal match,
+            // codegen uses the ordinal) or int literals (implicit enum->int).
+            if (c.value instanceof MemberAccessExpr) {
+              if (!c.value.is_enum_member) {
+                throw this.err(stmt.line, "switch case must be an enum member or int literal");
+              }
+              if (c.value.enum_type_name !== switchDesc.type_name) {
+                throw this.err(stmt.line, "switch case enum type must match switch value type");
+              }
+              caseValue = c.value.enum_index;
+            } else if (c.value instanceof NumberLiteral) {
+              caseValue = c.value.value;
+            } else {
+              throw this.err(stmt.line, "switch cases must be enum members or int literals");
+            }
           } else {
-            throw this.err(stmt.line, "switch cases must be literal values");
+            if (caseType !== switchType) {
+              throw this.err(stmt.line, "switch case type must match switch value type");
+            }
+            if (c.value instanceof NumberLiteral) {
+              caseValue = c.value.value;
+            } else if (c.value instanceof CharLiteral) {
+              caseValue = c.value.value.charCodeAt(0);
+            } else {
+              throw this.err(stmt.line, "switch cases must be literal values");
+            }
           }
           if (seenValues.includes(caseValue)) {
             throw this.err(stmt.line, "duplicate switch case value");
@@ -1872,10 +2278,12 @@ export class TypeResolver {
           seenValues.push(caseValue);
         }
         this.pushScope();
-        this.resolveStatementBlock(c.body);
+        const caseReturns = this.resolveStatementBlock(c.body);
         this.popScope();
+        if (!caseReturns) allCasesReturn = false;
       }
       this.switch_entry_loop_depths_.pop();
+      always_returns = hasDefault && allCasesReturn;
     } else if (stmt instanceof ReturnStmt) {
       const ret = stmt;
       if (!this.in_function_) {
@@ -1938,6 +2346,15 @@ export class TypeResolver {
             stmt.line,
             `type mismatch: return ${typeToString(vt)} but function returns ${typeToString(this.current_return_)}`
           );
+        }
+        if (this.current_return_ === TypeKind.Struct || this.current_return_ === TypeKind.Enum) {
+          const rt = this.exprDesc(ret.values[0]);
+          if (!this.typesMatch(rt, this.current_return_desc_)) {
+            throw this.err(
+              stmt.line,
+              `type mismatch: return ${typeDescToString(rt)} but function returns ${typeDescToString(this.current_return_desc_)}`
+            );
+          }
         }
         if (this.current_return_ === TypeKind.Function) {
           const rt = this.exprFunctionType(ret.values[0]);
@@ -2093,6 +2510,13 @@ export class TypeResolver {
       if (this.functions_.has(fn.name)) {
         throw this.err(fn.line, `duplicate declaration of function '${fn.name}'`, fn.file);
       }
+      if (this.type_decls_.has(fn.name)) {
+        throw this.err(
+          fn.line,
+          `cannot declare function '${fn.name}': a type with that name already exists`,
+          fn.file
+        );
+      }
       const sig: FunctionSig = {
         param_types: [], param_elems: [], param_tuple_members: [], param_descs: [],
         param_has_default: [], variadic: false, variadic_elem: mkType(TypeKind.Unknown),
@@ -2198,6 +2622,8 @@ export class TypeResolver {
   resolve(program: Program): void {
     this.entry_file_ = program.source_file;
     this.current_file_ = program.source_file;
+    this.collectTypeDecls(program);
+    this.expandTypeRefs(program);
     this.collectFunctions(program);
     this.analyzeNonlocalExits(program);
     this.pushScope();
@@ -2211,11 +2637,25 @@ export class TypeResolver {
       if (stmt instanceof VarDecl) {
         this.current_line_ = stmt.line;
         if (stmt.file.length > 0) this.current_file_ = stmt.file;
+        if (this.type_decls_.has(stmt.name)) {
+          throw this.err(
+            stmt.line,
+            `cannot declare variable '${stmt.name}': a type with that name already exists`
+          );
+        }
         this.resolveVarDecl(stmt);
         topState.add(stmt);
       } else if (stmt instanceof DestructDecl) {
         this.current_line_ = stmt.line;
         if (stmt.file.length > 0) this.current_file_ = stmt.file;
+        for (const pat of stmt.patterns) {
+          if (this.type_decls_.has(pat.name)) {
+            throw this.err(
+              stmt.line,
+              `cannot declare variable '${pat.name}': a type with that name already exists`
+            );
+          }
+        }
         this.resolveDestructDecl(stmt);
         topState.add(stmt);
       }
@@ -2225,6 +2665,7 @@ export class TypeResolver {
     // main). Top-level state is already registered above.
     for (const stmt of program.statements) {
       if (topState.has(stmt)) continue;
+      if (stmt instanceof TypeDecl) continue;
       this.resolveStatement(stmt);
     }
     this.popScope();
@@ -2232,6 +2673,287 @@ export class TypeResolver {
       program.statements.push(f);
     }
     this.lambda_fns_ = [];
+  }
+
+  // ---- M16: type declarations (alias / struct / enum) ----
+
+  private collectTypeDecls(program: Program): void {
+    for (const stmt of program.statements) {
+      if (stmt instanceof TypeDecl) {
+        if (this.type_decls_.has(stmt.name)) {
+          throw this.err(stmt.line, `duplicate declaration of type '${stmt.name}'`, stmt.file);
+        }
+        // Variants are looked up by name within one enum, so a repeat would
+        // silently shadow the earlier ordinal.
+        if (stmt.tdecl_kind === TypeDeclKind.Enum) {
+          const seen = new Set<string>();
+          for (const v of stmt.variants) {
+            if (seen.has(v)) {
+              throw this.err(
+                stmt.line,
+                `duplicate variant '${v}' in enum '${stmt.name}'`,
+                stmt.file
+              );
+            }
+            seen.add(v);
+          }
+        }
+        this.type_decls_.set(stmt.name, stmt);
+      }
+    }
+  }
+
+  private expandDesc(d: TypeDesc, byValue: boolean): TypeDesc {
+    if (d.type === TypeKind.Unknown && d.type_name !== "") {
+      return this.resolveNamedType(d.type_name, byValue);
+    }
+    if (d.type === TypeKind.Array) {
+      const out: TypeDesc = { type: d.type, elem: null, tuple_members: d.tuple_members, fn_info: d.fn_info, type_name: d.type_name };
+      out.elem = this.expandDesc(elementOf(d), false);
+      return out;
+    }
+    if (d.type === TypeKind.Tuple) {
+      return { type: d.type, elem: d.elem, tuple_members: d.tuple_members.map((m) => this.expandDesc(m, true)), fn_info: d.fn_info, type_name: d.type_name };
+    }
+    if (d.type === TypeKind.Function && d.fn_info) {
+      return {
+        type: d.type,
+        elem: null,
+        tuple_members: [],
+        fn_info: {
+          params: d.fn_info.params.map((p) => this.expandDesc(p, false)),
+          ret: this.expandDesc(d.fn_info.ret, false),
+        },
+        type_name: d.type_name,
+      };
+    }
+    return d;
+  }
+
+  private resolveNamedType(name: string, byValue: boolean): TypeDesc {
+    const t = this.type_decls_.get(name);
+    if (!t) {
+      throw this.err(this.line(), `undefined type '${name}'`);
+    }
+    switch (t.tdecl_kind) {
+      case TypeDeclKind.Alias: {
+        if (this.expanding_aliases_.has(name)) {
+          throw this.err(t.line, `alias cycle detected involving type '${name}'`, t.file);
+        }
+        this.expanding_aliases_.add(name);
+        const out = this.expandDesc(t.alias_target, true);
+        this.expanding_aliases_.delete(name);
+        return out;
+      }
+      case TypeDeclKind.Struct: {
+        if (byValue && this.building_structs_.has(name)) {
+          throw this.err(t.line, `struct type '${name}' cannot contain itself by value`, t.file);
+        }
+        const cached = this.expanded_structs_.get(name);
+        if (cached) return cached;
+        const out = mkType(TypeKind.Struct);
+        out.type_name = name;
+        // Cache before expanding fields so (indirect, heap) self-references
+        // resolve to the descriptor instead of recursing forever.
+        this.expanded_structs_.set(name, out);
+        this.building_structs_.add(name);
+        for (const f of t.fields) {
+          f.desc = this.expandDesc(f.desc, true);
+        }
+        this.building_structs_.delete(name);
+        return out;
+      }
+      case TypeDeclKind.Enum: {
+        const out = mkType(TypeKind.Enum);
+        out.type_name = name;
+        return out;
+      }
+    }
+    return mkType(TypeKind.Unknown);
+  }
+
+  private expandTypeRefs(program: Program): void {
+    // Force-expand every declared type (in declaration order) so unused types
+    // are still validated and all descriptors are cached.
+    for (const stmt of program.statements) {
+      if (stmt instanceof TypeDecl) {
+        this.current_line_ = stmt.line;
+        if (stmt.file.length > 0) this.current_file_ = stmt.file;
+        this.resolveNamedType(stmt.name, true);
+      }
+    }
+    // Expand every annotation/parameter/return reference in the program.
+    for (const stmt of program.statements) {
+      this.expandTypeRefsStmt(stmt);
+    }
+  }
+
+  private expandTypeRefsStmt(stmt: Statement): void {
+    const savedFile = this.current_file_;
+    if (stmt instanceof VarDecl) {
+      if (stmt.has_annotation) {
+        this.current_line_ = stmt.line;
+        if (stmt.file.length > 0) this.current_file_ = stmt.file;
+        let d: TypeDesc;
+        if (stmt.annotation_desc.type !== TypeKind.Unknown || stmt.annotation_desc.type_name !== "") {
+          d = stmt.annotation_desc;
+        } else {
+          d = mkType(stmt.annotation);
+          if (d.type === TypeKind.Array) {
+            if (stmt.elem_desc.type !== TypeKind.Unknown || stmt.elem_desc.type_name !== "") {
+              d.elem = stmt.elem_desc;
+            }
+          } else if (d.type === TypeKind.Tuple) {
+            d.tuple_members = stmt.tuple_members;
+          }
+        }
+        const e = this.expandDesc(d, true);
+        stmt.annotation = e.type;
+        stmt.elem_desc = e.type === TypeKind.Array ? elementOf(e) : mkType(TypeKind.Unknown);
+        stmt.tuple_members = e.type === TypeKind.Tuple ? e.tuple_members : [];
+        stmt.annotation_desc =
+          e.type === TypeKind.Function || e.type === TypeKind.Struct || e.type === TypeKind.Enum
+            ? e
+            : mkType(TypeKind.Unknown);
+      }
+      if (stmt.initializer) this.expandTypeRefsExpr(stmt.initializer);
+    } else if (stmt instanceof FunctionDecl) {
+      this.current_line_ = stmt.line;
+      if (stmt.file.length > 0) this.current_file_ = stmt.file;
+      for (const p of stmt.params) this.syncParamDesc(p);
+      this.syncReturnDesc(stmt);
+      for (const s of stmt.body) this.expandTypeRefsStmt(s);
+    } else if (stmt instanceof IfStmt) {
+      for (const s of stmt.then_body) this.expandTypeRefsStmt(s);
+      for (const s of stmt.else_body) this.expandTypeRefsStmt(s);
+    } else if (stmt instanceof SwitchStmt) {
+      for (const c of stmt.cases) for (const s of c.body) this.expandTypeRefsStmt(s);
+    } else if (stmt instanceof LoopStmt) {
+      for (const s of stmt.body) this.expandTypeRefsStmt(s);
+    } else if (stmt instanceof ForeachStmt) {
+      for (const s of stmt.body) this.expandTypeRefsStmt(s);
+    } else if (stmt instanceof WhileStmt) {
+      for (const s of stmt.body) this.expandTypeRefsStmt(s);
+    } else if (stmt instanceof ForStmt) {
+      if (stmt.init) this.expandTypeRefsStmt(stmt.init);
+      if (stmt.update) this.expandTypeRefsStmt(stmt.update);
+      for (const s of stmt.body) this.expandTypeRefsStmt(s);
+    } else if (stmt instanceof DoWhileStmt) {
+      for (const s of stmt.body) this.expandTypeRefsStmt(s);
+    } else if (stmt instanceof ExprStmt) {
+      if (stmt.expr) this.expandTypeRefsExpr(stmt.expr);
+    } else if (stmt instanceof DestructDecl) {
+      if (stmt.rhs) this.expandTypeRefsExpr(stmt.rhs);
+    } else if (stmt instanceof MultiAssignStmt) {
+      if (stmt.rhs) this.expandTypeRefsExpr(stmt.rhs);
+    } else if (stmt instanceof AssignStmt) {
+      if (stmt.rhs) this.expandTypeRefsExpr(stmt.rhs);
+    } else if (stmt instanceof ArrayAssignStmt) {
+      if (stmt.index) this.expandTypeRefsExpr(stmt.index);
+      if (stmt.rhs) this.expandTypeRefsExpr(stmt.rhs);
+    } else if (stmt instanceof ElementAssignStmt) {
+      if (stmt.target) this.expandTypeRefsExpr(stmt.target);
+      if (stmt.rhs) this.expandTypeRefsExpr(stmt.rhs);
+    } else if (stmt instanceof MemberAssignStmt) {
+      if (stmt.base) this.expandTypeRefsExpr(stmt.base);
+      if (stmt.rhs) this.expandTypeRefsExpr(stmt.rhs);
+    } else if (stmt instanceof ReturnStmt) {
+      for (const v of stmt.values) this.expandTypeRefsExpr(v);
+    } else if (stmt instanceof PrintStmt) {
+      for (const a of stmt.args) this.expandTypeRefsExpr(a);
+    }
+    // Native keeps a second, already-exhausted if-chain here that only reaches
+    // condition expressions of statements handled above (see the duplicated
+    // `dynamic_cast<IfStmt*>` tail in type_resolver.cpp:expand_type_refs_stmt).
+    // It is dead code there too; it is kept as a separate call so the port
+    // stays readable and does not trip no-dupe-else-if on the narrowed union.
+    this.expandTypeRefsStmtConditionTail(stmt);
+    this.current_file_ = savedFile;
+  }
+
+  private expandTypeRefsStmtConditionTail(stmt: Statement): void {
+    if (stmt instanceof IfStmt) {
+      if (stmt.condition) this.expandTypeRefsExpr(stmt.condition);
+    } else if (stmt instanceof SwitchStmt) {
+      if (stmt.value) this.expandTypeRefsExpr(stmt.value);
+      for (const c of stmt.cases) if (c.value) this.expandTypeRefsExpr(c.value);
+    } else if (stmt instanceof WhileStmt) {
+      if (stmt.condition) this.expandTypeRefsExpr(stmt.condition);
+    } else if (stmt instanceof DoWhileStmt) {
+      if (stmt.condition) this.expandTypeRefsExpr(stmt.condition);
+    } else if (stmt instanceof ForStmt) {
+      if (stmt.condition) this.expandTypeRefsExpr(stmt.condition);
+    } else if (stmt instanceof ForeachStmt) {
+      if (stmt.iterable) this.expandTypeRefsExpr(stmt.iterable);
+    } else if (stmt instanceof LoopStmt) {
+      if (stmt.count) this.expandTypeRefsExpr(stmt.count);
+    }
+  }
+
+  private expandTypeRefsExpr(expr: Expression): void {
+    if (expr instanceof LambdaExpr) {
+      this.current_line_ = expr.line;
+      for (const p of expr.params) this.syncParamDesc(p);
+      this.syncReturnDesc(expr);
+      for (const s of expr.body) this.expandTypeRefsStmt(s);
+      return;
+    }
+    if (expr instanceof ArrayLiteral) {
+      for (const e of expr.elements) this.expandTypeRefsExpr(e);
+    } else if (expr instanceof TupleLiteral) {
+      for (const v of expr.values) this.expandTypeRefsExpr(v);
+    } else if (expr instanceof CallExpr) {
+      for (const a of expr.args) this.expandTypeRefsExpr(a);
+    } else if (expr instanceof BinaryExpr) {
+      this.expandTypeRefsExpr(expr.left);
+      this.expandTypeRefsExpr(expr.right);
+    } else if (expr instanceof NotExpr) {
+      this.expandTypeRefsExpr(expr.operand);
+    } else if (expr instanceof NegExpr) {
+      this.expandTypeRefsExpr(expr.operand);
+    } else if (expr instanceof ConditionalExpr) {
+      this.expandTypeRefsExpr(expr.condition);
+      this.expandTypeRefsExpr(expr.then_expr);
+      this.expandTypeRefsExpr(expr.else_expr);
+    } else if (expr instanceof CastExpr) {
+      this.expandTypeRefsExpr(expr.operand);
+    } else if (expr instanceof ArrayIndexExpr) {
+      if (expr.base) this.expandTypeRefsExpr(expr.base);
+      this.expandTypeRefsExpr(expr.index);
+    } else if (expr instanceof MemberAccessExpr) {
+      this.expandTypeRefsExpr(expr.base);
+    }
+  }
+
+  private syncParamDesc(p: Param): void {
+    if (p.variadic) {
+      if (p.elem_desc.type !== TypeKind.Unknown || p.elem_desc.type_name !== "") {
+        const e = this.expandDesc(p.elem_desc, true);
+        p.elem_desc = e;
+        p.desc = arrayOf(e);
+      }
+      return;
+    }
+    const e = this.expandDesc(p.desc, true);
+    p.desc = e;
+    p.type = e.type;
+    p.elem_desc = e.type === TypeKind.Array ? elementOf(e) : mkType(TypeKind.Unknown);
+    p.tuple_members = e.type === TypeKind.Tuple ? e.tuple_members : [];
+  }
+
+  private syncReturnDesc(fn: {
+    has_return_type: boolean;
+    return_type: TypeKind;
+    return_desc: TypeDesc;
+    return_elem: TypeDesc;
+    return_tuple_members: TypeDesc[];
+  }): void {
+    if (!fn.has_return_type) return;
+    const e = this.expandDesc(fn.return_desc, true);
+    fn.return_desc = e;
+    fn.return_type = e.type;
+    fn.return_elem = e.type === TypeKind.Array ? elementOf(e) : mkType(TypeKind.Unknown);
+    if (e.type === TypeKind.Tuple) fn.return_tuple_members = e.tuple_members;
   }
 
   // ---- error construction ----

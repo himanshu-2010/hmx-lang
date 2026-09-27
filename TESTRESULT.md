@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 424 / 424 (62 integration + 203 negative + 135 stress + 24 CLI); web-playground vitest 408 / 408 (403 parity + 5 app); valgrind ownership matrix 66/66
+**Status:** ALL TESTS PASSED — native 464 / 464 (64 integration + 235 negative + 141 stress + 24 CLI); web-playground vitest 448 / 448 (443 parity + 5 app)
 
 ---
 
@@ -23,7 +23,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 12. **Non-local exit**: `break` / `continue` inside a nested function break/continue the nearest loop of the enclosing function (restricted to direct calls from the loop's owner inside the loop).
 13. **Modules**: `use "file.hmx"` at the top of a file imports top-level functions from other `.hmx` files (relative paths, cycle detection, dedupe by canonical path, file-tagged diagnostics for imported-module errors).
 14. **Unicode identifiers**: any non-ASCII UTF-8 byte is a valid identifier character, emitted verbatim into the generated C.
-15. **Nested arrays & chained indexing**: recursive element type descriptors enable `[[int]]` annotations, nested-literal inference, `a[i][j]` reads, `a[i][j] = v` chained assignment, and nested `foreach`; bison conflict count still 6 SR (5 states), all resolved by shift.
+15. **Nested arrays & chained indexing**: recursive element type descriptors enable `[[int]]` annotations, nested-literal inference, `a[i][j]` reads, `a[i][j] = v` chained assignment, and nested `foreach`; bison conflict count is 9 SR (7 states) after M16, all resolved by shift.
 16. **Growable arrays (`sd_array*`) + array built-ins**: every array is a heap pointer with spare capacity; `push`/`pop`/`sort` mutate the shared backing in place, `slice`/`concat` build independent copies, `index_of` finds the first match (`-1` if absent), `contains` reports membership; immutable/captured arrays reject mutation, void built-ins reject value use, and `pop` on empty / out-of-range `slice` terminate at runtime with exit code 1.
 17. **Byte-level text ops**: `text[i]` read-indexing yields a `char` (runtime bounds-checked via `strlen`; assignment to a text character rejected at compile time), `ord(char)` → `int`, `chr(int)` → `char` (runtime `0..255` check, exit 1), and `split(text, sep)` → `[text]` preserving empty pieces (empty separator aborts with exit code 1).
 18. **Array/text destructuring with `...rest`**: `let (a, b, ...rest) = expr` and the multi-assign form bind the first `N` elements (arrays / text characters) with a runtime `length ≥ N` check; `...rest` captures the remainder as a new `[elem]` array or `text` substring; tuples still require an exact match and reject `...rest`.
@@ -32,11 +32,12 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 21. **Dynamic tuple indexing**: `t[i]` with a runtime `int` index works when every tuple member has the same type (the result has that type); the index is bounds-checked at runtime (`sd_check_tuple_index`, exit code 1 on out of range). Constant `t[0]` indexing is unchanged, heterogeneous tuples with a non-constant index are a compile error, and non-`int` indexes are rejected.
 22. **Currying**: anonymous **lambda expressions** (`lambda(x: int) -> int { ... }`, plus zero-arg and void variants, with the full `fn` parameter syntax incl. defaults/variadic) and **partial application** — calling a named function or function value with `1 <= args < arity` (no defaults, no variadic) returns a closure over the prefix arguments that waits for the rest. Both combine: lambdas capture enclosing scopes by snapshot, partials compose/chain via higher-order calls, and everything lower through the existing closure machinery.
 23. **Reference-counted memory (M15)**: `text`, arrays and closure environments are refcounted; `substring`/`slice` return shared immutable views pinned by refcount; array mutation forks copy-on-write; locals own, params borrow, and every generated temporary is paired with an exact `retain`/`release`. All 424 native + 408 web + 66 valgrind cases run clean under AddressSanitizer + LeakSanitizer.
+24. **Structs / enums / type aliases (M16)**: `alias NAME = TYPE`, `struct NAME { field: TYPE }`, and `enum NAME { VARIANT }` are real top-level declarations resolved in a pre-pass (so a type may be used before it is declared) in one flat namespace with functions and variables. Structs are C value types with per-field refcounted heap slots, enums are int-backed nominal ordinals, and aliases are transparent. A shallow web copy was observably wrong for nested aggregates (`shift(v, 3)` mutated the caller's value), so the web backend reproduces the C by-value copy with generated `_sd_cp_*` helpers. 32 new `m16_*` negative cases lock the error surface (type/field/variant resolution, nominal identity, operator restrictions, duplicate type and variant declarations, nested type decls).
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 424 (native) + 408 (web) = 832
-> - **Passed:** 832
+> - **Total Test Cases Executed:** 464 (native) + 448 (web) = 912
+> - **Passed:** 912
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -55,7 +56,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (62/62 Passed)
+### 1. Integration Fixtures (64/64 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -110,10 +111,12 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `currying.hmx` | **[NEW]** Currying | Named/value partials in HOFs, lambda capture across an enclosing fn, lambda-returning-lambda, direct lambda argument, void lambda | **PASS** |
 | `text_views.hmx` | **[NEW]** Text Views | `substring` views consumed by `==`/`parse_int`/`split`/`foreach`; view-vs-owner equality; view stays valid while source and view both live | **PASS** |
 | `cow_and_alias.hmx` | **[NEW]** COW + Alias | `let b = a` alias share (mutations visible); `slice` views fork on mutation (COW); push on a view after its source is alive; int + text element arrays | **PASS** |
+| `m16_structs_enums.hmx` | **[NEW]** Structs / Enums / Aliases | `struct` construction + nested field assignment, `enum` variants in arrays/`switch`, aliases (transparent + alias-of-enum), closures over structs, `foreach` over a struct field, function-typed fields, value-copy semantics | **PASS** |
+| `mod_m16_types` | **[NEW]** Module Types | Entry `use`s a module declaring a `struct`, an `enum`, and functions over them | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (203/203 Passed)
+### 2. Negative & Error Handling Suite (235/235 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -289,7 +292,7 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (135/135 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (141/141 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -894,5 +897,58 @@ leak-free + corruption-free.
   `stress 135 = 0 failures; negative 203 = 0; integration 62 = 0`.
 - **Web:** vitest **408/408** (403 parity + 5 app), `tsc -b` ✓,
   `vite build` ✓, oxlint 0 errors (11 benign warnings, all pre-existing UI).
+
+## M16 structs / enums / type aliases re-run (2026-09-27)
+
+Full re-verification after the type-system milestone (SYNTAX.md §17–19):
+`alias`, `struct`, and `enum` went from spec text to working declarations in
+both backends.
+
+- **Two-phase type resolution:** the resolver collects type declarations and
+  expands every type reference *before* collecting functions, so a type may be
+  used in an annotation, parameter, return type, `struct` field, or constructor
+  call before it is declared. Cycles are reported once by name — `alias cycle
+  detected involving type 'A'`, `struct type 'S' cannot contain itself by
+  value` (an array- or function-typed field naming its own struct is fine).
+- **Nominal identity, transparent aliases:** `TypeDesc` carries a `type_name`;
+  `Struct`/`Enum` compare by name so two enums with identical variant sets stay
+  distinct, while an alias expands away to its target (`alias Orientation =
+  Suit` *is* `Suit`). A type name may not collide with a function or variable.
+- **Value semantics:** structs lower to C `struct hmx_<Name> { f0 … fN }`; heap
+  fields retain/release exactly like tuple members, so `let p2 = p1; p2.y = 99`
+  leaves `p1` alone while a shared array buffer stays shared. The web backend
+  needed a real fix here — a shallow `SD.copy` aliased nested aggregates, so
+  `shift(v, 3)` mutated the caller's `v.p` (`14` instead of `23`); it now
+  generates `_sd_cp_*` helpers that copy nested aggregate slots and share
+  `array`/`text`/function slots, matching C by value.
+- **Enum rules (locked):** implicit enum→int only where an `int` is consumed —
+  `print`, array index, `switch` subject, and one operand of an arithmetic or
+  relational operator against an `int` (`Color.Red + 1`, `Color.Red < 3`).
+  `enum ⊕ enum`, logical operators, `==` against an `int`, `let c: Color = 1`,
+  `let n: int = Color.Red`, and compound assignment to an enum variable/field
+  are errors. Structs have no `==`, `print`, `length`, destructuring, or
+  arithmetic.
+- **Two gaps found and fixed while writing the tests:** a function-typed struct
+  field is now readable (`expr_function_type` gained a `MemberAccessExpr` case,
+  so `let f = op.apply` infers instead of erroring), and a repeated variant name
+  in one enum is now `duplicate variant 'Red' in enum 'Color'`.
+- **Grammar:** `factor: IDENTIFIER` split into `postfix_index: IDENTIFIER` plus
+  a call factor so member access composes with `[]`/`.`;
+  `postfix_index DOT IDENTIFIER <op>` added for member assignment. Conflicts
+  6 → 9 SR across 7 states (2 on `return_stmt: RETURN •`, 4 on
+  `postfix_index: IDENTIFIER •` — 3 on `[`, 1 on `(` — and 1 each on
+  `factor: NOT factor •` / `factor PLUS •` / `factor MINUS •` vs `factor AS
+  type`); all still resolve by shift. 179 rules, 471 states, 46 nonterminals;
+  web `tables.json` regenerated.
+- **Tests:** fixture `m16_structs_enums.hmx`; integration `mod_m16_types`;
+  stress `m16_struct_refcount` (shared-buffer semantics — `z z`),
+  `m16_enum_switch`, `m16_struct_conditional_alias`, `m16_struct_return_chain`,
+  `m16_struct_fn_field`, `m16_mod_struct_enum`; 32 negatives `m16_*`.
+- **Native:** integration **64/64**, negative **235/235**, stress & output
+  **141/141**, CLI **24/24** — all green (464/464).
+- **Web parity (1:1):** parity data regenerated via `gen-data.mts`:
+  `stress 141 = 0 failures; negative 235 = 0; integration 64 = 0`.
+- **Web:** vitest **448/448** (443 parity + 5 app), `tsc` ✓, `vite build` ✓,
+  oxlint 0 errors (11 benign warnings, all pre-existing UI).
 
 ## Native-only regression report (reference)

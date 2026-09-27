@@ -243,3 +243,49 @@ prior fixtures, and lands one complete feature.
   `text_views.hmx`, `cow_and_alias.hmx` + stress `m15_refcount_lifecycle`,
   `m15_view_consumers`, `m15_param_borrow` + negatives
   `runtime_{split_empty_sep,slice_oob,parse_int_invalid,parse_decimal_invalid}`.
+- **M16 structs / enums / type aliases (SYNTAX.md §17–19):** `alias NAME = TYPE`,
+  `struct NAME { field: TYPE }`, and `enum NAME { VARIANT }` are now real
+  top-level declarations. Design decisions:
+  - **Two-phase resolution.** The resolver runs `collect_type_decls` +
+    `expand_type_refs` *before* function collection, so a type may be used
+    before it is declared (annotation, parameter, return, field, or
+    constructor). `expand_desc`/`resolve_named` cache each declaration, so
+    cycles are reported once, by name: `alias cycle detected involving type
+    'A'`, `struct type 'S' cannot contain itself by value` (the `by_value` flag
+    distinguishes a by-value field from an array element, which is fine).
+  - **Nominal identity in one flat namespace.** `TypeDesc` grew a
+    `type_name`; `TypeKind::Struct`/`Enum` compare by name in
+    `type_desc_equals`/`types_match`, aliases expand away to the target
+    descriptor (so `alias Orientation = Suit` *is* `Suit`). A type name may
+    not collide with a function or variable name, and type declarations inside
+    a function body are rejected.
+  - **Codegen.** Structs lower to a C struct `hmx_<Name>` with fields
+    `f0..fN`; a struct constructor is a compound literal that moves its args.
+    Heap fields are retained/released exactly like tuple members
+    (`type_has_heap`, `slot_ret_name`/`slot_rel_name`), so a struct copy
+    shares its `text`/array storage and copies nested struct/tuple fields by
+    value. Enums are plain `int` ordinals with no runtime representation; the
+    ordinal is materialized at the member-access site. The web backend mirrors
+    this with JS arrays for struct values plus generated `_sd_cp_*` helpers
+    that reproduce the C copy shape (nested aggregates copied, pointer fields
+    shared) — a plain shallow copy was observably wrong for
+    `shift(v, 3)`-style nested mutation.
+  - **Locked enum rules:** implicit enum→int only where an `int` is consumed
+    (`print`, array index, `switch` subject, one operand of an arithmetic or
+    relational operator against an `int`); enum⊕enum, logical ops, `==`
+    against an `int`, and compound assignment to an enum variable/field are
+    errors. `==`/`!=` are same-enum only, so nominal identity is enforced at
+    the operator. Structs have no `==`, no `print`, no `length`, no
+    destructuring, and no arithmetic.
+  - Two resolver gaps found while writing the spec tests and fixed here:
+    a function-typed struct field is now readable (`expr_function_type` gained
+    a `MemberAccessExpr` case, so `let f = op.apply` infers instead of
+    erroring) and duplicate variants in one enum are now
+    `duplicate variant 'Red' in enum 'Color'`.
+  Native 464/464 + web 448/448 green (parity byte-identical); fixture
+  `m16_structs_enums.hmx` + integration `mod_m16_types` + stress
+  `m16_{struct_refcount,enum_switch,struct_conditional_alias,
+  struct_return_chain,struct_fn_field,mod_struct_enum}` + 32 negatives
+  `m16_*`. Grammar: 9 shift/reduce conflicts (up from 6 — `factor: IDENTIFIER`
+  split into `postfix_index` + a call factor, so the indexing/call ambiguity
+  is now counted per postfix state); 179 rules, 471 states, 46 nonterminals.

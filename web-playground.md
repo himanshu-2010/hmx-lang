@@ -10,8 +10,8 @@ Hard constraints from the project:
 - **Vite + React + TypeScript, nothing else.** No backend server, no WASM, no
   CodeMirror/Monaco unless we decide the editor shell needs it (see "Editor").
 - The only source of truth for language behavior is the native compiler in
-  `src/`. The web compiler must pass **the same 358 test cases** (52 integration
-  fixtures, 190 negative, 116 stress) before it ships — parity is the contract.
+  `src/`. The web compiler must pass **the same 440 test cases** (64 integration
+  fixtures, 235 negative, 141 stress) before it ships — parity is the contract.
 - `.hmx` extension and the error-message strings (grep-able by the negative
   suite) must match the native compiler so the negative suite can run verbatim.
 
@@ -152,7 +152,7 @@ repo root = the Vite + React + TS app (this repo's deployable)
       runner.ts                ← wires Editor → program.ts → Output (useReducer)
     examples/                  ← .hmx texts mirrored from examples/ + fixtures/
   tests/
-    parity.test.ts             ← the 358-case parity suite (vitest)
+    parity.test.ts             ← the native-case parity suite (vitest)
     unit.test.ts               ← lexer/table/resolver units
   tools/
     extract_parser_table.py    ← bison parser.cpp → tables/*.json

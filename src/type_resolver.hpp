@@ -60,6 +60,13 @@ private:
     std::vector<FunctionDecl*> outer_fns_;
     std::set<std::string> resolved_functions_;
     FunctionDecl* current_fn_ = nullptr;
+    // User-declared types (alias/struct/enum), collected from the merged
+    // program before anything else (M16). One namespace shared with functions
+    // and top-level variables; collisions are errors.
+    std::unordered_map<std::string, TypeDecl*> type_decls_;
+    std::unordered_map<std::string, TypeDesc> expanded_structs_;  // nominal name -> full struct desc
+    std::set<std::string> building_structs_;   // names whose fields are being expanded (direct chain)
+    std::set<std::string> expanding_aliases_;  // names of aliases mid-expansion (cycle detection)
     TypeKind current_return_ = TypeKind::Unknown;
     TypeDesc current_return_elem_;
     TypeDesc current_return_desc_ = {};
@@ -114,6 +121,17 @@ private:
     void resolve_function_decl(FunctionDecl* fn);
     void collect_functions(Program& program);
     void collect_functions_stmt(Statement* stmt);
+    // M16: type-declaration collection and named-type reference expansion.
+    void collect_type_decls(Program& program);
+    void expand_type_refs(Program& program);
+    void expand_type_refs_stmt(Statement* stmt);
+    void expand_type_refs_expr(Expression* expr);
+    TypeDesc expand_desc(const TypeDesc& d, bool by_value);
+    TypeDesc resolve_named(const std::string& name, bool by_value);
+    void sync_param_desc(FunctionDecl::Param& p);
+    void sync_return_desc(bool has_return, TypeKind& return_type,
+                          TypeDesc& return_desc, TypeDesc& return_elem,
+                          std::vector<TypeDesc>& return_tuple);
     void analyze_nonlocal_exits(Program& program);
     void analyze_nonlocal_stmts(const std::vector<StmtPtr>& stmts, FunctionDecl* enclosing,
                                 std::vector<Statement*>& lex_stack, int local_depth,

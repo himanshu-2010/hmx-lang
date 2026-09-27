@@ -22,6 +22,7 @@ import {
   DoWhileStmt,
   VarDecl,
   DestructDecl,
+  TypeDecl,
   type Program,
   type Statement,
 } from "./ast";
@@ -86,6 +87,8 @@ function stampFile(stmt: Statement, file: string): void {
   } else if (stmt instanceof VarDecl) {
     if (stmt.file.length === 0) stmt.file = file;
   } else if (stmt instanceof DestructDecl) {
+    if (stmt.file.length === 0) stmt.file = file;
+  } else if (stmt instanceof TypeDecl) {
     if (stmt.file.length === 0) stmt.file = file;
   } else if (stmt instanceof IfStmt) {
     recurse(stmt.then_body);

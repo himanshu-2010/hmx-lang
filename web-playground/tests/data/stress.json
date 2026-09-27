@@ -1775,7 +1775,7 @@
     {
       "name": "keyword_var_and_fn_names",
       "kind": "output",
-      "source": "fn double(x: int) -> int { return x * 2 }\n     fn main() {\n         let static = 5\n         let class = 7\n         print(static + class)\n         print(double(static))\n         let unsigned = 3\n         let volatile = 4\n         print(unsigned * volatile)\n         fn inner(struct: int) -> int { return struct + 1 }\n         print(inner(unsigned))\n     }",
+      "source": "fn double(x: int) -> int { return x * 2 }\n     fn main() {\n         let static = 5\n         let class = 7\n         print(static + class)\n         print(double(static))\n         let unsigned = 3\n         let volatile = 4\n         print(unsigned * volatile)\n         fn inner(shade: int) -> int { return shade + 1 }\n         print(inner(unsigned))\n     }",
       "stdin": null,
       "entry": null,
       "modules": null,
@@ -1873,7 +1873,7 @@
     {
       "name": "m15_refcount_lifecycle",
       "kind": "output",
-      "source": "fn main() {\n        let acc: [text] = []\n        let ok = 0\n        for (let i = 0; i < 100; i++) {\n            let s = \"n\" + tostr(i)\n            push(acc, s)\n            let tmp: [int] = [i, i + 1]\n            push(tmp, i + 2)\n            if (length(tmp) == 3) { pop(tmp) }\n            let v = substring(s, 0, 1)\n            if (v == \"n\") { ok = ok + 1 }\n            let alias = tmp\n            alias[0] = i * 2\n            if (alias[0] == i * 2) { ok = ok + 1 }\n        }\n        print(ok)\n        print(length(acc))\n        print(acc[0], acc[99])\n    }",
+      "source": "fn main() {\n        let acc: [text] = []\n        let ok = 0\n        for (let i = 0; i < 100; i++) {\n            let s = \"n\" + tostr(i)\n            push(acc, s)\n            let tmp: [int] = [i, i + 1]\n            push(tmp, i + 2)\n            if (length(tmp) == 3) { pop(tmp) }\n            let v = substring(s, 0, 1)\n            if (v == \"n\") { ok = ok + 1 }\n            let dup = tmp\n            dup[0] = i * 2\n            if (dup[0] == i * 2) { ok = ok + 1 }\n        }\n        print(ok)\n        print(length(acc))\n        print(acc[0], acc[99])\n    }",
       "stdin": null,
       "entry": null,
       "modules": null,
@@ -1901,13 +1901,100 @@
     {
       "name": "m15_param_borrow",
       "kind": "output",
-      "source": "fn decorate(t: text) -> text {\n        let saved = t\n        t = t + \"!\"\n        return saved\n    }\n    fn main() {\n        let m = \"hey\"\n        let r = decorate(m)\n        print(r, m)\n        let arr: [int] = [1, 2]\n        let alias = arr\n        alias[0] = 5\n        print(arr[0])\n        let s = slice(arr, 0, 1)\n        s[0] = 50\n        print(arr[0], s[0])\n    }",
+      "source": "fn decorate(t: text) -> text {\n        let saved = t\n        t = t + \"!\"\n        return saved\n    }\n    fn main() {\n        let m = \"hey\"\n        let r = decorate(m)\n        print(r, m)\n        let arr: [int] = [1, 2]\n        let dup = arr\n        dup[0] = 5\n        print(arr[0])\n        let s = slice(arr, 0, 1)\n        s[0] = 50\n        print(arr[0], s[0])\n    }",
       "stdin": null,
       "entry": null,
       "modules": null,
       "pattern": null,
       "expected": {
         "stdout": "hey hey\n5\n5 50\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "m16_struct_refcount",
+      "kind": "output",
+      "source": "struct Node {\n        name: text\n        next: int\n    }\n    fn bump(n: Node, k: int) -> Node {\n        n.next = n.next + k\n        return n\n    }\n    fn main() {\n        let a = Node(\"root\", 1)\n        let b = a\n        a.next = 2\n        print(a.next, b.next)\n        let c = bump(a, 10)\n        print(a.next, c.next)\n        print(c.name)\n        let arr: [Node] = [Node(\"x\", 1), Node(\"y\", 2)]\n        let copy = arr\n        arr[0] = Node(\"z\", 9)\n        print(length(arr), length(copy))\n        print(arr[0].name, copy[0].name)\n        let p = Node(\"shared\", 0)\n        let q = p\n        p.name = \"mutated\"\n        print(q.name)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "2 1\n2 12\nroot\n2 2\nz z\nshared\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "m16_enum_switch",
+      "kind": "output",
+      "source": "enum Dir {\n        N\n        E\n        S\n        W\n    }\n    fn name(d: Dir) -> text {\n        switch (d) {\n            case Dir.N:\n                return \"north\"\n            case 1:\n                return \"east\"\n            case Dir.S:\n                return \"south\"\n            default:\n                return \"west\"\n        }\n    }\n    fn main() {\n        let d = Dir.S\n        print(name(d))\n        print(Dir.W + 1)\n        print(Dir.N == Dir.N)\n        let arr = [Dir.N, Dir.W]\n        print(name(arr[1]))\n        let i = 0\n        print(name(arr[i]))\n        print(Dir.E + 1)\n        print(Dir.E + 1 == Dir.N + 2)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "south\n4\n1\nwest\nnorth\n2\n1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "m16_struct_conditional_alias",
+      "kind": "output",
+      "source": "struct P {\n        x: int\n    }\n    alias P2 = P\n    alias Int2 = int\n    alias MyInt = Int2\n    enum C {\n        red\n        green\n        blue\n    }\n    alias Col = C\n    fn main() {\n        let p = P(5)\n        let q = p.x > 3 ? P2(1) : P2(2)\n        print(q.x)\n        print(p.x)\n        let n: MyInt = 3\n        print(n + 1)\n        let c: Col = Col.blue\n        print(c)\n        print(c + 1)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "1\n5\n4\n2\n3\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "m16_struct_return_chain",
+      "kind": "output",
+      "source": "struct Box {\n        label: text\n        value: int\n    }\n    fn wrap(label: text, value: int) -> Box {\n        let b = Box(label, value)\n        return b\n    }\n    fn inner(b: Box) -> int {\n        return b.value * 2\n    }\n    fn main() {\n        let b1 = wrap(\"a\", 21)\n        print(b1.label, inner(b1))\n        let b2 = wrap(\"b\", 7)\n        print(b2.label, b2.value)\n        let many: [Box] = [wrap(\"c\", 1), wrap(\"d\", 3)]\n        print(length(many))\n        print(many[1].label, inner(many[1]))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "a 42\nb 7\n2\nd 6\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "m16_mod_struct_enum",
+      "kind": "module_output",
+      "source": null,
+      "stdin": null,
+      "entry": "main.hmx",
+      "modules": {
+        "lib/geo.hmx": "struct Pt {\n        x: int\n        y: int\n    }\n    enum Team {\n        Alpha\n        Beta\n    }\n    fn mk(x: int, y: int) -> Pt {\n        return Pt(x, y)\n    }",
+        "main.hmx": "use \"lib/geo.hmx\"\n    fn main() {\n        let p = mk(3, 4)\n        print(p.x + p.y)\n        let t = Team.Beta\n        print(t + 2)\n    }"
+      },
+      "pattern": null,
+      "expected": {
+        "stdout": "7\n3\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "m16_struct_fn_field",
+      "kind": "output",
+      "source": "struct Op {\n        name: text\n        apply: fn(int) -> int\n    }\n    fn twice(k: int) -> int {\n        return k * 2\n    }\n    fn negate(k: int) -> int {\n        return 0 - k\n    }\n    fn run(f: fn(int) -> int, k: int) -> int {\n        return f(k) + 1\n    }\n    fn main() {\n        let o = Op(\"double\", twice)\n        print(o.name)\n        let f = o.apply\n        print(f(4))\n        let g: fn(int) -> int = o.apply\n        print(g(10))\n        let pairs: [Op] = [Op(\"double\", twice), Op(\"neg\", negate)]\n        let total = 0\n        foreach (p in pairs) {\n            let call = p.apply\n            total = total + call(5)\n        }\n        print(total)\n        let chosen = pairs[1]\n        print(chosen.name, run(chosen.apply, 3))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "double\n8\n20\n5\nneg -2\n",
         "stderr": "",
         "exit": 0
       }

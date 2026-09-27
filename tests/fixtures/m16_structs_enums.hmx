@@ -1,0 +1,164 @@
+// M16: structs / enums / type aliases — value semantics, nominal identity.
+alias Age = int
+
+struct Inner {
+    tag: text
+    n: int
+}
+
+struct Item {
+    name: text
+    weight: int
+    inner: Inner
+}
+
+struct Bag {
+    items: [Item]
+    owner: text
+}
+
+enum Suit {
+    Spades
+    Hearts
+    Diamonds
+    Clubs
+}
+
+alias Orientation = Suit
+
+const ORIGIN = Point(0, 0)
+
+struct Point {
+    x: int
+    y: int
+}
+
+struct Vec2 {
+    p: Point
+    pair: (int, text)
+    nums: [int]
+}
+
+fn total_weight(b: Bag) -> int {
+    let t = 0
+    let i = 0
+    while (i < length(b.items)) {
+        t = t + b.items[i].weight
+        i = i + 1
+    }
+    return t
+}
+
+fn describe(s: Suit) -> text {
+    switch (s) {
+        case Suit.Spades:
+            return "spades"
+        case 1:
+            return "hearts"
+        case Suit.Diamonds:
+            return "diamonds"
+        default:
+            return "clubs"
+    }
+}
+
+fn shift(v: Vec2, dx: int) -> Vec2 {
+    v.p.x = v.p.x + dx
+    return v
+}
+
+struct Op {
+    name: text
+    apply: fn(int) -> int
+}
+
+fn twice(k: int) -> int {
+    return k * 2
+}
+
+fn shift_by(k: int) -> int {
+    return k + 100
+}
+
+fn main() {
+    let bag = Bag([Item("apple", 3, Inner("fruit", 1)),
+                   Item("rock", 9, Inner("mineral", 2))], "kim")
+    print(bag.items[1].inner.tag)
+    print(total_weight(bag))
+    bag.items[1].weight += 10
+    bag.items[0].weight++
+    print(total_weight(bag))
+    print(bag.owner)
+    // structs are value types at the top level; heap fields share refcounted
+    // storage like tuples/arrays.
+    let copy = bag
+    print(total_weight(copy))
+    bag.items[0].inner.n = 7
+    print(bag.items[0].inner.n)
+    // nested struct field assignment through an array element
+    bag.items[0].inner.tag = "changed"
+    print(bag.items[0].inner.tag)
+    print(copy.items[0].inner.tag)
+
+    // alias to struct + const struct + alias-typed field reads
+    let o: Age = 25
+    print(o + 1)
+    print(ORIGIN.x + ORIGIN.y)
+
+    // tuples and arrays inside structs
+    let v = Vec2(Point(1, 2), (7, "seven"), [5, 6, 7])
+    print(v.p.x, v.p.y)
+    print(v.pair[0], v.pair[1])
+    print(v.nums[1])
+    v.p.y = 20
+    let v2 = shift(v, 3)
+    print(v2.p.x)
+    print(v.p.x)
+
+    // enum ordinals, implicit enum->int, nominal identity
+    print(Suit.Hearts)
+    print(Suit.Clubs + 1)
+    print(Suit.Hearts == Suit.Hearts)
+    print(Suit.Spades != Suit.Diamonds)
+    print(describe(Orientation.Clubs))
+    let s2 = Orientation.Hearts
+    print(describe(s2))
+
+    // arrays of enums; enum as array index
+    let ranks = [Suit.Spades, Suit.Clubs]
+    print(ranks[0], ranks[1])
+    let idxs = [7, 8, 9]
+    print(idxs[ranks[0]])
+
+    // lambda capturing a struct, returning a struct
+    let base = Point(3, 4)
+    let offset = lambda(k: int) -> Point {
+        return Point(base.x + k, base.y + k)
+    }
+    let moved = offset(10)
+    print(moved.x, moved.y)
+
+    // foreach over struct elements
+    let t = 0
+    foreach (elem in bag.items) {
+        t = t + elem.weight
+    }
+    print(t)
+
+    // struct field value copy semantics
+    let p1 = Point(1, 1)
+    let p2 = p1
+    p2.y = 99
+    print(p1.y, p2.y)
+
+    // a function-typed field: stored, copied, and read back into a binding
+    let op = Op("double", twice)
+    let op2 = op
+    let bound = op2.apply
+    print(op.name, bound(21))
+    let ops: [Op] = [op, Op("shift", shift_by)]
+    foreach (o in ops) {
+        let call = o.apply
+        print(o.name, call(4))
+    }
+}

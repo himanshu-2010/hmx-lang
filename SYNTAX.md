@@ -30,6 +30,10 @@ standard C reference documentation, but uses HMX's own syntax, types, and conven
 13. [Built-in Functions & Output](#13-built-in-functions--output)
 14. [Error Handling](#14-error-handling)
 15. [Roadmap (planned features)](#15-roadmap-planned-features)
+16. [Memory Model](#16-memory-model-implemented)
+17. [Type Aliases](#17-type-aliases-spec)
+18. [Structs](#18-structs-spec)
+19. [Enums](#19-enums-spec)
 
 ---
 
@@ -177,6 +181,9 @@ The following words are reserved and cannot be used as identifiers:
 | `as` | Explicit numeric cast |
 | `use` | Import a module (§1.6) |
 | `lambda` | Anonymous function expression (§12.5) |
+| `alias` | Type alias declaration (§17) |
+| `struct` | Struct type declaration (§18) |
+| `enum` | Enum type declaration (§19) |
 
 ---
 
@@ -1892,3 +1899,176 @@ to a value is dropped. The web playground implements the same semantics
   generated C runs under AddressSanitizer + LeakSanitizer (`HMX_ASAN=1`) and
   under Valgrind (`tests/run_valgrind_tests.sh`), which reject any leak,
   double-free, or use-after-free across all fixtures.
+
+---
+
+## 17. Type Aliases **[Implemented]**
+
+`alias NAME = TYPE` introduces a new name for an existing type. `TYPE` is any
+type expression (`int`, `text`, `[int]`, `(int, int)`, `Point`,
+`fn(int) -> int`, `Color`, another alias, ...). Names are usable in every type
+position: annotations, array element types, tuple members, function parameter
+and return types, struct fields.
+
+```hmx
+alias Seconds = int
+alias Grid    = [[int]]
+alias Pair    = (int, int)
+
+fn wait(t: Seconds) { print("t=" + tostr(t)) }
+
+fn main() {
+    let s: Seconds = 5
+    wait(s)
+    let g: Grid = [[1, 2], [3, 4]]
+    print(g[1][0])
+}
+```
+
+Rules:
+
+- Aliases are **transparent**: `Seconds` and `int` are the same type — no
+  conversion or wrapping. An alias of a struct or enum keeps that type's
+  nominal identity.
+- Types are resolved in a pre-pass, so a type name may be used **before** it is
+  declared — in an annotation, parameter or return type, `struct` field, or a
+  constructor call. (The one ordering rule that does apply is for *values*:
+  `fn main() { let f = later }` must fail, as always — see §12.5.) Types from
+  `use`d modules are visible everywhere (§1.6).
+- Names live in one top-level namespace: an alias may not shadow or duplicate
+  another alias, struct, or enum name, nor a function or variable name. Alias
+  cycles (`alias A = B` / `alias B = A`) are compile errors.
+
+---
+
+## 18. Structs **[Implemented]**
+
+A `struct` groups named fields into a single **value type**. Structs are
+parallel C structs — deterministic layout, no hidden pointers beyond the
+field values themselves.
+
+```hmx
+struct Point {
+    x: int
+    y: int
+}
+
+struct Line {
+    a: Point
+    b: Point
+}
+
+fn midpoint(p: Point, q: Point) -> Point {
+    return Point((p.x + q.x) / 2, (p.y + q.y) / 2)
+}
+
+fn main() {
+    let p = Point(1, 2)
+    let q = Point(3, 4)
+    let m = midpoint(p, q)
+    print(m.x, m.y)          // 2 3
+    m.y = 99                 // field assignment
+    print(m.y)
+    let c = m                // value copy
+    c.x = 7
+    print(m.x, c.x)          // 2 7 — copies are independent
+}
+```
+
+Rules:
+
+- A struct name is a **nominal type**: two structs with identical fields are
+  still distinct types; assigning one to the other is an error. A struct
+  typed variable may only hold values of its exact struct type.
+- **Construction**: `Name(arg0, arg1, ...)` — positional, one argument per
+  field, in declaration order. Arity and type mismatches are compile errors.
+- **Field access** `p.name` reads a field; `p.name = v`, `p.name += v`,
+  `p.name++`, etc. write one. Only the exact struct type's own field names are
+  valid — there is no dynamic member lookup.
+- Structs are **value types**: assignment and function calls copy the whole
+  value (fields copy; heap-typed fields such as `text`/arrays are
+  reference-counted, so each copy holds its own references — §16).
+- Struct fields may be any type: primitives, `text`, arrays, tuples, other
+  structs, enums, functions. A struct may not contain a value of its own type
+  (directly or through a cycle) — that would require unbounded size.
+- Structs cannot be `print`ed, `==`-compared, destructured, or used with
+  `length`, and none of the arithmetic or relational operators accept them.
+  Access fields instead.
+- A field read is a borrow of the owning value, so a struct field of function
+  type is read into a local binding rather than called in place —
+  `let f = op.apply` then `f(1)`. (Only a bare name or a parenthesized
+  expression is a legal callee; `arr[0](1)` and `s.f(1)` are parse errors, as
+  they are for any non-identifier callee.)
+- Structs are first-class values: usable as parameters, return values, array
+  elements (`[Point]`), tuple members, struct fields, and closure captures.
+
+```hmx
+struct Tagged {
+    label: text
+    weight: decimal
+}
+
+fn main() {
+    let t = Tagged("box", 1.5)
+    let items: [Tagged] = [t, Tagged("bolt", 0.02)]
+    items[1].weight = items[1].weight + 1.0   // chained member access
+    print(items[0].label, items[1].label)
+    print(items[1].weight)
+}
+```
+
+---
+
+## 19. Enums **[Implemented]**
+
+An `enum` declares a closed set of named **variants** backed by implicit `int`
+ordinals (`0, 1, 2, ...` in declaration order).
+
+```hmx
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn describe(c: Color) -> text {
+    switch (c) {
+        case Color.Red:   return "red"
+        case Color.Green: return "green"
+        case Color.Blue:  return "blue"
+    }
+    return "?"
+}
+
+fn main() {
+    let c: Color = Color.Green
+    print(describe(c))        // green
+    print(c)                  // prints 1 (the ordinal)
+    print(c == Color.Green)   // 1
+    print(c != Color.Blue)    // 1
+}
+```
+
+Rules:
+
+- Variants are referenced with the **qualified** form `Color.Red`; bare `Red`
+  is not a value. Duplicate variant names within one enum are compile errors
+  (the same variant name in two different enums is fine).
+- Enums are **nominal**: two enums with identical variant sets are distinct.
+- An enum value implicitly converts to `int` (its ordinal) where an `int` is
+  consumed: as a `print` argument, as an array index, as a `switch` subject,
+  and as one operand of an arithmetic or relational operator with an `int`
+  (`Color.Red + 1`, `1 + Color.Red`, `Color.Red < 3`). An `int` never
+  implicitly converts back to an enum, so `let c: Color = 1` is an error, and
+  `let n: int = Color.Red` is one too — use the `int` result of the operator
+  or of `print` instead.
+- Enums support assignment, parameter/return passing, `==` / `!=`, `switch`
+  (`case Color.Red:`, and also a literal ordinal `case 1:`), and storage in
+  arrays, tuples, struct fields, and closure captures.
+- Enums are **not** freely arithmetic values: `+`, `-`, `*`, `/`, `%`, `++`,
+  `--`, `<`, `>`, `<=`, `>=` and the logical operators are rejected when
+  *both* operands are enums (`Color.Red + Color.Green` is an error), as are
+  compound assignments to an enum-typed variable or field. Mix in an `int` to
+  use the ordinal.
+- Enum variants cannot be redefined; the ordinal numbering is fixed by
+  declaration order.

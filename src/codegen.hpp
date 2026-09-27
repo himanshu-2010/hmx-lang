@@ -38,6 +38,11 @@ private:
         return line_file_;
     }
     mutable std::map<std::vector<TypeDesc>, std::string> tuple_types_;
+    // ── M16 nominal types: per-struct C types + retain/release helpers ──
+    std::map<std::string, const TypeDecl*> struct_types_;   // struct name -> decl
+    std::set<std::string> registered_structs_;              // fields already walked
+    std::set<std::string> emitted_structs_;                 // C typedefs emitted
+    std::set<std::vector<TypeDesc>> emitted_tuples_;        // C typedefs emitted
     std::vector<FunctionDecl*> all_functions_;
     std::map<std::string, FunctionDecl*> functions_by_name_;
     std::map<std::string, PartialSig> papp_sigs_;   // mangle -> partial-application signature
@@ -91,7 +96,7 @@ private:
     std::vector<int> loop_scopes_;                  // scope indices of loop bodies
     std::vector<int> break_targets_;                // scope indices breakable by `break` (loop or switch case)
 
-    static bool type_has_heap(const TypeDesc& d);
+    bool type_has_heap(const TypeDesc& d);
     bool expr_is_fresh(Expression* expr);
     // Reconstruct the full TypeDesc of an expression (tuple members, function
     // info) from per-node annotations and the scope stack where needed.
@@ -136,6 +141,15 @@ private:
     void emit_releases_at_current_scope();
     bool is_owned_local(const std::string& cname) const;
     int innermost_loop_scope() const;
+    // ── M16 struct/enum codegen ─────────────────────────────────────────
+    // C name of a struct's value type (`hmx_<Name>`), matching safe_name.
+    static std::string struct_c_name(const std::string& type_name);
+    // Register a struct type (and, transitively, every named type it needs)
+    // for C typedef emission. Safe against array-of-self recursion.
+    void register_struct_deep(const std::string& type_name);
     void generate_tuple_helpers();
+    void generate_struct_helpers();
+    void emit_named_helper_decls();
+    void emit_pending_named_types();
     void generate_env_rel_fn(const FunctionDecl* fn);
 };

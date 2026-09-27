@@ -32,6 +32,7 @@ const T: Record<string, number> = {
   AND: 295, OR: 296, NOT: 297, PLUS_EQ: 298, MINUS_EQ: 299,
   STAR_EQ: 300, SLASH_EQ: 301, MOD_EQ: 302, INCR: 303, DECR: 304,
   ARROW: 305, LAMBDA: 306, ELLIPSIS: 307, AS: 308, USE: 309,
+  STRUCT: 310, ENUM: 311, ALIAS: 312, DOT: 313,
 };
 
 const KEYWORDS: Record<string, number> = {
@@ -41,6 +42,7 @@ const KEYWORDS: Record<string, number> = {
   break: T.BREAK, continue: T.CONTINUE, if: T.IF, else: T.ELSE,
   true: T.TRUE, false: T.FALSE, and: T.AND, or: T.OR, not: T.NOT,
   as: T.AS, use: T.USE, lambda: T.LAMBDA,
+  struct: T.STRUCT, enum: T.ENUM, alias: T.ALIAS,
   int: T.TYPE_INT, decimal: T.TYPE_DECIMAL, text: T.TYPE_TEXT,
   bool: T.TYPE_BOOL, char: T.TYPE_CHAR, byte: T.TYPE_BYTE,
 };
@@ -50,6 +52,7 @@ const KEYWORDS: Record<string, number> = {
 const OPERATORS: Array<[string, number]> = [
   ["...", T.ELLIPSIS],
   ["->", T.ARROW],
+  ["." , T.DOT],
   ["+=", T.PLUS_EQ],
   ["-=", T.MINUS_EQ],
   ["*=", T.STAR_EQ],

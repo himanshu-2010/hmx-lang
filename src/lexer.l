@@ -52,6 +52,9 @@
 "as"              { return AS; }
 "use"             { return USE; }
 "lambda"          { return LAMBDA; }
+"struct"          { return STRUCT; }
+"enum"            { return ENUM; }
+"alias"           { return ALIAS; }
 
 "int"             { return TYPE_INT; }
 "decimal"         { return TYPE_DECIMAL; }
@@ -104,6 +107,7 @@
 "]"               { return ']'; }
 "..."           { return ELLIPSIS; }
 "->"            { return ARROW; }
+"."             { return DOT; }
 "+="              { return PLUS_EQ; }
 "-="              { return MINUS_EQ; }
 "*="              { return STAR_EQ; }

@@ -19,6 +19,16 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     TypeResolver resolver;
     resolver.resolve(program);
 
+    // Collect struct type declarations (fields are already-expanded
+    // references). Registering them here lets every later desc walker resolve
+    // struct fields for C typedef + retain/release helper emission.
+    for (auto& stmt : program.statements) {
+        if (auto* td = dynamic_cast<TypeDecl*>(stmt.get());
+            td && td->kind == TypeDeclKind::Struct) {
+            struct_types_[td->name] = td;
+        }
+    }
+
     out_ << "#include <stdio.h>\n";
     out_ << "#include <stdlib.h>\n";
     out_ << "#include <string.h>\n";
@@ -463,8 +473,10 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
         for (auto& c : fn->captures) register_desc_types(c.desc);
     }
 
-    emit_pending_tuple_types();
+    emit_pending_named_types();
+    emit_named_helper_decls();
     generate_tuple_helpers();
+    generate_struct_helpers();
     emit_papp_helpers();
 
     for (auto* fn : all_functions_) {
@@ -600,6 +612,9 @@ void CodeGen::collect_lambdas_stmt(Statement* stmt) {
     } else if (auto* ea = dynamic_cast<ElementAssignStmt*>(stmt)) {
         if (ea->target) collect_lambdas_expr(ea->target.get());
         if (ea->rhs) collect_lambdas_expr(ea->rhs.get());
+    } else if (auto* massign = dynamic_cast<MemberAssignStmt*>(stmt)) {
+        if (massign->base) collect_lambdas_expr(massign->base.get());
+        if (massign->rhs) collect_lambdas_expr(massign->rhs.get());
     } else if (auto* es = dynamic_cast<ExprStmt*>(stmt)) {
         collect_lambdas_expr(es->expr.get());
     } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
@@ -648,6 +663,7 @@ void CodeGen::collect_lambdas_expr(Expression* expr) {
         return;
     }
     if (auto* call = dynamic_cast<CallExpr*>(expr)) {
+        if (call->is_struct_ctor) register_tuple_types_deep(call->struct_ctor_desc);
         if (call->is_partial) {
             std::string m = papp_mangle(call->partial_applied, call->partial_full_params,
                                         call->partial_ret);
@@ -670,6 +686,8 @@ void CodeGen::collect_lambdas_expr(Expression* expr) {
     } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->base) collect_lambdas_expr(idx->base.get());
         collect_lambdas_expr(idx->index.get());
+    } else if (auto* mem = dynamic_cast<MemberAccessExpr*>(expr)) {
+        collect_lambdas_expr(mem->base.get());
     } else if (auto* bin = dynamic_cast<BinaryExpr*>(expr)) {
         collect_lambdas_expr(bin->left.get());
         collect_lambdas_expr(bin->right.get());
@@ -773,6 +791,9 @@ std::string CodeGen::emit_function_signature(FunctionDecl* fn) {
             s += tuple_name(fn->return_tuple_members);
         } else if (fn->return_type == TypeKind::Array) {
             s += c_type_for_desc(fn->return_desc);
+        } else if (fn->return_type == TypeKind::Struct ||
+                   fn->return_type == TypeKind::Enum) {
+            s += c_type_for_desc(fn->return_desc);
         } else {
             s += type_to_c(fn->return_type);
         }
@@ -794,11 +815,12 @@ std::string CodeGen::c_type_for_desc(const TypeDesc& d) {
     if (d.type == TypeKind::Array) return "sd_array*";
     if (d.type == TypeKind::Tuple) return tuple_name(d.tuple_members);
     if (d.type == TypeKind::Function) return "sd_closure";
+    if (d.type == TypeKind::Struct) return struct_c_name(d.type_name);
     return type_to_c(d.type);
 }
 
 void CodeGen::register_desc_types(const TypeDesc& d) {
-    if (d.type == TypeKind::Tuple) {
+    if (d.type == TypeKind::Tuple || d.type == TypeKind::Struct) {
         register_tuple_types_deep(d);
     }
     if (d.type == TypeKind::Function && d.fn_info) {
@@ -884,7 +906,16 @@ static std::string mangle_type_name(const TypeDesc& d) {
         for (auto& m : d.tuple_members) s += "_" + mangle_type_name(m);
         return s;
     }
+    // Nominal types mangle by name so `(Point)` and `(int, Point)` get stable
+    // C type names and never collide with the generic "struct"/"enum" words.
+    if (d.type == TypeKind::Struct || d.type == TypeKind::Enum)
+        return d.type_name;
+    if (d.type == TypeKind::Function) return "fn";
     return type_to_string(d.type);
+}
+
+std::string CodeGen::struct_c_name(const std::string& type_name) {
+    return "hmx_" + type_name;
 }
 
 std::string CodeGen::tuple_name(const std::vector<TypeDesc>& members) const {
@@ -902,6 +933,8 @@ void CodeGen::register_tuple_types_deep(const TypeDesc& d) {
     if (d.type == TypeKind::Tuple) {
         tuple_name(d.tuple_members);
         for (auto& m : d.tuple_members) register_tuple_types_deep(m);
+    } else if (d.type == TypeKind::Struct) {
+        register_struct_deep(d.type_name);
     } else if (d.type == TypeKind::Array) {
         register_tuple_types_deep(d.element());
     } else if (d.type == TypeKind::Function && d.fn_info) {
@@ -910,20 +943,56 @@ void CodeGen::register_tuple_types_deep(const TypeDesc& d) {
     }
 }
 
-void CodeGen::emit_pending_tuple_types() {
-    std::set<std::vector<TypeDesc>> emitted;
+void CodeGen::register_struct_deep(const std::string& type_name) {
+    if (registered_structs_.count(type_name)) return;
+    auto it = struct_types_.find(type_name);
+    if (it == struct_types_.end()) return;   // not a declared struct (e.g. aliased)
+    // Mark registered *before* walking fields so self-references through
+    // array/function members (`struct Node { children: [Node] }`) terminate.
+    registered_structs_.insert(type_name);
+    for (auto& f : it->second->fields) register_tuple_types_deep(f.desc);
+}
+
+void CodeGen::emit_pending_named_types() {
+    // Emit C typedefs for tuples and structs in dependency order. Both kinds
+    // can reference the other by value (struct field of tuple type, tuple
+    // member of struct type); by-value cycles are rejected by the resolver,
+    // so this always terminates. Array/function/text members are pointers and
+    // never block a typedef.
     bool progress = true;
     while (progress) {
         progress = false;
-        std::vector<std::pair<std::vector<TypeDesc>, std::string>> pending;
-        for (auto& [members, name] : tuple_types_) {
-            if (!emitted.count(members)) pending.push_back({members, name});
+        for (auto& [name, td] : struct_types_) {
+            if (emitted_structs_.count(name)) continue;
+            bool ready = true;
+            for (auto& f : td->fields) {
+                if (f.desc.type == TypeKind::Struct && !emitted_structs_.count(f.desc.type_name)) {
+                    ready = false;
+                    break;
+                }
+                if (f.desc.type == TypeKind::Tuple && !emitted_tuples_.count(f.desc.tuple_members)) {
+                    ready = false;
+                    break;
+                }
+            }
+            if (!ready) continue;
+            out_ << "typedef struct " << struct_c_name(name) << " {\n";
+            for (size_t i = 0; i < td->fields.size(); i++) {
+                out_ << "    " << c_type_for_desc(td->fields[i].desc) << " f" << i << ";\n";
+            }
+            out_ << "} " << struct_c_name(name) << ";\n\n";
+            emitted_structs_.insert(name);
+            progress = true;
         }
-        for (auto& [members, name] : pending) {
-            if (emitted.count(members)) continue;
+        for (auto& [members, name] : tuple_types_) {
+            if (emitted_tuples_.count(members)) continue;
             bool ready = true;
             for (auto& m : members) {
-                if (m.type == TypeKind::Tuple && !emitted.count(m.tuple_members)) {
+                if (m.type == TypeKind::Struct && !emitted_structs_.count(m.type_name)) {
+                    ready = false;
+                    break;
+                }
+                if (m.type == TypeKind::Tuple && !emitted_tuples_.count(m.tuple_members)) {
                     ready = false;
                     break;
                 }
@@ -934,17 +1003,29 @@ void CodeGen::emit_pending_tuple_types() {
                 out_ << "    " << c_type_for_desc(members[i]) << " f" << i << ";\n";
             }
             out_ << "} " << name << ";\n\n";
-            emitted.insert(members);
+            emitted_tuples_.insert(members);
             progress = true;
         }
     }
 }
 
 void CodeGen::collect_tuple_types(Statement* stmt) {
-    if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
+    if (auto* td = dynamic_cast<TypeDecl*>(stmt)) {
+        // Nominal type declarations: register the struct (and everything its
+        // fields need) and alias targets so C typedefs exist before use.
+        if (td->kind == TypeDeclKind::Struct) {
+            register_struct_deep(td->name);
+        } else if (td->kind == TypeDeclKind::Alias) {
+            register_tuple_types_deep(td->alias_target);
+        }
+    } else if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
         if (var->annotation == TypeKind::Tuple && !var->tuple_members.empty()) {
             TypeDesc d{TypeKind::Tuple, {}, var->tuple_members, {}};
             register_tuple_types_deep(d);
+        } else if (var->annotation == TypeKind::Struct) {
+            register_tuple_types_deep(var->annotation_desc);
+        } else if (var->annotation == TypeKind::Array) {
+            register_tuple_types_deep(var->elem_desc);
         }
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
         for (auto& p : td->patterns) register_tuple_types_deep(p.vdesc);
@@ -1029,7 +1110,21 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         emit_env_heap_arg(lam->resolved);
         out_ << ")";
     } else if (auto* call = dynamic_cast<CallExpr*>(expr)) {
-        if (call->name == "length") {
+        if (call->is_struct_ctor) {
+            // `Name(args)`: a fresh owned struct value. Heap-valued args are
+            // emitted owned (transfer; the new struct now owns them).
+            out_ << "(" << struct_c_name(call->struct_ctor_name) << "){ ";
+            for (size_t i = 0; i < call->args.size(); i++) {
+                if (i > 0) out_ << ", ";
+                if (i < call->struct_ctor_fields.size() &&
+                    type_has_heap(call->struct_ctor_fields[i])) {
+                    emit_owned_expr(call->args[i].get());
+                } else {
+                    emit_expr(call->args[i].get());
+                }
+            }
+            out_ << " }";
+        } else if (call->name == "length") {
             if (get_expr_type(call->args[0].get()) == TypeKind::Array) {
                 out_ << "({ sd_array* _sd_l = ";
                 emit_owned_expr(call->args[0].get());
@@ -1342,6 +1437,15 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
             else emit_expr(tup->values[i].get());
         }
         out_ << " }";
+    } else if (auto* mem = dynamic_cast<MemberAccessExpr*>(expr)) {
+        // `base.member`: enum member references are compile-time ordinals;
+        // struct field accesses read the parallel C struct's slot.
+        if (mem->is_enum_member) {
+            out_ << mem->enum_index;
+        } else {
+            emit_expr(mem->base.get());
+            out_ << ".f" << mem->field_index;
+        }
     } else if (auto* idx = dynamic_cast<ArrayIndexExpr*>(expr)) {
         if (idx->base) {
             if (idx->is_tuple) {
@@ -1653,6 +1757,43 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << slot_rel_name(ed) << "(&((" << ct << "*)" << cn << "->data)[_si]); ";
         }
         out_ << "((" << ct << "*)" << cn << "->data)[_si] = _sv; }\n";
+    } else if (auto* massign = dynamic_cast<MemberAssignStmt*>(stmt)) {
+        emit_line_directive(massign->line, line_file_);
+        // base.field <op> ... — the lvalue is `base.f<k>`. The resolver
+        // guarantees a pure-read base (identifier root), so re-emitting it is
+        // side-effect free.
+        auto emit_lvalue = [&]() {
+            emit_expr(massign->base.get());
+            out_ << ".f" << massign->field_index;
+        };
+        if (massign->op == "++" || massign->op == "--") {
+            out_ << "    (";
+            emit_lvalue();
+            out_ << ")" << massign->op << ";\n";
+        } else if (massign->op == "=") {
+            if (type_has_heap(massign->field_desc)) {
+                out_ << "    ({ " << c_type_for_desc(massign->field_desc)
+                     << " _ev = ";
+                emit_owned_expr(massign->rhs.get());
+                out_ << "; " << slot_rel_name(massign->field_desc) << "(&(";
+                emit_lvalue();
+                out_ << ")); (";
+                emit_lvalue();
+                out_ << ") = _ev; });\n";
+            } else {
+                out_ << "    (";
+                emit_lvalue();
+                out_ << ") = ";
+                emit_expr(massign->rhs.get());
+                out_ << ";\n";
+            }
+        } else {
+            out_ << "    (";
+            emit_lvalue();
+            out_ << ") " << massign->op << " ";
+            emit_expr(massign->rhs.get());
+            out_ << ";\n";
+        }
     } else if (auto* ea = dynamic_cast<ElementAssignStmt*>(stmt)) {
         emit_line_directive(ea->line, line_file_);
         auto* target = dynamic_cast<ArrayIndexExpr*>(ea->target.get());
@@ -2120,6 +2261,9 @@ void CodeGen::emit_for_component(Statement* stmt) {
             out_ << tuple_name(var->tuple_members);
         } else if (var->annotation == TypeKind::Array) {
             out_ << "sd_array*";
+        } else if (var->annotation == TypeKind::Struct ||
+                   var->annotation == TypeKind::Enum) {
+            out_ << c_type_for_desc(var_desc_of(var));
         } else {
             out_ << type_to_c(var->annotation);
         }
@@ -2157,12 +2301,23 @@ bool CodeGen::type_has_heap(const TypeDesc& d) {
     if (d.type == TypeKind::Tuple) {
         for (auto& m : d.tuple_members) if (type_has_heap(m)) return true;
     }
+    if (d.type == TypeKind::Struct) {
+        // Heap iff any field is heap. Struct-by-value self-containment is
+        // rejected by the resolver, and array/function fields are pointers
+        // that return true immediately, so this never recurses infinitely.
+        auto it = struct_types_.find(d.type_name);
+        if (it == struct_types_.end()) return false;
+        for (auto& f : it->second->fields) if (type_has_heap(f.desc)) return true;
+        return false;
+    }
     return false;
 }
 
 bool CodeGen::expr_is_fresh(Expression* e) {
     if (auto* id = dynamic_cast<Identifier*>(e)) return id->is_function_reference;
     if (dynamic_cast<ArrayIndexExpr*>(e)) return false;
+    // A struct field read borrows the owning struct's reference.
+    if (dynamic_cast<MemberAccessExpr*>(e)) return false;
     // ConditionalExpr emits its own per-branch owned value (see emit_expr),
     // so it is always an owned producer.
     if (dynamic_cast<ConditionalExpr*>(e)) return true;
@@ -2179,6 +2334,9 @@ static TypeDesc var_desc_of(const VarDecl* var) {
         d.tuple_members = var->tuple_members;
     } else if (var->annotation == TypeKind::Function) {
         d.fn_info = var->annotation_desc.fn_info;
+    } else if (var->annotation == TypeKind::Struct ||
+               var->annotation == TypeKind::Enum) {
+        d.type_name = var->annotation_desc.type_name;
     }
     return d;
 }
@@ -2277,6 +2435,7 @@ std::string CodeGen::slot_ret_name(const TypeDesc& d) const {
         case TypeKind::Array: return "sd_ret_arr";
         case TypeKind::Function: return "sd_ret_fn";
         case TypeKind::Tuple: return "sd_ret_" + tuple_name(d.tuple_members);
+        case TypeKind::Struct: return "sd_ret_" + struct_c_name(d.type_name);
         default:
             throw std::runtime_error("internal error: slot_ret_name for non-heap type");
     }
@@ -2288,6 +2447,7 @@ std::string CodeGen::slot_rel_name(const TypeDesc& d) const {
         case TypeKind::Array: return "sd_rel_arr";
         case TypeKind::Function: return "sd_rel_fn";
         case TypeKind::Tuple: return "sd_rel_" + tuple_name(d.tuple_members);
+        case TypeKind::Struct: return "sd_rel_" + struct_c_name(d.type_name);
         default:
             throw std::runtime_error("internal error: slot_rel_name for non-heap type");
     }
@@ -2302,6 +2462,9 @@ void CodeGen::emit_release_value(const std::string& src, const TypeDesc& t) {
             out_ << slot_rel_name(t) << "(&" << src << "); ";
             break;
         case TypeKind::Tuple:
+            if (type_has_heap(t)) out_ << slot_rel_name(t) << "(&" << src << "); ";
+            break;
+        case TypeKind::Struct:
             if (type_has_heap(t)) out_ << slot_rel_name(t) << "(&" << src << "); ";
             break;
         default:
@@ -2322,6 +2485,40 @@ const TypeDesc* CodeGen::find_var_desc(const std::string& user_name) const {
 TypeDesc CodeGen::desc_of_expr(const Expression* expr) const {
     TypeDesc d;
     d.type = expr->resolved_type;
+    if (d.type == TypeKind::Struct) {
+        if (auto* id = dynamic_cast<const Identifier*>(expr)) {
+            if (current_fn_ && is_capture(current_fn_, id->name)) {
+                for (auto& c : current_fn_->captures) {
+                    if (c.name == id->name) return c.desc;
+                }
+            }
+            if (const TypeDesc* vd = find_var_desc(id->name)) return *vd;
+            if (current_fn_) {
+                for (auto& p : current_fn_->params) {
+                    if (p.name == id->name) return codegen_param_desc(p);
+                }
+            }
+        }
+        if (auto* mem = dynamic_cast<const MemberAccessExpr*>(expr))
+            return mem->field_desc;
+        if (auto* call = dynamic_cast<const CallExpr*>(expr)) {
+            if (call->is_struct_ctor) return call->struct_ctor_desc;
+            if (call->is_function_value_call && call->fn_type.fn_info &&
+                (call->fn_type.fn_info->ret.type == TypeKind::Struct ||
+                 call->fn_type.fn_info->ret.type == TypeKind::Enum))
+                return call->fn_type.fn_info->ret;
+            auto fit = functions_by_name_.find(call->name);
+            if (fit != functions_by_name_.end() &&
+                (fit->second->return_desc.type == TypeKind::Struct ||
+                 fit->second->return_desc.type == TypeKind::Enum))
+                return fit->second->return_desc;
+        }
+        if (auto* idx = dynamic_cast<const ArrayIndexExpr*>(expr))
+            return idx->elem;
+        if (auto* cond = dynamic_cast<const ConditionalExpr*>(expr))
+            return desc_of_expr(cond->then_expr.get());
+        throw std::runtime_error("internal error: cannot resolve struct descriptor");
+    }
     if (d.type != TypeKind::Tuple) return d;
     if (auto* id = dynamic_cast<const Identifier*>(expr)) {
         if (current_fn_ && is_capture(current_fn_, id->name)) {
@@ -2419,6 +2616,54 @@ void CodeGen::generate_tuple_helpers() {
         for (size_t i = 0; i < members.size(); i++) {
             if (!type_has_heap(members[i])) continue;
             out_ << "    " << slot_ret_name(members[i]) << "(&_e->f" << std::to_string(i) << ");\n";
+        }
+        out_ << "}\n\n";
+    }
+}
+
+void CodeGen::emit_named_helper_decls() {
+    // Forward-declare every per-type retain/release helper so definitions can
+    // reference each other regardless of emission order (same pattern as the
+    // sd_rel_text / sd_ret_text forward decls in the runtime preamble).
+    bool any = false;
+    for (auto& [members, name] : tuple_types_) {
+        bool has_heap = false;
+        for (auto& m : members) if (type_has_heap(m)) { has_heap = true; break; }
+        if (!has_heap) continue;
+        out_ << "static void sd_rel_" << name << "(void* p);\n";
+        out_ << "static void sd_ret_" << name << "(void* p);\n";
+        any = true;
+    }
+    for (auto& [name, td] : struct_types_) {
+        bool has_heap = false;
+        for (auto& f : td->fields) if (type_has_heap(f.desc)) { has_heap = true; break; }
+        if (!has_heap) continue;
+        out_ << "static void sd_rel_" << struct_c_name(name) << "(void* p);\n";
+        out_ << "static void sd_ret_" << struct_c_name(name) << "(void* p);\n";
+        any = true;
+    }
+    if (any) out_ << "\n";
+}
+
+void CodeGen::generate_struct_helpers() {
+    for (auto& [name, td] : struct_types_) {
+        bool has_heap = false;
+        for (auto& f : td->fields) if (type_has_heap(f.desc)) { has_heap = true; break; }
+        if (!has_heap) continue;
+        out_ << "static void sd_rel_" << struct_c_name(name) << "(void* p) {\n";
+        out_ << "    " << struct_c_name(name) << "* _e = (" << struct_c_name(name) << "*)p;\n";
+        for (size_t i = 0; i < td->fields.size(); i++) {
+            if (!type_has_heap(td->fields[i].desc)) continue;
+            out_ << "    ";
+            emit_release_value("_e->f" + std::to_string(i), td->fields[i].desc);
+            out_ << "\n";
+        }
+        out_ << "}\n\n";
+        out_ << "static void sd_ret_" << struct_c_name(name) << "(void* p) {\n";
+        out_ << "    " << struct_c_name(name) << "* _e = (" << struct_c_name(name) << "*)p;\n";
+        for (size_t i = 0; i < td->fields.size(); i++) {
+            if (!type_has_heap(td->fields[i].desc)) continue;
+            out_ << "    " << slot_ret_name(td->fields[i].desc) << "(&_e->f" << std::to_string(i) << ");\n";
         }
         out_ << "}\n\n";
     }
