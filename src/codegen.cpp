@@ -1993,9 +1993,16 @@ void CodeGen::emit_stmt(Statement* stmt) {
             emit_release_value("_sd_e", d);
             out_ << "});\n";
         } else {
-            out_ << "    ";
+            // An HMX expression statement's value is always discarded, so say
+            // so in C. Without the cast, a builtin that has to be a GNU
+            // statement-expression — `pop`, which releases the array on its
+            // way out — leaves its value as an unused expression statement,
+            // and clang reports that on stderr as -Wunused-value. It is a
+            // warning the user can do nothing about, on stderr their program
+            // is expected to own, so it broke exact-output tests on macOS.
+            out_ << "    (void)(";
             emit_expr(expr_stmt->expr.get());
-            out_ << ";\n";
+            out_ << ");\n";
         }
     } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
         emit_line_directive(loop->line, line_file_);

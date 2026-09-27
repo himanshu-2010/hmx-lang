@@ -596,9 +596,9 @@ The current regression suite contains:
 | Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals, structs/enums/aliases, refcounted text views & copy-on-write | 64/64 passed |
 | Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions), reserved-keyword misuse | 238/238 passed |
 | Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics, borrowed-param field writes | 143/143 passed |
-| CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes, generated-C portability, unwritable-cwd and unreadable-source diagnostics | 27/27 passed |
+| CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes, generated-C portability and warning-cleanliness, unwritable-cwd and unreadable-source diagnostics | 30/30 passed |
 | Packaging | Release version consistency across all nine manifests, no placeholder digests, manifest URLs vs. the names the release workflow actually produces, declared runtime deps, installer checksum verification, container build/tag/push and smoke-test wiring | 51/51 passed |
-| Total | 523 test cases | 523/523 passed |
+| Total | 526 test cases | 526/526 passed |
 
 Two further gates need extra tools and are not part of that count:
 

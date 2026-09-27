@@ -79,6 +79,34 @@ else
 fi
 rm -f build_temp.c
 
+# gcc does not warn about an unused statement-expression, clang does, so a
+# builtin emitted as one and used as a statement (pop, which releases the array
+# on its way out) passed silently on Linux and only surfaced as a stray
+# -Wunused-value line on the macOS runner's stderr — breaking an exact-output
+# test with a warning the user can do nothing about. Compile with the warning
+# promoted to an error on *every* host compiler, not just the first one found:
+# taking only `cc` means gcc, which never warns, hides the regression on the
+# very platform whose silence caused it. An HMX expression statement's value is
+# always discarded, so codegen casts it to void; this pins that.
+printf 'fn main() {\n    let a = [1, 2, 3]\n    push(a, 4)\n    pop(a)\n    sort(a)\n    print(length(a))\n}\n' > stmts.hmx
+"$BIN" build stmts.hmx -keep-c >/dev/null 2>&1
+uv_checked=0
+for c in cc gcc clang; do
+    command -v "$c" >/dev/null 2>&1 || continue
+    uv_checked=$((uv_checked+1))
+    uv_out="$( "$c" -O2 -Werror=unused-value -fsyntax-only build_temp.c 2>&1 )" && uv_code=0 || uv_code=$?
+    if [ "$uv_code" = 0 ]; then
+        echo "PASS (CLI): generated C has no unused-value warning ($c)"
+        PASS=$((PASS+1))
+    else
+        echo "FAIL (CLI): generated C warns about an unused value ($c)"
+        echo "$uv_out" | sed 's/^/   /'
+        FAIL=$((FAIL+1))
+    fi
+done
+[ "$uv_checked" -gt 0 ] || echo "SKIP (CLI): no host C compiler for the unused-value check"
+rm -f build_temp.c
+
 # `hmx run` transpiles into the *current working directory*, so an unwritable
 # cwd is a real failure mode — a Docker bind mount owned by another uid being
 # the case that motivated it. Unchecked, the ofstream failed silently and gcc
@@ -88,7 +116,8 @@ rm -f build_temp.c
 # aborted with an unhandled filesystem_error and a `terminate` instead of
 # printing anything at all.
 # POSIX only — the mode bits and the uid that owns them mean nothing on Windows.
-if [ "$(uname -s)" != "MINGW"* ] && [ "$(uname -s)" != "CYGWIN"* ]; then
+if [ "$(uname -s)" != "MINGW"* ] && [ "$(uname -s)" != "MSYS"* ] \
+   && [ "$(uname -s)" != "CYGWIN"* ]; then
     mkdir -p ro && cp hello.hmx ro/ && chmod 555 ro
     ro_out="$( cd ro && "$BIN" run hello.hmx 2>&1 )" && ro_code=0 || ro_code=$?
     chmod 755 ro

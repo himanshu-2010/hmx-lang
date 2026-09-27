@@ -1245,6 +1245,33 @@ Fixing (3) exposed two real compiler bugs, both now fixed in `src/main.cpp`:
   to exist). Verified all three container cases against a locally built image
   with a deliberately mismatched uid.
 
+## A generated-C warning that only one compiler reports
+With the container job green, the last macOS failure was not a wrong answer at
+all: `m15_refcount_lifecycle` produced the *correct* stdout plus one stray
+`-Wunused-value` line on stderr, and the stress suite compares the two
+separately. The line came from `pop(tmp)` used as a statement — `pop` has to
+release the array it pops from, so codegen emits it as a GNU
+statement-expression, and a statement-expression used as a statement is an
+unused value.
+
+gcc does not warn about this. clang does, so it appeared only on the macOS
+runner, where it had been hiding behind the three `nonlocal_break_*` failures
+all along. It is a warning no HMX user can act on (there is no warning
+channel), printed onto stderr that their program is supposed to own.
+
+- **Fix:** an HMX expression statement's value is *always* discarded, so say so
+  in C — the scalar expression-statement path now emits `(void)(...);`. The
+  two heap paths are untouched: they end in a void release call, so their
+  statement-expressions are void-valued and never warned about.
+- **Gate:** a new CLI case compiles the emitted C with `-Werror=unused-value`
+  under **every** host compiler, not just the first one found. That detail is
+  the whole point: taking only `cc` means gcc — which never warns — hides the
+  regression on the very platform whose silence caused it. Verified by
+  reverting the cast and watching the clang case turn the suite red.
+- **Hygiene:** native **475/475** (64 / 238 / 143 / 30), valgrind **69/69**,
+  ASan+LSan-clean; web vitest **455/455**, `gen-data.mts` parity 0 failures;
+  packaging **48/51**.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

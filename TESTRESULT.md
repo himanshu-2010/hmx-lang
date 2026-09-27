@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-27  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 472 / 472 (64 integration + 238 negative + 143 stress + 27 CLI); web-playground vitest 455 / 455 (448 parity + 7 app); valgrind ownership matrix + all fixtures 69 / 69; packaging gate 48 / 51 (3 fail by design — the PKGBUILD, Scoop and winget digests need the release to exist)
+**Status:** ALL TESTS PASSED — native 475 / 475 (64 integration + 238 negative + 143 stress + 30 CLI); web-playground vitest 455 / 455 (448 parity + 7 app); valgrind ownership matrix + all fixtures 69 / 69; packaging gate 48 / 51 (3 fail by design — the PKGBUILD, Scoop and winget digests need the release to exist)
 
 ---
 
@@ -967,7 +967,7 @@ both backends.
   structs, struct in a tuple, closure capture of a struct, create/discard
   churn); 35 negatives `m16_*`.
 - **Native:** integration **64/64**, negative **238/238**, stress & output
-  **143/143**, CLI **27/27** — all green (472/472), and re-run under
+  **143/143**, CLI **30/30** — all green (475/475), and re-run under
   `HMX_ASAN=1` (AddressSanitizer + LeakSanitizer) clean on the integration and
   stress suites.
 - **Web parity (1:1):** parity data regenerated via `gen-data.mts`:
