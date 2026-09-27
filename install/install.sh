@@ -72,6 +72,36 @@ fetch() { # <url> -> stdout
     curl -fsSL "$1"
 }
 
+# ── Is hmx actually in the AUR? ──────────────────────────────
+# An AUR helper resolves `-S <name>` by *fuzzy* match, not by exact name. With
+# no hmx in the AUR, `yay -S --noconfirm hmx` cheerfully built and installed
+# honeymux-bin — "a new UX layer for the terminal, built on tmux" — with no
+# prompt, straight from our own documented one-liner. The prebuilt tarball is
+# right there and needs no AUR at all, so the only correct thing to do when the
+# AUR cannot confirm the name is not to ask a helper to install it.
+#
+# Sets AUR_STATE to present | absent | unknown. Only `present` may hand off.
+AUR_STATE=unknown
+aur_has_hmx() {
+    local body
+    AUR_STATE=unknown
+    have curl || return 1
+    body="$(curl -fsSL --max-time 20 \
+        'https://aur.archlinux.org/rpc/v5/info/hmx' 2>/dev/null)" || return 1
+    # resultcount is the authoritative answer, and it needs no JSON parser --
+    # same reasoning as resolve_version above. The whitespace after the colon is
+    # optional on purpose: the AUR emits `"resultcount":0`, and a pattern
+    # written to match the space that `python -m json.tool` inserts matches
+    # nothing at all, which is indistinguishable from the AUR being down.
+    if printf '%s' "$body" | grep -q '"resultcount":[[:space:]]*1'; then
+        AUR_STATE=present; return 0
+    fi
+    if printf '%s' "$body" | grep -q '"resultcount":[[:space:]]*0'; then
+        AUR_STATE=absent; return 1
+    fi
+    return 1
+}
+
 install_binary() { # <asset> <label>
     local asset="$1" label="$2" tmp bin
     tmp="$(mktemp -d)"
@@ -169,15 +199,22 @@ case "$os" in
             exit 0
         fi
         if have pacman; then
+            aur_helper=""
             if have paru; then
-                info "Arch Linux detected — building from the AUR via paru"
-                exec paru -S --noconfirm hmx
+                aur_helper=paru
+            elif have yay; then
+                aur_helper=yay
             fi
-            if have yay; then
-                info "Arch Linux detected — building from the AUR via yay"
-                exec yay -S --noconfirm hmx
+            if [ -n "$aur_helper" ] && aur_has_hmx; then
+                info "Arch Linux detected — building from the AUR via $aur_helper"
+                exec "$aur_helper" -S --noconfirm hmx
             fi
-            warn "Arch Linux detected but no AUR helper (paru/yay) found — installing the prebuilt binary"
+            case "$aur_helper:${AUR_STATE}" in
+                :*)            warn "Arch Linux detected but no AUR helper (paru/yay) found — installing the prebuilt binary" ;;
+                *:present)     die "internal error: AUR confirmed but the hand-off was skipped" ;;
+                *:absent)      warn "hmx is not in the AUR yet — installing the prebuilt binary" ;;
+                *)             warn "could not confirm hmx is in the AUR (RPC unreachable) — installing the prebuilt binary" ;;
+            esac
             install_binary "hmx-${VERSION}-${platform}.tar.gz" "$platform"
             exit 0
         fi

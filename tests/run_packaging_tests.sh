@@ -198,6 +198,26 @@ check "release zip names interpolate the tag"  .github/workflows/release.yml 'hm
 check "install.sh references the .deb" install/install.sh 'hmx_.*_amd64\.deb'
 check "install.ps1 references the windows zip" install/install.ps1 'windows-x86_64\.zip'
 
+# ── 11) The installer must not hand off to a resolver that substitutes ──
+# An AUR helper resolves `-S <name>` by fuzzy match, not exact name. With no hmx
+# in the AUR, the documented one-liner ran `yay -S --noconfirm hmx` and installed
+# honeymux-bin ("a new UX layer for the terminal, built on tmux") — unprompted,
+# from our own README. The prebuilt tarball needs no AUR, so an unconfirmed name
+# must never reach a helper.
+check "install.sh asks the AUR before using a helper" install/install.sh 'aur\.archlinux\.org/rpc/v5/info/hmx'
+check "install.sh distinguishes absent from unreachable" install/install.sh 'AUR_STATE=(absent|unknown|present)'
+# The guard has to sit between the detection and the call. Asserting the guarded
+# *form* rather than the presence of the word: `aur_has_hmx` also appears in its
+# own definition, so a check for the bare name passes even with the guard removed
+# from the call site -- which is exactly what the first version of this check did.
+check "install.sh AUR hand-off is guarded" install/install.sh 'if \[ -n "\$aur_helper" \] && aur_has_hmx; then'
+reject "install.sh does not hand off to a bare helper call" install/install.sh '^[[:space:]]*exec (yay|paru) -S'
+# The whitespace-tolerant match matters: the AUR emits "resultcount":0, and a
+# pattern expecting the space that json.tool inserts matches nothing, which is
+# indistinguishable from the AUR being down.
+check "install.sh tolerates the AUR's compact JSON" install/install.sh '"resultcount":\[\[:space:\]\]\*'
+reject "install.sh never fuzzy-installs an unverified name" install/install.sh '^[[:space:]]*exec (yay|paru) -S'
+
 echo
 if [ "$FAIL" -eq 0 ]; then
     echo "Packaging Tests Passed: $PASS, Failed: 0  (version $VERSION)"

@@ -1371,9 +1371,39 @@ check for this was passing for the wrong reason: `depends=\(.*flex` also matches
 and paired with a `reject` for each build tool, and verified by putting flex back
 into the runtime list and watching the three new checks fail.
 
+## The documented Arch one-liner installed a tmux theme
+With the release finally complete, the natural end-to-end test of the primary
+install path is to run it. On this machine — Arch with `yay` — it built and
+installed **`honeymux-bin` 0.109.1**, *"a new UX layer for the terminal, built on
+tmux"*, unprompted, from the README's own one-liner.
+
+The cause is that an AUR helper resolves `-S <name>` by **fuzzy match**, not by
+exact name. `hmx` is not in the AUR (nothing is — the submission is still
+outstanding), so `yay -S --noconfirm hmx` resolved to the closest thing it could
+find and installed it. `--noconfirm` removed the last checkpoint.
+
+The prebuilt tarball is published, needs no AUR, and works today, so the fix is
+not to make the AUR path smarter but to stop guessing on its behalf: ask the AUR
+RPC whether the exact name exists, and only hand off on a positive answer.
+Anything else — absent, or unreachable — installs the verified tarball. Verified
+all three states against the real AUR, a blackholed RPC, and a faked
+`resultcount:1` response.
+
+The check for `resultcount` had a bug of its own, and an instructive one: it
+matched `"resultcount": 1` with a space, which is how `python -m json.tool`
+*prints* it. The AUR emits `"resultcount":0` compact, so the pattern matched
+nothing — indistinguishable from the AUR being down, and it would have kept
+installing the tarball for entirely the wrong reason, forever. The pattern now
+tolerates either spacing.
+
+The packaging gate for this asserts the guarded *form* of the hand-off, not the
+presence of the word `aur_has_hmx` — which also appears in the function's own
+definition, so the first version of the check passed with the guard deleted.
+Confirmed by deleting it and watching that one check fail.
+
 - **Hygiene:** native **478/478** (64 / 238 / 143 / 33), valgrind **69/69**,
   ASan+LSan-clean; web vitest **455/455**, `gen-data.mts` parity 0 failures;
-  packaging **67/67**.
+  packaging **73/73**.
 
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
