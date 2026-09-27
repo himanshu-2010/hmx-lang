@@ -109,9 +109,9 @@ fn main() {
     print(length(grid), grid[2][1])
     let row = pop(grid)
     print(row[0], row[1], length(grid))
-    let alias = grid
-    alias[0][0] = 99
-    print(grid[0][0], alias[0][0])
+    let shared = grid          // "alias" is a keyword since M16
+    shared[0][0] = 99
+    print(grid[0][0], shared[0][0])
     let slice1 = slice(grid, 0, 1)
     slice1[0][1] = 42
     print(grid[0][1], slice1[0][1])

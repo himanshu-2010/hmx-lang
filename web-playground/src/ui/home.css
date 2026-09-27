@@ -794,6 +794,10 @@
   grid-template-columns: 2.2fr 1fr 1fr 1.2fr;
   gap: 2.2rem;
 }
+.footer-brand .brand-logo {
+  height: 1.7rem;
+  margin-bottom: 0.4rem;
+}
 .footer-brand .brand-name {
   font-size: 1.2rem;
 }

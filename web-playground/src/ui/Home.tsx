@@ -543,9 +543,13 @@ export function HomePage() {
       <footer className="site-footer">
         <div className="footer-grid">
           <div className="footer-brand">
-            <span className="brand-mark" aria-hidden="true">
-              &gt;_
-            </span>{" "}
+            <img
+              className="brand-logo"
+              src="/logo.svg"
+              alt=""
+              width={573}
+              height={246}
+            />
             <span className="brand-name">HMX</span>
             <p className="footer-blurb">
               A small systems language with a native compiler and a

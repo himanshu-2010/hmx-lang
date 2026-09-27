@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 465 / 465 (64 integration + 235 negative + 142 stress + 24 CLI); web-playground vitest 449 / 449 (444 parity + 5 app)
+**Status:** ALL TESTS PASSED — native 468 / 468 (64 integration + 238 negative + 142 stress + 24 CLI); web-playground vitest 452 / 452 (447 parity + 5 app); valgrind ownership matrix + all fixtures 69 / 69
 
 ---
 
@@ -34,11 +34,12 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 23. **Reference-counted memory (M15)**: `text`, arrays and closure environments are refcounted; `substring`/`slice` return shared immutable views pinned by refcount; array mutation forks copy-on-write; locals own, params borrow, and every generated temporary is paired with an exact `retain`/`release`. All 424 native + 408 web + 66 valgrind cases run clean under AddressSanitizer + LeakSanitizer.
 24. **Structs / enums / type aliases (M16)**: `alias NAME = TYPE`, `struct NAME { field: TYPE }`, and `enum NAME { VARIANT }` are real top-level declarations resolved in a pre-pass (so a type may be used before it is declared) in one flat namespace with functions and variables. Structs are C value types with per-field refcounted heap slots, enums are int-backed nominal ordinals, and aliases are transparent. A shallow web copy was observably wrong for nested aggregates (`shift(v, 3)` mutated the caller's value), so the web backend reproduces the C by-value copy with generated `_sd_cp_*` helpers. 32 new `m16_*` negative cases lock the error surface (type/field/variant resolution, nominal identity, operator restrictions, duplicate type and variant declarations, nested type decls).
 25. **Struct-parameter ownership (M16 follow-up)**: writing through a borrowed `struct` parameter (`fn f(p: Point) { p.x = 9 }`) was releasing storage the callee never owned — a heap-use-after-free, found by the new valgrind ownership-matrix cases and reproduced under ASan. The member-write lvalue now promotes a borrowed struct parameter to an owned copy before overwriting a slot; an array index in the chain stops the search, because the array owns its elements.
+26. **Valgrind ownership gate (run locally)**: valgrind 3.25.1 over the full matrix plus every fixture is **69/69** clean. The first run found that M16's new `alias` keyword silently broke an M15 test that used `alias` as a variable name; that is fixed and now locked by three reserved-keyword negatives.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 465 (native) + 449 (web) = 914
-> - **Passed:** 914
+> - **Total Test Cases Executed:** 468 (native) + 452 (web) = 920
+> - **Passed:** 920
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -117,7 +118,7 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 
 ---
 
-### 2. Negative & Error Handling Suite (235/235 Passed)
+### 2. Negative & Error Handling Suite (238/238 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -963,19 +964,24 @@ both backends.
   `m16_mod_struct_enum`; valgrind ownership matrix `struct_field_heap` +
   `enum_alias_ownership` (nested by-value struct slots, param promote, array of
   structs, struct in a tuple, closure capture of a struct, create/discard
-  churn); 32 negatives `m16_*`.
-- **Native:** integration **64/64**, negative **235/235**, stress & output
-  **142/142**, CLI **24/24** — all green (465/465), and re-run under
+  churn); 35 negatives `m16_*`.
+- **Native:** integration **64/64**, negative **238/238**, stress & output
+  **142/142**, CLI **24/24** — all green (468/468), and re-run under
   `HMX_ASAN=1` (AddressSanitizer + LeakSanitizer) clean on the integration and
   stress suites.
 - **Web parity (1:1):** parity data regenerated via `gen-data.mts`:
-  `stress 142 = 0 failures; negative 235 = 0; integration 64 = 0`.
-- **Web:** vitest **449/449** (444 parity + 5 app), `tsc` ✓, `vite build` ✓,
+  `stress 142 = 0 failures; negative 238 = 0; integration 64 = 0`.
+- **Web:** vitest **452/452** (447 parity + 5 app), `tsc` ✓, `vite build` ✓,
   oxlint 0 errors (11 benign warnings, all pre-existing UI).
-- **Valgrind:** the ownership matrix grew from 12 to **14** cases (the two new
-  struct/enum cases) and `--fixtures` now also covers all 64 fixtures, so CI's
-  valgrind job runs 78 programs. Valgrind is not installed in this environment,
-  so the local memory gate was AddressSanitizer + LeakSanitizer over the whole
-  integration and stress suites (clean); CI runs the valgrind job on push.
+- **Valgrind:** `./tests/run_valgrind_tests.sh --fixtures` run locally with
+  valgrind 3.25.1 — **69/69** clean (14 ownership-matrix cases + all 55
+  fixtures), `--error-exitcode=99` with
+  `--errors-for-leak-kinds=definite,indirect,possible`, so any memory error or
+  leak in a generated binary fails the run. The first run caught a *test*
+  regression rather than a codegen one: M16 reserved the word `alias`, and the
+  M15 matrix case `array_of_arrays` used `alias` as a variable name, so it no
+  longer compiled — renamed to `shared`, and three negatives
+  (`m16_reserved_{alias,struct,enum}_ident`) now lock the reservation so the
+  same mistake fails loudly next time.
 
 ## Native-only regression report (reference)

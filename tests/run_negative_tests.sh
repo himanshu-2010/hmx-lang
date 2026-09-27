@@ -1618,6 +1618,29 @@ test_error "use_reserved_keyword" \
     }' \
     "Parse error"
 
+# M16 made `struct`, `enum` and `alias` reserved, which broke an existing test
+# that used `alias` as a variable name — lock the reservation down.
+test_error "m16_reserved_alias_ident" \
+    'fn main() {
+        let alias = 5
+        print(alias)
+    }' \
+    "Parse error"
+
+test_error "m16_reserved_struct_ident" \
+    'fn main() {
+        let struct = 5
+        print(struct)
+    }' \
+    "Parse error"
+
+test_error "m16_reserved_enum_ident" \
+    'fn main() {
+        let enum = 5
+        print(enum)
+    }' \
+    "Parse error"
+
 test_error "tuple_literal_print" \
     'fn main() {
         print((1, 2))

@@ -14,9 +14,7 @@ export function Nav() {
   return (
     <header className="topbar">
       <Link className="brand" to="/" aria-label="HMX — home">
-        <span className="brand-mark" aria-hidden="true">
-          &gt;_
-        </span>
+        <img className="brand-logo" src="/logo.svg" alt="" width={573} height={246} />
         <span className="brand-name">HMX</span>
         <span className="brand-tag">compiler playground</span>
       </Link>

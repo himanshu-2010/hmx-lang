@@ -110,7 +110,7 @@
   struct fields are readable, and duplicate variants in one enum are an error.
   Grammar adds `postfix_index DOT IDENTIFIER <op>` and splits
   `factor: IDENTIFIER` (conflicts 6 → 9 SR, all resolved by shift).
-  Native 465/465 + web 449/449 green (parity verbatim). Follow-up fix: a write
+  Native 468/468 + web 452/452 green (parity verbatim), valgrind 69/69. Follow-up fix: a write
   through a borrowed struct param released storage the callee never owned
   (heap-use-after-free, found by the new valgrind matrix cases) — the member
   write now promotes the param to an owned copy first.

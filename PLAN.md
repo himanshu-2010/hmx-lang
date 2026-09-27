@@ -289,7 +289,7 @@ prior fixtures, and lands one complete feature.
     lvalue now resolves through its field-read chain to a borrowed param
     (`member_write_borrowed_param`) and promotes it to an owned copy first (an
     array index in the chain stops the search — the array owns its elements).
-  Native 465/465 + web 449/449 green (parity byte-identical); fixture
+  Native 468/468 + web 452/452 green (parity byte-identical), valgrind 69/69; fixture
   `m16_structs_enums.hmx` + integration `mod_m16_types` + stress
   `m16_{struct_refcount,enum_switch,struct_conditional_alias,
   struct_return_chain,param_field_write,struct_fn_field,mod_struct_enum}` +

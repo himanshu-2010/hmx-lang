@@ -72,13 +72,13 @@ production compiler. See [SYNTAX.md](SYNTAX.md) for the authoritative reference 
 
 `npm install && npm run dev` opens the playground editor locally. The web
 compiler is a TypeScript port of the front half (lexer → LALR parser tables →
-resolver) plus a new JavaScript backend, and its gate is parity with the 440
+resolver) plus a new JavaScript backend, and its gate is parity with the 444
 native test cases (work in progress across M2–M4):
 
 ```bash
 npm install
 npm run dev        # local dev server
-npm test           # vitest — the 443-case parity harness + app tests
+npm test           # vitest — the 447-case parity harness + app tests
 npm run build      # type-check + production build → dist/
 npm start          # serve the production build (Antideploy's Procfile command)
 npm run lint       # oxlint
@@ -579,10 +579,10 @@ The current regression suite contains:
 | Suite | Coverage | Result |
 | --- | --- | --- |
 | Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals, structs/enums/aliases, refcounted text views & copy-on-write | 64/64 passed |
-| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions) | 235/235 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions), reserved-keyword misuse | 238/238 passed |
 | Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics, borrowed-param field writes | 142/142 passed |
 | CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes | 24/24 passed |
-| Total | 465 test cases | 465/465 passed |
+| Total | 468 test cases | 468/468 passed |
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

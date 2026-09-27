@@ -1135,11 +1135,19 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   semantics), `m16_enum_switch`, `m16_struct_conditional_alias`,
   `m16_struct_return_chain`, `m16_param_field_write`, `m16_struct_fn_field`,
   `m16_mod_struct_enum`; valgrind matrix `struct_field_heap` +
-  `enum_alias_ownership`; 32 negatives `m16_*`.
-- **Hygiene:** native **465/465** (64 integration / 235 negative / 142 stress /
+  `enum_alias_ownership`; 35 negatives `m16_*`.
+- **Valgrind run locally (valgrind 3.25.1):** `--fixtures` is **69/69** clean
+  (14 matrix cases + all 55 fixtures). The first run caught a test regression
+  rather than a codegen one — M16 reserved `alias`, and the M15 matrix case
+  `array_of_arrays` used `alias` as a variable, so it stopped compiling
+  (renamed to `shared`). Three negatives
+  (`m16_reserved_{alias,struct,enum}_ident`) now lock the new keywords as
+  reserved so the same mistake fails loudly instead of silently.
+- **Hygiene:** native **468/468** (64 integration / 238 negative / 142 stress /
   24 CLI), ASan+LSan-clean on integration and stress; web `tsc` ✓ +
-  `vite build` ✓ + oxlint (0 errors, 11 benign warnings) + vitest **449/449**
-  (444 parity + 5 app); `gen-data.mts` parity 0 failures (142/235/64).
+  `vite build` ✓ + oxlint (0 errors, 11 benign warnings) + vitest **452/452**
+  (447 parity + 5 app); `gen-data.mts` parity 0 failures (142/238/64); valgrind
+  **69/69** (14 matrix cases + all 55 fixtures).
 
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).

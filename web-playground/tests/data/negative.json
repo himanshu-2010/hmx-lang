@@ -2641,6 +2641,48 @@
       }
     },
     {
+      "name": "m16_reserved_alias_ident",
+      "kind": "negative",
+      "source": "fn main() {\n        let alias = 5\n        print(alias)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "Parse error",
+      "expected": {
+        "stdout": "",
+        "stderr": "Parse error [line 2]: syntax error near 'alias'\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_reserved_struct_ident",
+      "kind": "negative",
+      "source": "fn main() {\n        let struct = 5\n        print(struct)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "Parse error",
+      "expected": {
+        "stdout": "",
+        "stderr": "Parse error [line 2]: syntax error near 'struct'\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_reserved_enum_ident",
+      "kind": "negative",
+      "source": "fn main() {\n        let enum = 5\n        print(enum)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "Parse error",
+      "expected": {
+        "stdout": "",
+        "stderr": "Parse error [line 2]: syntax error near 'enum'\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
       "name": "tuple_literal_print",
       "kind": "negative",
       "source": "fn main() {\n        print((1, 2))\n    }",

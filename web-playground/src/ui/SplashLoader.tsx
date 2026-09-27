@@ -50,10 +50,10 @@ export function SplashLoader() {
     >
       <img
         className="splash-logo"
-        src="/favicon.png"
+        src="/logo.svg"
         alt=""
-        width={84}
-        height={84}
+        width={573}
+        height={246}
       />
       <div className="splash-word">HMX</div>
       <div className="splash-sub">compiler · web edition</div>

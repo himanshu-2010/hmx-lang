@@ -158,12 +158,15 @@ a:hover {
   text-decoration: none;
 }
 
-.brand-mark {
-  color: var(--red);
-  font-weight: 800;
-  font-size: 1.05rem;
-  font-family: var(--font-code);
-  text-shadow: 0 0 12px var(--red-glow);
+/* The mark (public/logo.svg) is a wide 2.33:1 emblem, so it is sized by height
+   and keeps its aspect ratio from the SVG's intrinsic size. The asset is white
+   for the dark topbar; the light theme inverts it (see below) so the same file
+   never disappears into a light surface. */
+.brand-logo {
+  display: block;
+  height: 1.55rem;
+  width: auto;
+  filter: drop-shadow(0 0 10px var(--red-glow));
 }
 
 .brand-name {
@@ -776,6 +779,14 @@ a:hover {
   box-shadow: 0 1px 0 rgba(196, 30, 58, 0.12), 0 8px 24px rgba(80, 50, 45, 0.08);
 }
 
+/* The logo asset is white for the dark topbar; on the light canvas (topbar,
+   footer, panels, splash) invert it so the same file stays legible in both
+   themes. */
+[data-theme="light"] .brand-logo,
+[data-theme="light"] .splash-logo {
+  filter: invert(1) drop-shadow(0 0 10px rgba(80, 50, 45, 0.15));
+}
+
 [data-theme="light"] .output-body {
   color: #3d2d29;
 }
@@ -914,10 +925,9 @@ a:hover {
   pointer-events: none;
 }
 .splash-logo {
-  width: 84px;
-  height: 84px;
-  border-radius: 22px;
-  box-shadow: 0 0 34px rgba(230, 57, 70, 0.4);
+  width: 220px;
+  height: auto;
+  filter: drop-shadow(0 0 26px rgba(230, 57, 70, 0.45));
   animation: splash-float 2.6s ease-in-out infinite;
 }
 @keyframes splash-float {
