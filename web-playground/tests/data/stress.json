@@ -1304,6 +1304,20 @@
       }
     },
     {
+      "name": "nonlocal_heap_locals",
+      "kind": "output",
+      "source": "struct Point {\n        x: int\n        y: int\n    }\n    fn main() {\n        let label = \"start\"\n        let nums = [1, 2, 3]\n        let point = Point(1, 2)\n        let seen = 0\n        loop (5) {\n            fn bail() {\n                break\n            }\n            seen = seen + 1\n            label = label + \"x\"\n            nums = [7, 7, 7]\n            point = Point(4, 5)\n            if (seen == 2) {\n                bail()\n            }\n        }\n        print(seen, label, length(nums), point.x, point.y)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "2 startxx 3 4 5\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "unicode_identifiers",
       "kind": "output",
       "source": "fn añadir(a: int, b: int) -> int {\n        return a + b\n    }\n    fn main() {\n        let número = 4\n        print(añadir(número, 6), \"ñ\", número)\n    }",

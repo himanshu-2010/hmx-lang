@@ -1,8 +1,8 @@
 # HMX Transpiler — Test Execution Report
 
-**Date:** 2026-09-26  
+**Date:** 2026-09-27  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 468 / 468 (64 integration + 238 negative + 142 stress + 24 CLI); web-playground vitest 452 / 452 (447 parity + 5 app); valgrind ownership matrix + all fixtures 69 / 69
+**Status:** ALL TESTS PASSED — native 470 / 470 (64 integration + 238 negative + 143 stress + 25 CLI); web-playground vitest 455 / 455 (448 parity + 7 app); valgrind ownership matrix + all fixtures 69 / 69; packaging gate 37 / 40 (3 fail by design — the PKGBUILD, Scoop and winget digests need the release to exist)
 
 ---
 
@@ -294,7 +294,7 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (142/142 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (143/143 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -369,6 +369,7 @@ These tests verify exact runtime output matching and process exit code propagati
 | `nonlocal_break_dowhile` | **[NEW]** Non-local Exit | nested-fn `break` ends a `do-while` at 4 | `4` | **PASS** |
 | `nonlocal_nested_targets` | **[NEW]** Non-local Exit | inner-fn `continue` + outer-fn `break` in one function | `inner 100\ninner 100\nafter 2` | **PASS** |
 | `nonlocal_non_main_owner` | **[NEW]** Non-local Exit | breaker owned by a non-main function | `iter\nafter` | **PASS** |
+| `nonlocal_heap_locals` | **[NEW]** Non-local Exit | `text` / array / `struct` locals mutated across a nested-fn `break` — the `volatile`-local path plus its release casts | `2 startxx 3 4 5` | **PASS** |
 | `unicode_identifiers` | **[NEW]** Unicode Identifiers | Unicode fn name + locals with exact Latin-1 output (`ñ`) | `10 ñ 4` | **PASS** |
 | `mod_output_basic` | **[NEW]** Module Output | imported `sum`/`twice` called from entry | `3\n42` | **PASS** |
 | `mod_diamond_dedupe` | **[NEW]** Module Diamond | `e1`/`e2` both `use` `d.hmx` — loaded once, correct results | `10 18` | **PASS** |
@@ -966,12 +967,12 @@ both backends.
   structs, struct in a tuple, closure capture of a struct, create/discard
   churn); 35 negatives `m16_*`.
 - **Native:** integration **64/64**, negative **238/238**, stress & output
-  **142/142**, CLI **24/24** — all green (468/468), and re-run under
+  **143/143**, CLI **25/25** — all green (470/470), and re-run under
   `HMX_ASAN=1` (AddressSanitizer + LeakSanitizer) clean on the integration and
   stress suites.
 - **Web parity (1:1):** parity data regenerated via `gen-data.mts`:
-  `stress 142 = 0 failures; negative 238 = 0; integration 64 = 0`.
-- **Web:** vitest **452/452** (447 parity + 5 app), `tsc` ✓, `vite build` ✓,
+  `stress 143 = 0 failures; negative 238 = 0; integration 64 = 0`.
+- **Web:** vitest **455/455** (448 parity + 7 app), `tsc` ✓, `vite build` ✓,
   oxlint 0 errors (11 benign warnings, all pre-existing UI).
 - **Valgrind:** `./tests/run_valgrind_tests.sh --fixtures` run locally with
   valgrind 3.25.1 — **69/69** clean (14 ownership-matrix cases + all 55

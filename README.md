@@ -72,7 +72,7 @@ production compiler. See [SYNTAX.md](SYNTAX.md) for the authoritative reference 
 
 `npm install && npm run dev` opens the playground editor locally. The web
 compiler is a TypeScript port of the front half (lexer → LALR parser tables →
-resolver) plus a new JavaScript backend, and its gate is parity with the 444
+resolver) plus a new JavaScript backend, and its gate is parity with the 445
 native test cases (work in progress across M2–M4):
 
 ```bash
@@ -590,10 +590,10 @@ The current regression suite contains:
 | --- | --- | --- |
 | Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals, structs/enums/aliases, refcounted text views & copy-on-write | 64/64 passed |
 | Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions), reserved-keyword misuse | 238/238 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics, borrowed-param field writes | 142/142 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics, borrowed-param field writes | 143/143 passed |
 | CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes, generated-C portability | 25/25 passed |
 | Packaging | Release version consistency across all nine manifests, no placeholder digests, manifest URLs vs. the names the release workflow actually produces, declared runtime deps, installer checksum verification | 40/40 passed |
-| Total | 509 test cases | 509/509 passed |
+| Total | 510 test cases | 510/510 passed |
 
 Two further gates need extra tools and are not part of that count:
 

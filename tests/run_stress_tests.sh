@@ -1368,6 +1368,32 @@ test_output "nonlocal_non_main_owner" \
     }' \
     "$(printf 'iter\nafter')"
 
+test_output "nonlocal_heap_locals" \
+    'struct Point {
+        x: int
+        y: int
+    }
+    fn main() {
+        let label = "start"
+        let nums = [1, 2, 3]
+        let point = Point(1, 2)
+        let seen = 0
+        loop (5) {
+            fn bail() {
+                break
+            }
+            seen = seen + 1
+            label = label + "x"
+            nums = [7, 7, 7]
+            point = Point(4, 5)
+            if (seen == 2) {
+                bail()
+            }
+        }
+        print(seen, label, length(nums), point.x, point.y)
+    }' \
+    "$(printf '2 startxx 3 4 5')"
+
 test_output "unicode_identifiers" \
     'fn añadir(a: int, b: int) -> int {
         return a + b

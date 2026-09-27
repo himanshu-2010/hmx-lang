@@ -468,7 +468,9 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
 
     for (auto* s : top_level) collect_lambdas_stmt(s);
     for (size_t fi = 0; fi < all_functions_.size(); fi++) {
+        cur_fn_setjmp_ = false;
         collect_lambdas_stmt(all_functions_[fi]);
+        fn_setjmp_[all_functions_[fi]] = cur_fn_setjmp_;
     }
     // Lambdas live inside expressions, so they were collected a second time
     // (they also appear as hoisted FunctionDecl statements). Dedupe by pointer.
@@ -532,9 +534,11 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     if (main_fn) {
         current_fn_ = main_fn;
         line_file_ = fn_file(main_fn);
+        setjmp_fn_ = fn_setjmp_.count(main_fn) && fn_setjmp_[main_fn];
         for (auto& body_stmt : main_fn->body) {
             emit_stmt(body_stmt.get());
         }
+        setjmp_fn_ = false;
         current_fn_ = nullptr;
         line_file_ = source_file_;
     }
@@ -554,6 +558,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
         if (fn->name != "main") {
             current_fn_ = fn;
             line_file_ = fn_file(fn);
+            setjmp_fn_ = fn_setjmp_.count(fn) && fn_setjmp_[fn];
             out_ << emit_function_signature(fn) << " {\n";
             scopes_.clear();
             loop_scopes_.clear();
@@ -572,6 +577,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
             }
             pop_scope();
             out_ << "}\n\n";
+            setjmp_fn_ = false;
         }
     }
     current_fn_ = nullptr;
@@ -605,6 +611,12 @@ void CodeGen::collect_function_decls(Statement* stmt) {
 }
 
 void CodeGen::collect_lambdas_stmt(Statement* stmt) {
+    // A loop with a non-local-exit target is the one construct that makes this
+    // function emit a setjmp, and therefore the one that makes its locals
+    // indeterminate after a longjmp (see the setjmp clobber note in codegen.hpp).
+    // Piggybacking on the existing walker keeps the two traversals from drifting:
+    // anything nested enough to hide a lambda is walked here too.
+    if (stmt->nl_target) cur_fn_setjmp_ = true;
     auto recurse = [this](const std::vector<StmtPtr>& list) {
         for (auto& s : list) collect_lambdas_stmt(s.get());
     };
@@ -1702,12 +1714,13 @@ void CodeGen::emit_stmt(Statement* stmt) {
     if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
         emit_line_directive(var->line, line_file_);
         TypeDesc d = var_desc_of(var);
-        out_ << "    " << (var->is_mutable ? "" : "const ") << c_type_for_desc(d)
-             << " " << safe_name(var->name) << " = ";
+        std::string ct = c_type_for_desc(d);
+        out_ << "    " << (var->is_mutable ? "" : "const ") << ct << " "
+             << volatile_qualifier() << safe_name(var->name) << " = ";
         if (type_has_heap(d)) emit_owned_expr(var->initializer.get());
         else emit_expr(var->initializer.get());
         out_ << ";\n";
-        declare_owned(safe_name(var->name), d);
+        declare_owned(safe_name(var->name), d, setjmp_fn_);
     } else if (auto* assign = dynamic_cast<AssignStmt*>(stmt)) {
         emit_line_directive(assign->line, line_file_);
         out_ << "    " << safe_name(assign->name);
@@ -2284,21 +2297,22 @@ void CodeGen::emit_stmt(Statement* stmt) {
 
 void CodeGen::emit_for_component(Statement* stmt) {
     if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
+        std::string ct;
         if (var->annotation == TypeKind::Tuple) {
-            out_ << tuple_name(var->tuple_members);
+            ct = tuple_name(var->tuple_members);
         } else if (var->annotation == TypeKind::Array) {
-            out_ << "sd_array*";
+            ct = "sd_array*";
         } else if (var->annotation == TypeKind::Struct ||
                    var->annotation == TypeKind::Enum) {
-            out_ << c_type_for_desc(var_desc_of(var));
+            ct = c_type_for_desc(var_desc_of(var));
         } else {
-            out_ << type_to_c(var->annotation);
+            ct = type_to_c(var->annotation);
         }
-        out_ << " " << safe_name(var->name) << " = ";
+        out_ << ct << " " << volatile_qualifier() << safe_name(var->name) << " = ";
         TypeDesc d = var_desc_of(var);
         if (type_has_heap(d)) emit_owned_expr(var->initializer.get());
         else emit_expr(var->initializer.get());
-        declare_owned(safe_name(var->name), d);
+        declare_owned(safe_name(var->name), d, setjmp_fn_);
     } else if (auto* assign = dynamic_cast<AssignStmt*>(stmt)) {
         out_ << safe_name(assign->name);
         if (assign->op == "++" || assign->op == "--") {
@@ -2380,10 +2394,19 @@ void CodeGen::pop_scope() {
     scopes_.pop_back();
 }
 
-void CodeGen::declare_owned(const std::string& cname, const TypeDesc& t) {
+void CodeGen::declare_owned(const std::string& cname, const TypeDesc& t, bool is_volatile) {
     if (!type_has_heap(t)) return;
     if (scopes_.empty()) push_scope();
-    scopes_.back().push_back({cname, t});
+    scopes_.back().push_back({cname, t, is_volatile});
+}
+
+bool CodeGen::is_volatile_local(const std::string& cname) const {
+    for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
+        for (auto& e : *it) {
+            if (e.cname == cname) return e.is_volatile;
+        }
+    }
+    return false;
 }
 
 // Full descriptor of a parameter, or an Unknown desc when not a parameter.
@@ -2513,18 +2536,23 @@ std::string CodeGen::slot_rel_name(const TypeDesc& d) const {
 }
 
 // Emit `sd_rel_<t>(&<src>); ` (a full C statement text, semicolon included).
+// A `volatile` local needs its address cast back to the unqualified pointer the
+// release helper takes — `&volatile_var` has type `volatile T*`, which does not
+// convert to `T*`, and the whole point of the qualifier is gone if we drop it.
 void CodeGen::emit_release_value(const std::string& src, const TypeDesc& t) {
+    std::string addr = "&" + src;
+    if (is_volatile_local(src)) addr = "(" + c_type_for_desc(t) + "*)" + addr;
     switch (t.type) {
         case TypeKind::Text:
         case TypeKind::Array:
         case TypeKind::Function:
-            out_ << slot_rel_name(t) << "(&" << src << "); ";
+            out_ << slot_rel_name(t) << "(" << addr << "); ";
             break;
         case TypeKind::Tuple:
-            if (type_has_heap(t)) out_ << slot_rel_name(t) << "(&" << src << "); ";
+            if (type_has_heap(t)) out_ << slot_rel_name(t) << "(" << addr << "); ";
             break;
         case TypeKind::Struct:
-            if (type_has_heap(t)) out_ << slot_rel_name(t) << "(&" << src << "); ";
+            if (type_has_heap(t)) out_ << slot_rel_name(t) << "(" << addr << "); ";
             break;
         default:
             break;  // scalars have no release

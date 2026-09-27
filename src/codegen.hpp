@@ -91,10 +91,23 @@ private:
     struct OwnedEntry {
         std::string cname;   // C variable holding the owning reference
         TypeDesc desc;       // its static type
+        bool is_volatile = false;  // declared `volatile` (see fn_setjmp_)
     };
     std::vector<std::vector<OwnedEntry>> scopes_;   // mirrors emitted C blocks
     std::vector<int> loop_scopes_;                  // scope indices of loop bodies
     std::vector<int> break_targets_;                // scope indices breakable by `break` (loop or switch case)
+
+    // ── Non-local exit and the setjmp clobber rule ──────────────────────
+    // A loop that a nested function breaks or continues out of is generated
+    // with a setjmp/longjmp pair. C11 7.13.1.1p4 then makes every
+    // non-volatile automatic object of the setjmp's function that changed in
+    // between *indeterminate* after the longjmp — so a local counter can come
+    // back one increment behind. gcc happens to spill such locals; clang keeps
+    // them in registers and the value is gone. The fix is `volatile`, applied
+    // to every local of any function whose body emits a setjmp.
+    std::map<const FunctionDecl*, bool> fn_setjmp_;   // pre-pass: emits a setjmp?
+    bool setjmp_fn_ = false;                          // set while emitting such a body
+    bool cur_fn_setjmp_ = false;                      // scratch for the pre-pass walk
 
     bool type_has_heap(const TypeDesc& d) const;
     bool expr_is_fresh(Expression* expr);
@@ -108,6 +121,17 @@ private:
     void emit_owned_expr(Expression* expr);
     // Emit a statement releasing one owned reference held at C lvalue/expr src.
     void emit_release_value(const std::string& src, const TypeDesc& t);
+    // True when `cname` was declared `volatile` (a local of a setjmp function),
+    // so its address needs an explicit cast before it can be handed to the
+    // generated release helpers.
+    bool is_volatile_local(const std::string& cname) const;
+    // "volatile " inside a function that emits a setjmp, "" elsewhere. Every
+    // local of such a function must be volatile or a non-local break/continue
+    // can land back in it with an indeterminate value. Always emit this *after*
+    // the C type text: for a `T*` local that gives `T* volatile p`, a volatile
+    // *pointer*, which is what preserves the local's value across a longjmp —
+    // `volatile T* p` would be a pointer to a volatile T and would not.
+    const char* volatile_qualifier() const { return setjmp_fn_ ? "volatile " : ""; }
     // Emit the signature-compatible call wrapper `({ ... })` for user /
     // function-value calls: heap args become owned temps evaluated before the
     // call and released afterwards. `emit_call` writes the callee expression
@@ -127,7 +151,7 @@ private:
     // Scope bookkeeping for owned locals.
     void push_scope();
     void pop_scope();
-    void declare_owned(const std::string& cname, const TypeDesc& t);
+    void declare_owned(const std::string& cname, const TypeDesc& t, bool is_volatile = false);
     // Full descriptor of a parameter (Unknown if not one) and the side effect
     // of registering a reassigned heap parameter as owned at function scope.
     TypeDesc param_desc_of(const std::string& user_name) const;

@@ -1,6 +1,6 @@
 # HMX Compiler — Progress Log
 
-Last updated: 2026-09-26
+Last updated: 2026-09-27
 ## Objective
 Implement the HMX transpiler's 8-phase plan (from `PLAN.md`) so users can write full hello-world-capable programs. Multi-stage pipeline: lexer → parser → type resolution → codegen → gcc.
 
@@ -1148,6 +1148,53 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   `vite build` ✓ + oxlint (0 errors, 11 benign warnings) + vitest **452/452**
   (447 parity + 5 app); `gen-data.mts` parity 0 failures (142/238/64); valgrind
   **69/69** (14 matrix cases + all 55 fixtures).
+
+## Non-local exit: `volatile` locals (setjmp clobber fix)
+- **Bug:** a loop that a nested function `break`s/`continue`s out of is generated
+  with a `setjmp` in the owning function and a `longjmp` in the nested one. C11
+  7.13.1.1p4 then makes every **non-volatile** automatic object of the
+  `setjmp`'s function that changed in between **indeterminate**, so the loop
+  counter is not guaranteed to survive. gcc happens to spill such locals; clang
+  keeps them in registers and the value is gone. Surfaced only on the new macOS
+  portability CI job: `nonlocal_break_loop` printed 1 (expected 2),
+  `nonlocal_break_while` 6 (7), `nonlocal_break_dowhile` 3 (4). The generated C
+  was UB, so this was a latent miscompile on any clang target, not a macOS bug.
+- **Fix:** codegen now marks every local of a function whose body emits a
+  `setjmp` as `volatile` (scalars, `T* volatile` pointers, by-value tuple /
+  struct / closure / enum locals), and so does the `for`-init variable, which is
+  such a local too. Functions that emit no `setjmp` are untouched, so no
+  generated C changes for ordinary programs.
+  - The set of such functions comes from the resolver's existing
+    `Statement::nl_target` flag — a loop is `nl_target` exactly when a nested
+    function exits it — so this needed **no resolver change** and no web
+    mirror. The flag is read inside the existing `collect_lambdas_stmt` walker
+    (one line) rather than a second traversal, so the two can never drift: the
+    walk that finds every lambda and nested function is the same one that now
+    finds every `setjmp` loop. It over-approximates (a nested function's targeted
+    loop also marks its enclosing function), which is the safe direction.
+  - Placement matters: `volatile T* p` is a pointer to a volatile `T`, but only
+    `T* volatile p` — a volatile *pointer* — preserves the local's own value
+    across a `longjmp`, which is the whole point. The qualifier is therefore
+    always emitted *after* the C type text.
+  - A `volatile` local's address is `volatile T*`, which does not convert to the
+    `T*` the generated `sd_rel_*` release helpers take, so `emit_release_value`
+    emits an explicit `(T*)&slot` cast for those. Dropping the qualifier at the
+    release site instead would reintroduce the exact bug the qualifier fixes.
+    `declare_owned` records the flag per scope entry so shadowing resolves
+    innermost-first, like `find_var_desc`.
+- **Tests:** stress `nonlocal_heap_locals` (**new**) — `text` / array / `struct`
+  locals mutated across a nested-fn `break`, i.e. the release-cast path; the seven
+  existing `nonlocal_*` cases now assert against clang on every CI platform.
+  Verified the fix directly: the five loop forms give the expected value under
+  both gcc and clang where the pre-fix C gave an indeterminate one, and a
+  program exercising every local kind inside a `setjmp` function compiles clean
+  under `gcc -Wall -Wextra` and `clang -Wall -Wextra` with zero
+  volatile-qualifier warnings and valgrind-clean refcounts.
+- **Hygiene:** native **470/470** (64 / 238 / 143 / 25), ASan+LSan-clean on
+  stress; web vitest **455/455** (448 parity + 7 app), `gen-data.mts` parity
+  0 failures (143/238/64), `tsc` ✓, oxlint 0 errors; valgrind **69/69**.
+  (This entry also re-snapshots `tests/data/negative.json`, whose module-path
+  patterns still carried the pre-`[/\\]`-separator text.)
 
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
