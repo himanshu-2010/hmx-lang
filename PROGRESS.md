@@ -1272,6 +1272,27 @@ channel), printed onto stderr that their program is supposed to own.
   ASan+LSan-clean; web vitest **455/455**, `gen-data.mts` parity 0 failures;
   packaging **48/51**.
 
+## `[ "$x" != "PREFIX"* ]` is not a prefix test
+The two new CLI cases were guarded with
+
+    [ "$(uname -s)" != "MINGW"* ] && [ "$(uname -s)" != "MSYS"* ] && ...
+
+and still ran on the msys2 Windows runner, failing with `exit=0` — `chmod 555`
+is a no-op on a Windows filesystem, so both cases passed vacuously. The guard
+was wrong, not the pattern list: when a glob matches nothing, bash leaves the
+word in place but marks it **quoted**, so `test` compares it literally.
+`[ MINGW64_NT-10.0-26100 = MINGW* ]` is false in bash 5.3, while
+`case MINGW64_NT-10.0-26100 in MINGW*)` matches. The `case` form — already used
+correctly by the signal-death guard a few lines up, and the only one that
+matched in the CI log — is what works.
+
+So this was a guard that reported a platform as POSIX while running on Windows,
+which is worse than no guard: the suite looked covered and was not. Fixed by
+using `case` for all three prefixes. Verified both ways — the two cases run and
+pass on Linux, and are skipped under a stubbed `uname -s` of
+`MINGW64_NT-10.0-26100` — and by diffing the full pass list between the two, to
+confirm nothing *else* was skipping silently.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

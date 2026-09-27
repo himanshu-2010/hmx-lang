@@ -116,18 +116,24 @@ rm -f build_temp.c
 # aborted with an unhandled filesystem_error and a `terminate` instead of
 # printing anything at all.
 # POSIX only — the mode bits and the uid that owns them mean nothing on Windows.
-if [ "$(uname -s)" != "MINGW"* ] && [ "$(uname -s)" != "MSYS"* ] \
-   && [ "$(uname -s)" != "CYGWIN"* ]; then
+# `case`, not `[ "$(uname -s)" != "MINGW"* ]`: when a glob matches nothing bash
+# leaves the word in place but marks it quoted, so `test` compares it literally
+# and the prefix test silently returns "not equal" — on msys2 that ran both
+# cases against a Windows filesystem, where chmod is a no-op, and they passed
+# vacuously with exit 0. `case` pattern-matches the value itself.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) ;;
+  *)
     mkdir -p ro && cp hello.hmx ro/ && chmod 555 ro
     ro_out="$( cd ro && "$BIN" run hello.hmx 2>&1 )" && ro_code=0 || ro_code=$?
     chmod 755 ro
     if [ "$ro_code" = 1 ] && printf '%s' "$ro_out" | grep -qF "cannot write build_temp.c"; then
-        echo "PASS (CLI): unwritable cwd is named, not blamed on the C compiler"
-        PASS=$((PASS+1))
+      echo "PASS (CLI): unwritable cwd is named, not blamed on the C compiler"
+      PASS=$((PASS+1))
     else
-        echo "FAIL (CLI): unwritable cwd is named (exit=$ro_code)"
-        echo "$ro_out" | sed 's/^/   /'
-        FAIL=$((FAIL+1))
+      echo "FAIL (CLI): unwritable cwd is named (exit=$ro_code)"
+      echo "$ro_out" | sed 's/^/   /'
+      FAIL=$((FAIL+1))
     fi
 
     # An unreadable path must produce a diagnostic, never a crash: assert on the
@@ -140,14 +146,15 @@ if [ "$(uname -s)" != "MINGW"* ] && [ "$(uname -s)" != "MSYS"* ] \
     if [ "$nr_code" = 1 ] \
        && printf '%s' "$nr_out" | grep -qF "cannot access 'nolist/hello.hmx'" \
        && ! printf '%s' "$nr_out" | grep -qF "terminate called"; then
-        echo "PASS (CLI): unreadable source is a diagnostic, not an abort"
-        PASS=$((PASS+1))
+      echo "PASS (CLI): unreadable source is a diagnostic, not an abort"
+      PASS=$((PASS+1))
     else
-        echo "FAIL (CLI): unreadable source is a diagnostic, not an abort (exit=$nr_code)"
-        echo "$nr_out" | sed 's/^/   /'
-        FAIL=$((FAIL+1))
+      echo "FAIL (CLI): unreadable source is a diagnostic, not an abort (exit=$nr_code)"
+      echo "$nr_out" | sed 's/^/   /'
+      FAIL=$((FAIL+1))
     fi
-fi
+    ;;
+esac
 
 # The version is pinned in exactly one place — CMakeLists' project(VERSION) —
 # so a release bump can never leave this test asserting a stale string.
