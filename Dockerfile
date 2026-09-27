@@ -9,6 +9,13 @@
 # Build locally:
 #   docker build -t hmx .
 #   docker run --rm -v "$PWD:/src" hmx run examples/hello.hmx
+#
+# The image runs as uid 1000. `hmx run` writes build_temp.c into the working
+# directory, so the mounted directory has to be writable *by the container
+# user*: on a machine where your uid is 1000 the command above just works, and
+# anywhere else pass --user "$(id -u):$(id -g)". Without it you get
+# "Error: cannot write build_temp.c in the current directory" naming the
+# cause, rather than a confusing complaint from the C compiler.
 
 # ── stage 1: build the compiler ──────────────────────────────
 FROM debian:bookworm-slim AS build

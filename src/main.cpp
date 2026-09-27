@@ -122,6 +122,13 @@ std::string get_basename(const std::string& path) {
     return name;
 }
 
+// The cwd for an error message, never a reason to fail the compile itself.
+std::string cwd_for_error() {
+    std::error_code ec;
+    auto p = std::filesystem::current_path(ec);
+    return ec ? std::string("(unknown)") : p.string();
+}
+
 // --- Module loader ---
 
 extern int yylineno;
@@ -197,7 +204,16 @@ static bool load_module_uses(Program* program, const std::string& base_dir,
     for (auto& u : program->use_files) {
         std::filesystem::path p(u);
         if (p.is_relative()) p = std::filesystem::path(base_dir) / p;
-        std::string canon = std::filesystem::weakly_canonical(p).string();
+        // The error_code overloads throughout: the throwing ones turn an
+        // unreadable path into an unhandled std::filesystem::filesystem_error
+        // and a `terminate`, which is not a diagnostic anyone can act on.
+        std::error_code fs_ec;
+        std::string canon = std::filesystem::weakly_canonical(p, fs_ec).string();
+        if (fs_ec) {
+            fprintf(stderr, "Error: cannot access module '%s': %s\n", u.c_str(),
+                    fs_ec.message().c_str());
+            return false;
+        }
 
         if (canon.size() < 4 || canon.compare(canon.size() - 4, 4, ".hmx") != 0) {
             fprintf(stderr, "Error: module '%s' must be a .hmx file\n", u.c_str());
@@ -209,8 +225,9 @@ static bool load_module_uses(Program* program, const std::string& base_dir,
         }
         if (loaded.count(canon)) continue;
 
-        if (!std::filesystem::exists(canon)) {
-            fprintf(stderr, "Error: cannot open module '%s'\n", canon.c_str());
+        if (!std::filesystem::exists(canon, fs_ec)) {
+            fprintf(stderr, "Error: cannot open module '%s'%s%s\n", canon.c_str(),
+                    fs_ec ? ": " : "", fs_ec ? fs_ec.message().c_str() : "");
             return false;
         }
 
@@ -267,7 +284,8 @@ static int cmd_new(std::string name) {
     if (name.size() < 4 || name.compare(name.size() - 4, 4, ".hmx") != 0) {
         name += ".hmx";
     }
-    if (std::filesystem::exists(name)) {
+    std::error_code new_ec;
+    if (std::filesystem::exists(name, new_ec)) {
         fprintf(stderr, "Error: '%s' already exists\n", name.c_str());
         return 1;
     }
@@ -348,7 +366,18 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (!std::filesystem::exists(source_file)) {
+    // The error_code overload: the throwing `exists()` aborts the whole
+    // process with an unhandled filesystem_error when the *parent* directory
+    // cannot be stat'd — which is exactly what a Docker bind mount owned by
+    // another uid looks like from inside.
+    std::error_code src_ec;
+    const bool src_exists = std::filesystem::exists(source_file, src_ec);
+    if (src_ec) {
+        fprintf(stderr, "Error: cannot access '%s': %s\n", source_file.c_str(),
+                src_ec.message().c_str());
+        return 1;
+    }
+    if (!src_exists) {
         fprintf(stderr, "Error: cannot open file '%s'\n", source_file.c_str());
         return 1;
     }
@@ -372,7 +401,7 @@ int main(int argc, char* argv[]) {
     // `main`) and their top-level state resolves before entry code reads it.
     std::set<std::string> loaded;
     std::vector<std::string> visiting;
-    visiting.push_back(std::filesystem::weakly_canonical(source_file).string());
+    visiting.push_back(std::filesystem::weakly_canonical(source_file, src_ec).string());
     std::vector<StmtPtr> module_stmts;
     if (!load_module_uses(program, dir_of(source_file), loaded, visiting,
                           module_stmts)) {
@@ -411,9 +440,27 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // The generated C lands in the *current working directory*, next to the
+    // output binary, so an unwritable cwd is a real failure mode and not a
+    // hypothetical one — it is what happens on a Docker bind mount whose host
+    // directory belongs to a different uid. Unchecked, it surfaced as
+    // "cc1: fatal error: build_temp.c: No such file or directory", which
+    // blames the C compiler for a filesystem problem.
     std::ofstream c_file(c_path);
+    if (!c_file) {
+        fprintf(stderr,
+                "Error: cannot write %s in the current directory (%s).\n"
+                "       hmx compiles in place, so the working directory has to be\n"
+                "       writable. (-o only moves the output binary, not the .c file.)\n",
+                c_path.c_str(), cwd_for_error().c_str());
+        return 1;
+    }
     c_file << c_source;
     c_file.close();
+    if (!c_file) {
+        fprintf(stderr, "Error: failed while writing %s\n", c_path.c_str());
+        return 1;
+    }
 
     // HMX_ASAN=1 builds the generated C with AddressSanitizer (which also
     // enables LeakSanitizer on Linux/macOS). The CI workflow uses this to

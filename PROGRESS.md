@@ -1196,6 +1196,55 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   (This entry also re-snapshots `tests/data/negative.json`, whose module-path
   patterns still carried the pre-`[/\\]`-separator text.)
 
+## The container image was never actually published under a usable tag
+Three independent defects, found in sequence once the tag bug was fixed. Each
+one masked the next, which is why the image job had been red on every push
+without any of them being visible.
+1. **`tags=` collapsed to one value.** `$GITHUB_OUTPUT` holds one value per
+   key, so writing `tags=` three times kept only the last. The image was built
+   and pushed as `hmx-lang:sha-<short>` alone — `:0.10.0` and `:latest` never
+   existed, which is every tag a person would actually pull. GHCR has only ever
+   held the throwaway sha tags. Fixed with the documented `tags<<EOF` heredoc
+   form, and the (now multi-line) list is handed to the smoke test through
+   `env:` rather than spliced into the `run:` body.
+2. **The smoke test reported Docker's fault, not its own.** It recovered the
+   tag with `sed 's#^tags=##p'` against a step output that no longer carried
+   the prefix, so the tag was empty and `docker run` failed with "invalid
+   reference format". It now fails with a named cause before reaching Docker.
+3. **The image ran as uid 1000 against a uid-1001 mount.** `hmx run` writes
+   `build_temp.c` into the working directory, so the runner's `/tmp` dir was
+   unwritable for the container user. The image was fine; the *test* was
+   wrong. The smoke test now passes `--user "$(id -u):$(id -g)"`, which is
+   what a real caller does and is what makes `-v "$PWD:/src"` work. The
+   Dockerfile and README document the uid requirement.
+
+Fixing (3) exposed two real compiler bugs, both now fixed in `src/main.cpp`:
+- **An unwritable working directory produced a misleading error.** The
+  `ofstream` for `build_temp.c` was never checked, so the write failed
+  silently and gcc reported `cc1: fatal error: build_temp.c: No such file or
+  directory` — blaming the C compiler for a filesystem problem. Now reported
+  as what it is, naming the cwd, and noting that `-o` moves only the output
+  binary and not the `.c` file.
+- **An unreadable source file aborted the process.** `std::filesystem::exists`
+  and `weakly_canonical` throw on a stat failure, so a path whose parent
+  directory cannot be traversed (precisely the bind-mount case above) died
+  with an unhandled `filesystem_error` and a `terminate` — no diagnostic at
+  all. Every `std::filesystem` call on a user-supplied path now uses the
+  `error_code` overloads and reports the failure.
+- **Tests:** two CLI cases (unwritable cwd named as such; unreadable source a
+  diagnostic and not an abort, asserted on the *absence* of `terminate called`
+  because an abort also exits non-zero), plus 11 static packaging checks
+  covering the heredoc form, the absence of repeated output keys, the `env:`
+  plumbing, the `--user` flag and the named-cause guard. The container workflow
+  additionally asserts the unwritable-cwd diagnostic from inside the image, so
+  the two fixes stay tied together.
+- **Hygiene:** native **472/472** (64 / 238 / 143 / 27), valgrind **69/69**,
+  ASan+LSan-clean on integration and stress; web vitest **455/455**,
+  `gen-data.mts` parity 0 failures, oxlint 0 errors; packaging **48/51** (the 3
+  remaining are the PKGBUILD / Scoop / winget digests, which need the release
+  to exist). Verified all three container cases against a locally built image
+  with a deliberately mismatched uid.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

@@ -162,6 +162,12 @@ check "container smoke test checks the exit code" .github/workflows/container.ym
 check "container smoke test reads tags from env" .github/workflows/container.yml 'TAGS: \$\{\{ steps\.meta\.outputs\.tags \}\}'
 check "container workflow watches v\* tags" .github/workflows/container.yml '\- "v\*"'
 check "container workflow pushes the image" .github/workflows/container.yml 'push: true'
+# The image runs as uid 1000 and `hmx run` writes into the working directory,
+# so a bind mount owned by the runner (uid 1001) is unwritable for it. Without
+# --user the smoke test failed on a permission error while the image itself was
+# fine, which reads as a broken image.
+check "container smoke test runs as the host uid" .github/workflows/container.yml 'docker run --rm --user "\$uid"'
+check "container smoke test asserts the unwritable-cwd diagnostic" .github/workflows/container.yml 'cannot write build_temp\.c'
 
 echo
 if [ "$FAIL" -eq 0 ]; then

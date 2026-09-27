@@ -89,14 +89,33 @@ jobs:
           # lying to anyone using the image in a script.
           mkdir -p /tmp/hmx-smoke
           printf 'fn main() -> int {\n    print("container ok")\n    return 7\n}\n' > /tmp/hmx-smoke/main.hmx
+          # The image runs as an unprivileged user (uid 1000) and `hmx run`
+          # writes build_temp.c into the working directory, so a bind mount
+          # owned by the runner's uid is unwritable for it. Run the container
+          # as the runner's uid — which is exactly what a real caller does, and
+          # what makes `-v "$PWD:/src"` work on a normal machine where the
+          # host uid is also 1000. GitHub's runner is 1001, which is how this
+          # mismatch first showed up here.
+          uid="$(id -u):$(id -g)"
           set +e
-          out="$(docker run --rm -v /tmp/hmx-smoke:/src "$tag" run main.hmx)"
+          out="$(docker run --rm --user "$uid" -v /tmp/hmx-smoke:/src "$tag" run main.hmx)"
           code=$?
           set -e
           echo "$out"; echo "exit=$code"
           [ "$out" = "container ok" ] || { echo "unexpected output"; exit 1; }
           [ "$code" = "7" ] || { echo "exit code did not propagate"; exit 1; }
-          docker run --rm "$tag" --version
+          docker run --rm --user "$uid" "$tag" --version
+          # The uid mismatch is the case that actually bites, so assert the
+          # diagnostic and not just the failure: an unwritable working
+          # directory has to be named as such, not reported as a missing
+          # build_temp.c by the C compiler.
+          chmod 0700 /tmp/hmx-smoke
+          if docker run --rm --user 12345:12345 -v /tmp/hmx-smoke:/src "$tag" run main.hmx 2>&1 \
+             | grep -q "cannot write build_temp.c"; then
+            echo "unwritable working directory is reported clearly"
+          else
+            echo "::error::an unwritable working directory is not reported clearly"; exit 1
+          fi
 
       - name: Push
         if: github.event_name != 'pull_request'

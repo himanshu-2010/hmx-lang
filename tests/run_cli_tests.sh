@@ -79,6 +79,47 @@ else
 fi
 rm -f build_temp.c
 
+# `hmx run` transpiles into the *current working directory*, so an unwritable
+# cwd is a real failure mode — a Docker bind mount owned by another uid being
+# the case that motivated it. Unchecked, the ofstream failed silently and gcc
+# reported "cc1: fatal error: build_temp.c: No such file or directory", which
+# blames the C compiler for a filesystem problem.
+# The unreadable-source half matters too: the throwing std::filesystem::exists
+# aborted with an unhandled filesystem_error and a `terminate` instead of
+# printing anything at all.
+# POSIX only — the mode bits and the uid that owns them mean nothing on Windows.
+if [ "$(uname -s)" != "MINGW"* ] && [ "$(uname -s)" != "CYGWIN"* ]; then
+    mkdir -p ro && cp hello.hmx ro/ && chmod 555 ro
+    ro_out="$( cd ro && "$BIN" run hello.hmx 2>&1 )" && ro_code=0 || ro_code=$?
+    chmod 755 ro
+    if [ "$ro_code" = 1 ] && printf '%s' "$ro_out" | grep -qF "cannot write build_temp.c"; then
+        echo "PASS (CLI): unwritable cwd is named, not blamed on the C compiler"
+        PASS=$((PASS+1))
+    else
+        echo "FAIL (CLI): unwritable cwd is named (exit=$ro_code)"
+        echo "$ro_out" | sed 's/^/   /'
+        FAIL=$((FAIL+1))
+    fi
+
+    # An unreadable path must produce a diagnostic, never a crash: assert on the
+    # absence of the terminate message, not just on the exit code, because an
+    # abort also exits non-zero. The source is named by path rather than reached
+    # with cd, because a mode-000 directory cannot be entered either.
+    mkdir -p nolist && cp hello.hmx nolist/ && chmod 000 nolist
+    nr_out="$( "$BIN" run nolist/hello.hmx 2>&1 )" && nr_code=0 || nr_code=$?
+    chmod 755 nolist
+    if [ "$nr_code" = 1 ] \
+       && printf '%s' "$nr_out" | grep -qF "cannot access 'nolist/hello.hmx'" \
+       && ! printf '%s' "$nr_out" | grep -qF "terminate called"; then
+        echo "PASS (CLI): unreadable source is a diagnostic, not an abort"
+        PASS=$((PASS+1))
+    else
+        echo "FAIL (CLI): unreadable source is a diagnostic, not an abort (exit=$nr_code)"
+        echo "$nr_out" | sed 's/^/   /'
+        FAIL=$((FAIL+1))
+    fi
+fi
+
 # The version is pinned in exactly one place — CMakeLists' project(VERSION) —
 # so a release bump can never leave this test asserting a stale string.
 VERSION="$(sed -n 's/^project(hmx VERSION \([0-9][0-9.]*\).*/\1/p' "$REPO/CMakeLists.txt")"
