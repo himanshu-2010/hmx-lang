@@ -25,7 +25,7 @@ license=('MIT')
 depends=('gcc')
 makedepends=('cmake' 'ninja' 'flex' 'bison' 'git')
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/himanshu-2010/hmx-lang/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('7555427a06f3063674105a2ded5e7617d4cbcc80ac9fd3f384923bb13c4833af')
+sha256sums=('50323ddb07efae1627e945825ce37e944fd640470c97b94ef7ddeaa21bc25e99')
 
 # The source tarball is the primary input. If it is unavailable (a mirror or
 # a local checkout, e.g. when packaging straight from a git clone), fall back

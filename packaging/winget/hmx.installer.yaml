@@ -13,7 +13,7 @@ InstallerType: zip
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/himanshu-2010/hmx-lang/releases/download/v0.10.0/hmx-0.10.0-windows-x86_64.zip
-    InstallerSha256: 91095fe402dcf6d935afa2991070b9272407e61221111c49e3d2f4f4dfc84e8d
+    InstallerSha256: 659260dbdf5e3c364a50f8f62c930354774a31311535fec1c502a7e3bb212608
     InstallerLocation: hmx.exe
 ManifestType: singleton
 ManifestVersion: 1.6.0
