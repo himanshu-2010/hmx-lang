@@ -60,6 +60,25 @@ check "build produces binary"             0     "Built: hello"    "$BIN" build h
 [ -x hello_app ] && PASS=$((PASS+1)) && echo "PASS (CLI): build binary exists & executable" || { echo "FAIL (CLI): build binary exists"; FAIL=$((FAIL+1)); }
 [ "$(./hello_app)" = "hello" ] && PASS=$((PASS+1)) && echo "PASS (CLI): built binary runs" || { echo "FAIL (CLI): built binary runs"; FAIL=$((FAIL+1)); }
 
+# The generated C must stay portable across the toolchains the release builds
+# on. sd_read_line() used getline(), which is POSIX 2008 and absent from
+# MinGW-w64, so every program calling input() failed to compile on Windows
+# with "implicit declaration of function 'getline'". Nothing catches that on
+# Linux — the generated C is compiled with the host gcc either way — so assert
+# it here on the emitted source.
+printf 'fn main() {\n    let a = input()\n    print(a, length(a))\n}\n' > stdin.hmx
+printf 'hi\n' | "$BIN" build stdin.hmx -keep-c >/dev/null
+posix_only="$(grep -oE '\b(getline|ssize_t|strdup|strndup|strcasecmp|fileno|isatty|popen|strtok_r|asprintf|getopt)\b' build_temp.c | sort -u | tr '\n' ' ' || true)"
+if [ -n "$posix_only" ]; then
+    echo "FAIL (CLI): generated C uses POSIX-only calls"
+    echo "   found: $posix_only"
+    FAIL=$((FAIL+1))
+else
+    echo "PASS (CLI): generated C has no POSIX-only calls"
+    PASS=$((PASS+1))
+fi
+rm -f build_temp.c
+
 # The version is pinned in exactly one place — CMakeLists' project(VERSION) —
 # so a release bump can never leave this test asserting a stale string.
 VERSION="$(sed -n 's/^project(hmx VERSION \([0-9][0-9.]*\).*/\1/p' "$REPO/CMakeLists.txt")"

@@ -1,0 +1,21 @@
+# Keep the build context small and reproducible: `build/` holds the host's
+# CMake output, which would be stale inside the image anyway.
+build/
+dist/
+node_modules/
+web-playground/
+.git/
+.github/
+.gitignore
+*.o
+*.deb
+*.rpm
+hmx
+build_temp.c
+# The container only needs the compiler sources.
+tests/
+examples/
+install/
+packaging/
+Dockerfile
+.dockerignore

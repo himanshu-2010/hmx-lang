@@ -77,38 +77,26 @@ jobs:
       - name: Valgrind ownership checks
         run: ./tests/run_valgrind_tests.sh --fixtures
 
-  portability:
-    # The Windows and macOS builds used to be exercised only by
-    # release.yml, so a <sys/wait.h> that does not exist under MinGW-w64 sat
-    # unnoticed until a release attempt died on it. Every push now compiles
-    # the compiler and runs the CLI suite (which pins exit-code propagation)
-    # on both. Two jobs rather than a matrix because a step-level `shell:`
-    # may not read the matrix context.
-    name: portability (${{ matrix.label }})
-    runs-on: ${{ matrix.os }}
+  portability-macos:
+    # The Windows and macOS builds used to be exercised only by release.yml,
+    # so a <sys/wait.h> that does not exist under MinGW-w64 sat unnoticed
+    # until a release attempt died on it. Every push now compiles the compiler
+    # and runs the CLI suite (which pins exit-code propagation) on both.
+    # Windows is a separate job because msys2 has to be the step shell, which
+    # `defaults.run.shell` cannot vary per matrix entry.
+    name: portability (macOS)
+    runs-on: macos-14
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-14
-            label: macos
-          - os: windows-latest
-            label: windows (MinGW)
     env:
       # A background `brew update` holding the global lock, or an
       # interactive prompt on a TTY-less runner, is what turned the v0.9.0
       # macOS release job into a six-hour stall.
       HOMEBREW_NO_AUTO_UPDATE: "1"
       NONINTERACTIVE: "1"
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v4
 
       - name: Install deps (macOS)
-        if: runner.os == 'macOS'
         run: |
           brew install cmake flex bison ninja
           for f in flex bison ninja cmake; do
@@ -131,8 +119,8 @@ jobs:
         run: ./tests/run_integration.sh
 
   portability-windows:
-    # Same intent as the macOS half of `portability`, kept separate because the
-    # MinGW toolchain needs msys2 as the step shell and `defaults.run.shell`
+    # The Windows half of the portability gate. Kept separate from the macOS
+    # job because msys2 has to be the step shell, which `defaults.run.shell`
     # cannot vary per matrix entry.
     name: portability (windows, MinGW)
     runs-on: windows-latest

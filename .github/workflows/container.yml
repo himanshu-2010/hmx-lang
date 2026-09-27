@@ -1,0 +1,94 @@
+name: container
+
+# Builds the hmx image and publishes it to GHCR.
+#
+#   docker run --rm -v "$PWD:/src" ghcr.io/himanshu-2010/hmx run main.hmx
+#
+# Tagged with the release version so `ghcr.io/himanshu-2010/hmx:0.10.0` is
+# reproducible, and with `latest` off main.
+on:
+  push:
+    tags:
+      - "v*"
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ${{ github.repository }}
+
+jobs:
+  image:
+    name: build + publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Log in even on a pull request: a fork's PR gets its own read-only
+      # token, and the push step below is skipped there anyway.
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags
+        id: meta
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          {
+            echo "tags=${REGISTRY}/${IMAGE}:${version}"
+            if [ "$GITHUB_REF_NAME" != "$GITHUB_REF_TYPE" ] || [ "$GITHUB_REF_TYPE" = branch ]; then
+              echo "tags=${REGISTRY}/${IMAGE}:latest"
+            fi
+            echo "tags=${REGISTRY}/${IMAGE}:sha-${GITHUB_SHA::7}"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+      - name: Build (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the built image
+        run: |
+          tag="$(sed -n 's#^tags=##p' <<< "${{ steps.meta.outputs.tags }}" | head -1)"
+          echo "testing $tag"
+          # The exit code must survive the container boundary, or `hmx run` is
+          # lying to anyone using the image in a script.
+          mkdir -p /tmp/hmx-smoke
+          printf 'fn main() -> int {\n    print("container ok")\n    return 7\n}\n' > /tmp/hmx-smoke/main.hmx
+          set +e
+          out="$(docker run --rm -v /tmp/hmx-smoke:/src "$tag" run main.hmx)"
+          code=$?
+          set -e
+          echo "$out"; echo "exit=$code"
+          [ "$out" = "container ok" ] || { echo "unexpected output"; exit 1; }
+          [ "$code" = "7" ] || { echo "exit code did not propagate"; exit 1; }
+          docker run --rm "$tag" --version
+
+      - name: Push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha

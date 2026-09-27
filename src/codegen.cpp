@@ -122,18 +122,30 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "    return (a->len > b->len) - (a->len < b->len);\n";
     out_ << "}\n\n";
 
+    // getline() is POSIX 2008 and does not exist under MinGW-w64, so every
+    // generated program that used input() failed to compile on Windows with
+    // "implicit declaration of function 'getline'" (and ssize_t is not
+    // standard C either). Reading a byte at a time is portable to MSVC,
+    // MinGW and POSIX, and the observable behaviour is unchanged: the line
+    // terminator is stripped, CRLF is handled, and EOF with nothing read
+    // yields an empty text.
     out_ << "static sd_str* sd_read_line(void) {\n";
     out_ << "    char* line = NULL;\n";
-    out_ << "    size_t cap = 0;\n";
-    out_ << "    ssize_t n = getline(&line, &cap, stdin);\n";
-    out_ << "    if (n < 0) {\n";
-    out_ << "        free(line);\n";
-    out_ << "        return sd_make_str(0, 0);\n";
+    out_ << "    size_t cap = 0, len = 0;\n";
+    out_ << "    int c;\n";
+    out_ << "    while ((c = fgetc(stdin)) != EOF && c != '\\n') {\n";
+    out_ << "        if (len + 1 >= cap) {\n";
+    out_ << "            size_t ncap = cap ? cap * 2 : 64;\n";
+    out_ << "            char* nl = (char*)realloc(line, ncap);\n";
+    out_ << "            if (!nl) { free(line); exit(1); }\n";
+    out_ << "            line = nl;\n";
+    out_ << "            cap = ncap;\n";
+    out_ << "        }\n";
+    out_ << "        line[len++] = (char)c;\n";
     out_ << "    }\n";
-    out_ << "    while (n > 0 && (line[n-1] == '\\n' || line[n-1] == '\\r')) {\n";
-    out_ << "        line[--n] = '\\0';\n";
-    out_ << "    }\n";
-    out_ << "    sd_str* r = sd_make_str(line, (size_t)n);\n";
+    out_ << "    if (len > 0 && line[len-1] == '\\r') len--;\n";
+    out_ << "    if (!line) return sd_make_str(0, 0);\n";
+    out_ << "    sd_str* r = sd_make_str(line, len);\n";
     out_ << "    free(line);\n";
     out_ << "    return r;\n";
     out_ << "}\n\n";

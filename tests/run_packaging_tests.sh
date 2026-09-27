@@ -141,8 +141,8 @@ check "installers resolve the latest release" install/install.sh 'releases/lates
 check "install.ps1 resolves the latest release" install/install.ps1 'releases/latest'
 
 # ── 8) CI covers the platforms the release ships ─────────────
-check "CI builds on macOS"   .github/workflows/ci.yml 'os: macos-14'
-check "CI builds on Windows" .github/workflows/ci.yml "os: windows-latest"
+check "CI builds on macOS"   .github/workflows/ci.yml "runs-on: macos-14"
+check "CI builds on Windows" .github/workflows/ci.yml "runs-on: windows-latest"
 check "CI runs the packaging gate" .github/workflows/ci.yml 'run_packaging_tests\.sh'
 
 echo
