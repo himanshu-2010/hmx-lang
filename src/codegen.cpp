@@ -915,7 +915,20 @@ void CodeGen::emit_identifier_value(const std::string& name) {
 }
 
 void CodeGen::emit_line_directive(int line, const std::string& file) {
-    out_ << "#line " << line << " \"" << file << "\"\n";
+    // A Windows source path carries backslashes, and this is a C string
+    // literal, so C reads "\h" in "D:\hmx\main.hmx" as an unknown escape
+    // sequence and warns — once per directive, on the program's stderr, which
+    // the stress suite compares byte for byte. Every module test failed on
+    // Windows for this reason alone. Escaping the backslash also makes the
+    // path gcc echoes in diagnostics the one the user typed, instead of one
+    // with bell characters in it. Forward slashes work as-is, so only the
+    // backslash is rewritten.
+    out_ << "#line " << line << " \"";
+    for (char ch : file) {
+        if (ch == '\\') out_ << "\\\\";
+        else out_ << ch;
+    }
+    out_ << "\"\n";
 }
 
 TypeKind CodeGen::get_expr_type(Expression* expr) {

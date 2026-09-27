@@ -1293,6 +1293,32 @@ pass on Linux, and are skipped under a stubbed `uname -s` of
 `MINGW64_NT-10.0-26100` — and by diffing the full pass list between the two, to
 confirm nothing *else* was skipping silently.
 
+## `#line` filenames were not escaped, and the symptom was on stderr
+With the CLI suite green, six module stress tests failed on Windows while
+printing the *correct* program output. The extra text was the C compiler's:
+
+    #line 2 "D:\a\_temp\...\main.hmx"
+          warning: unknown escape sequence: '\_'
+          warning: unknown escape sequence: '\h'
+
+`#line`'s filename is a C string literal, and a Windows path is mostly
+backslashes, so C parses `\h`, `\m`, `\a` as escapes. The compiler answers on
+stderr, and `hmx run` lets the C compiler's stderr through, so it landed on the
+program's stderr — which the stress suite compares byte for byte. Every test
+involving a module failed for that reason and nothing else.
+`emit_line_directive` now doubles the backslash. Escaping it (rather than
+normalising to forward slashes) also means gcc echoes back the path the user
+actually typed, instead of one containing a bell character.
+
+The check runs on **Linux**, not Windows, which looks backwards until you notice
+that Windows cannot hold a backslash in a filename at all. A backslash is a
+perfectly legal character in a Linux filename and the emitted C is identical
+either way, so this is the one place the case can be constructed on every run.
+Verified by reverting the escaping and watching all three host compilers fail.
+- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), valgrind **69/69**,
+  ASan+LSan-clean; web vitest **455/455**, `gen-data.mts` parity 0 failures;
+  packaging **48/51**.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

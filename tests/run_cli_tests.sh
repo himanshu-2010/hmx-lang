@@ -153,6 +153,40 @@ case "$(uname -s)" in
       echo "$nr_out" | sed 's/^/   /'
       FAIL=$((FAIL+1))
     fi
+
+    # A #line filename is a C string literal, and a Windows path is full of
+    # backslashes: "#line 2 "D:\hmx\main.hmx"" makes C read \h and \m as
+    # unknown escapes, and the C compiler answers with a warning on the
+    # program's stderr — which the stress suite compares byte for byte, so
+    # every module test failed on Windows for that alone.
+    #
+    # The bug only shows up on a Windows path, but Windows cannot hold a
+    # backslash in a filename, so the check runs *here* instead: a backslash is
+    # a perfectly legal character in a Linux filename, and the emitted C is
+    # the same either way. That inversion is deliberate — the gate has to be
+    # somewhere that always runs, not where the symptom appears.
+    cp hello.hmx 'back\slash.hmx' 2>/dev/null || true
+    if [ -f 'back\slash.hmx' ]; then
+      "$BIN" build 'back\slash.hmx' -keep-c >/dev/null 2>&1
+      ln_checked=0
+      for c in cc gcc clang; do
+        command -v "$c" >/dev/null 2>&1 || continue
+        ln_checked=$((ln_checked+1))
+        ln_out="$( "$c" -O2 -fsyntax-only build_temp.c 2>&1 )" || true
+        if printf '%s' "$ln_out" | grep -q "unknown escape sequence"; then
+          echo "FAIL (CLI): #line filename is not escaped for a backslash path ($c)"
+          printf '%s' "$ln_out" | grep "unknown escape" | head -3 | sed 's/^/   /'
+          FAIL=$((FAIL+1))
+        else
+          echo "PASS (CLI): #line filename survives a backslash path ($c)"
+          PASS=$((PASS+1))
+        fi
+      done
+      [ "$ln_checked" -gt 0 ] || echo "SKIP (CLI): no host C compiler for the #line check"
+      rm -f build_temp.c 'back\slash.hmx'
+    else
+      echo "SKIP (CLI): cannot create a backslash filename here"
+    fi
     ;;
 esac
 
