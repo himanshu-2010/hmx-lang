@@ -90,31 +90,39 @@ repo root. Domain suggestions and step-by-step: [`DEPLOY.md`](DEPLOY.md).
 
 ## Install
 
-The `hmx` command-line compiler installs on Linux, macOS and Windows. Pick the
-option that matches your platform:
+The `hmx` command-line compiler installs on Linux, macOS and Windows. Every
+option below installs the same compiler and verifies its download against the
+release's `SHA256SUMS`. Pick the one that matches your platform:
 
-| Platform        | Installer                                                                 |
-| --------------- | -------------------------------------------------------------------------- |
-| **Linux**       | `curl -fsSL https://raw.githubusercontent.com/himanshu-2010/hmx-lang/main/install/install.sh \| bash` |
-| **macOS**       | `brew tap himanshu-2010/homebrew-hmx && brew install hmx`                  |
-| **Windows**     | `curl -fsSL https://raw.githubusercontent.com/himanshu-2010/hmx-lang/main/install/install.ps1 \| powershell -Command -` |
-| **Arch Linux**  | `yay -S hmx` (AUR)                                                          |
-| **Debian/Ubuntu** | `.deb` from the [GitHub Release](https://github.com/himanshu-2010/hmx-lang/releases) |
-| **Scoop / winget** | `scoop bucket add hmx https://github.com/himanshu-2010/scoop-hmx && scoop install hmx` · `winget install HMX` |
+| Platform          | Installer |
+| ----------------- | --------- |
+| **Linux / macOS (any)** | `curl -fsSL https://raw.githubusercontent.com/himanshu-2010/hmx-lang/main/install/install.sh \| bash` |
+| **Debian / Ubuntu** | `.deb` from the [GitHub Release](https://github.com/himanshu-2010/hmx-lang/releases) |
+| **Arch Linux**     | `paru -S hmx` (AUR) |
+| **macOS**          | `brew tap himanshu-2010/homebrew-hmx && brew install hmx` |
+| **Windows**        | `curl -fsSL https://raw.githubusercontent.com/himanshu-2010/hmx-lang/main/install/install.ps1 \| powershell -Command -` |
+| **Docker**         | `docker run --rm -v "$PWD:/src" ghcr.io/himanshu-2010/hmx run main.hmx` |
+| **From source**    | see [Build](#build) below |
 
-The Linux installer detects your distro and uses the best option available:
-`.deb` (Debian/Ubuntu via `apt`), the AUR (Arch), a Homebrew install (macOS),
-or the prebuilt binary tarball as a generic fallback. Every installer is free
-and open source.
+The shell installer picks the best option for your system: the `.deb` on
+Debian/Ubuntu, the AUR on Arch (via `paru`/`yay`), Homebrew on macOS, and the
+prebuilt binary tarball everywhere else. With no arguments it resolves the
+newest published release; pass `HMX_VERSION=0.10.0` to pin one. On Windows,
+`install.ps1` tries winget, then Scoop, then a checksum-verified zip.
+
+Prebuilt binaries exist for **linux-x86_64**, **macos-arm64** and
+**windows-x86_64**. Other combinations are told how to build from source
+rather than handed a 404. Every installer is free and open source.
 
 `hmx` transpiles a `.hmx` program to C and compiles it, so it needs a C
-compiler on PATH (`gcc`, `cc`, or `clang`).
+compiler on PATH (`gcc`, `cc`, or `clang`). The Docker image bundles one.
 
 ## Quick Start
 
 ### Requirements
 
-Linux is the currently tested platform. Install these tools:
+Linux, macOS and Windows (MinGW-w64) are all built and tested on every push by
+CI. Install these tools:
 
 - C++17 compiler (`g++`)
 - C compiler (`gcc`)
@@ -572,6 +580,8 @@ cmake --build build
 ./tests/run_integration.sh
 ./tests/run_negative_tests.sh
 ./tests/run_stress_tests.sh
+./tests/run_cli_tests.sh
+./tests/run_packaging_tests.sh
 ```
 
 The current regression suite contains:
@@ -581,8 +591,21 @@ The current regression suite contains:
 | Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals, structs/enums/aliases, refcounted text views & copy-on-write | 64/64 passed |
 | Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions), reserved-keyword misuse | 238/238 passed |
 | Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics, borrowed-param field writes | 142/142 passed |
-| CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes | 24/24 passed |
-| Total | 468 test cases | 468/468 passed |
+| CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes, generated-C portability | 25/25 passed |
+| Packaging | Release version consistency across all nine manifests, no placeholder digests, manifest URLs vs. the names the release workflow actually produces, declared runtime deps, installer checksum verification | 40/40 passed |
+| Total | 509 test cases | 509/509 passed |
+
+Two further gates need extra tools and are not part of that count:
+
+```bash
+./tests/run_valgrind_tests.sh --fixtures   # 69 memory checks (14 matrix + 55 fixtures)
+HMX_ASAN=1 ./tests/run_integration.sh      # same suites under ASan + LeakSanitizer
+```
+
+CI runs all of them, and additionally builds the compiler on macOS and Windows
+(MinGW-w64) and runs the CLI and integration suites there, because a generated
+C file that is only ever compiled by the host `gcc` will happily hide a
+portability break until it reaches a release runner.
 
 The detailed report is in [TESTRESULT.md](TESTRESULT.md). Test fixtures are in
 [tests/fixtures](tests/fixtures), and the example program is

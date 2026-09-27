@@ -152,6 +152,16 @@ jobs:
       - name: Integration suite
         run: ./tests/run_integration.sh
 
+      # The release job runs all four suites on Windows, so CI runs them too.
+      # The first Windows release attempt redirected every line to /dev/null,
+      # so a failure there logged nothing but "exit code 1" and the cause was
+      # a two-minute CI run to find.
+      - name: Negative suite
+        run: ./tests/run_negative_tests.sh
+
+      - name: Stress & output suite
+        run: ./tests/run_stress_tests.sh
+
   packaging:
     name: packaging manifests
     runs-on: ubuntu-latest

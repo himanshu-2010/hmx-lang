@@ -113,19 +113,22 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          ./tests/run_integration.sh >/dev/null
-          ./tests/run_negative_tests.sh >/dev/null
-          ./tests/run_stress_tests.sh >/dev/null
-          ./tests/run_cli_tests.sh >/dev/null
+          ./tests/run_integration.sh
+          ./tests/run_negative_tests.sh
+          ./tests/run_stress_tests.sh
+          ./tests/run_cli_tests.sh
 
       - name: Test (native suites + CLI, Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          ./tests/run_integration.sh >/dev/null
-          ./tests/run_negative_tests.sh >/dev/null
-          ./tests/run_stress_tests.sh >/dev/null
-          ./tests/run_cli_tests.sh >/dev/null
+          # No >/dev/null: a failure here once logged nothing but "exit code
+          # 1" and cost a full release run to diagnose. tee keeps the output
+          # in the log and still propagates a non-zero status.
+          ./tests/run_integration.sh    2>&1 | tee integration.log    ; test ${PIPESTATUS[0]} -eq 0
+          ./tests/run_negative_tests.sh 2>&1 | tee negative.log       ; test ${PIPESTATUS[0]} -eq 0
+          ./tests/run_stress_tests.sh   2>&1 | tee stress.log         ; test ${PIPESTATUS[0]} -eq 0
+          ./tests/run_cli_tests.sh      2>&1 | tee cli.log            ; test ${PIPESTATUS[0]} -eq 0
 
       - name: Package .deb (Linux)
         if: runner.os == 'Linux'
