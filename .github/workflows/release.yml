@@ -175,12 +175,16 @@ jobs:
 
       # SHA256SUMS ships next to the artifacts so install.sh can verify what
       # it downloads instead of trusting the connection. Generated here, after
-      # the merge, so it covers every platform in one file.
+      # the merge, so it covers every platform in one file. `find` rather
+      # than globs: an unmatched glob is passed through literally and would
+      # fail the step under `set -e -o pipefail`.
       - name: Checksums
         run: |
           cd dist
-          sha256sum hmx*.tar.gz hmx*.zip hmx*.deb 2>/dev/null | sort -k2 > SHA256SUMS
+          find . -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.deb' \) \
+            -printf '%f\n' | sort | xargs sha256sum > SHA256SUMS
           cat SHA256SUMS
+          test -s SHA256SUMS
 
       - uses: softprops/action-gh-release@v2
         with:
