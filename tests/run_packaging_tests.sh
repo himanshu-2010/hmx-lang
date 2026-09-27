@@ -145,6 +145,24 @@ check "CI builds on macOS"   .github/workflows/ci.yml "runs-on: macos-14"
 check "CI builds on Windows" .github/workflows/ci.yml "runs-on: windows-latest"
 check "CI runs the packaging gate" .github/workflows/ci.yml 'run_packaging_tests\.sh'
 
+# ── 9) The container image is actually built, tagged and pushed ──
+# The image job was broken for its whole life in a way that read like a Docker
+# fault: `tags=` written three times to $GITHUB_OUTPUT keeps only the last, so
+# the image was built and pushed as `:sha-<short>` alone — `:0.10.0` and
+# `:latest` never existed — and the smoke test then read an empty tag and died
+# on "invalid reference format". Both halves are checked statically below.
+check "container image is multi-stage"      Dockerfile 'FROM .* AS build'
+check "container image carries a C compiler" Dockerfile 'gcc'
+check "container tags use the heredoc form" .github/workflows/container.yml 'tags<<HMX_TAGS_EOF'
+reject "no repeated tags= output keys"     .github/workflows/container.yml 'echo "tags='
+check "container smoke test names the image" .github/workflows/container.yml 'no image tag derived'
+check "container smoke test checks the exit code" .github/workflows/container.yml 'exit code did not propagate'
+# The tag list is multi-line, so it has to arrive via env: an expression spliced
+# into a `run:` body is a script-injection hazard as well as unreadable.
+check "container smoke test reads tags from env" .github/workflows/container.yml 'TAGS: \$\{\{ steps\.meta\.outputs\.tags \}\}'
+check "container workflow watches v\* tags" .github/workflows/container.yml '\- "v\*"'
+check "container workflow pushes the image" .github/workflows/container.yml 'push: true'
+
 echo
 if [ "$FAIL" -eq 0 ]; then
     echo "Packaging Tests Passed: $PASS, Failed: 0  (version $VERSION)"

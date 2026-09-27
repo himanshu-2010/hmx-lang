@@ -47,13 +47,18 @@ jobs:
         id: meta
         run: |
           version="${GITHUB_REF_NAME#v}"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
           {
-            echo "tags=${REGISTRY}/${IMAGE}:${version}"
+            echo "version=${version}"
+            # The heredoc form, not three `tags=` lines: GITHUB_OUTPUT keeps
+            # one value per key, so repeating the key silently drops all but
+            # the last and the image would only ever be tagged `:sha-<short>`.
+            echo "tags<<HMX_TAGS_EOF"
+            echo "${REGISTRY}/${IMAGE}:${version}"
             if [ "$GITHUB_REF_NAME" != "$GITHUB_REF_TYPE" ] || [ "$GITHUB_REF_TYPE" = branch ]; then
-              echo "tags=${REGISTRY}/${IMAGE}:latest"
+              echo "${REGISTRY}/${IMAGE}:latest"
             fi
-            echo "tags=${REGISTRY}/${IMAGE}:sha-${GITHUB_SHA::7}"
+            echo "${REGISTRY}/${IMAGE}:sha-${GITHUB_SHA::7}"
+            echo "HMX_TAGS_EOF"
           } >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
@@ -68,9 +73,18 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Smoke test the built image
+        env:
+          # Via env, not `${{ }}` inside the script: the value is multi-line,
+          # and an expression spliced into a `run:` body is both harder to read
+          # and a script-injection hazard.
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          tag="$(sed -n 's#^tags=##p' <<< "${{ steps.meta.outputs.tags }}" | head -1)"
+          tag="$(printf '%s\n' "$TAGS" | head -1)"
           echo "testing $tag"
+          # A silently empty tag made `docker run` fail with
+          # "invalid reference format", which reads like a Docker problem and
+          # is not one. Fail here instead, naming the cause.
+          [ -n "$tag" ] || { echo "::error::no image tag derived; TAGS='$TAGS'"; exit 1; }
           # The exit code must survive the container boundary, or `hmx run` is
           # lying to anyone using the image in a script.
           mkdir -p /tmp/hmx-smoke
