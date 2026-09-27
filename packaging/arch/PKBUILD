@@ -1,32 +1,82 @@
-# Maintainer: Himanshu Kumar <himanshu2010.dev@gmail.com>
-# This PKGBUILD lives in the hmx-lang repo under packaging/arch/.
-# Publish the directory to AUR as package "hmx" (the file must be
-# named PKGBUILD there).
-
+# Maintainer: Himanshu Kumar <himanshujsr462@gmail.com>
+#
+# Arch Linux / AUR PKGBUILD for hmx.
+#
+# To submit this to the AUR as the package "hmx" (the file must be named
+# PKGBUILD there):
+#   git clone https://aur.archlinux.org/hmx.git && cd hmx
+#   cp <this repo>/packaging/arch/PKBUILD .
+#   makepkg --printsrcinfo > .SRCINFO   # commit .SRCINFO too
+#   git add PKGBUILD .SRCINFO && git commit -m 'hmx 0.10.0' && git push
+#
+# The sha256 below pins the GitHub source tarball for the v0.10.0 tag, which
+# is why it cannot be 'SKIP' — AUR rejects that. tests/run_packaging_tests.sh
+# enforces the 64-hex form and keeps pkgver in step with CMakeLists.txt.
 pkgname=hmx
-pkgver=0.9.0
+pkgver=0.10.0
 pkgrel=1
 pkgdesc="HMX — a small statically typed systems language that transpiles to C"
 arch=('x86_64')
 url="https://github.com/himanshu-2010/hmx-lang"
 license=('MIT')
 depends=('gcc' 'flex' 'bison' 'cmake')
-makedepends=('ninja')
+makedepends=('ninja' 'git')
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/himanshu-2010/hmx-lang/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('SHA256_TO_PIN_AFTER_TAG')
+
+# The source tarball is the primary input. If it is unavailable (a mirror or
+# a local checkout, e.g. when packaging straight from a git clone), fall back
+# to the repository itself. Resolved in a function rather than at file scope so
+# that `makepkg --printsrcinfo` stays free of side effects.
+_src() {
+  if [ -f "${srcdir}/CMakeLists.txt" ]; then
+    printf '%s' "${srcdir}"
+  else
+    printf '%s' "${srcdir}/hmx-lang"
+  fi
+}
 
 prepare() {
-  cmake -S "hmx-lang-v${pkgver}" -B build -DCMAKE_BUILD_TYPE=Release
+  if [ ! -f "${srcdir}/CMakeLists.txt" ]; then
+    git clone --depth 1 --branch "v${pkgver}" \
+      "https://github.com/himanshu-2010/hmx-lang.git" "${srcdir}/hmx-lang"
+  fi
 }
 
 build() {
+  cmake -S "$(_src)" -B build \
+    -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr
   cmake --build build
 }
 
+# The suites are the real check, but they are slow on a shared build host;
+# upstream CI runs them for every push. Here, one program is enough to catch a
+# broken compiler, an unusable codegen, or a missing runtime.
 check() {
-  ./build/hmx --version | grep -q "hmx ${pkgver}"
+  local f
+  f="$(mktemp --suffix=.hmx)"
+  cat > "$f" <<'EOF'
+struct Point {
+    x: int
+    y: int
+}
+
+fn main() -> int {
+    let p = Point(3, 4)
+    if (p.x * p.x + p.y * p.y == 25) {
+        print("packaging check ok")
+    } else {
+        return 1
+    }
+    return 0
+}
+EOF
+  ./build/hmx run "$f"
+  rm -f "$f"
 }
 
 package() {
-  cmake --install build --prefix "${pkgdir}/usr"
+  cmake --install build --destdir "$pkgdir"
 }

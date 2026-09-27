@@ -5,7 +5,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-BIN="$(pwd)/build/hmx"
+REPO="$(pwd)"
+BIN="$REPO/build/hmx"
 TMPDIR="/tmp/hmx_cli_tests"
 rm -rf "$TMPDIR"
 mkdir -p "$TMPDIR"
@@ -46,14 +47,25 @@ check "run -keep-c leaves .c behind"      0     "hello"           "$BIN" run hel
 check "exit code propagates"              42    ""                "$BIN" exit42.hmx
 
 # Audit finding #2: a genuine signal death must be diagnosed (not masked).
-printf 'fn f(a: [int], n: int) -> int {\n    if (n == 0) { return 0 }\n    return f(a, n - 1) + a[n %% 5]\n}\nfn main() -> int {\n    let arr: [int] = [1, 2, 3, 4, 5]\n    return f(arr, 5000000)\n}\n' > crash.hmx
-check "crash reports signal + exit 139"   139   "program crashed with signal 11 (SIGSEGV)" "$BIN" run crash.hmx
+# POSIX only: the Windows run path goes through system(), which has no
+# WIFSIGNALED to inspect, so there is no signal to name there.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) echo "SKIP (CLI): crash reports signal (POSIX-only run path)" ;;
+    *)
+        printf 'fn f(a: [int], n: int) -> int {\n    if (n == 0) { return 0 }\n    return f(a, n - 1) + a[n %% 5]\n}\nfn main() -> int {\n    let arr: [int] = [1, 2, 3, 4, 5]\n    return f(arr, 5000000)\n}\n' > crash.hmx
+        check "crash reports signal + exit 139"   139   "program crashed with signal 11 (SIGSEGV)" "$BIN" run crash.hmx
+        ;;
+esac
 check "build produces binary"             0     "Built: hello"    "$BIN" build hello.hmx -o hello_app
 [ -x hello_app ] && PASS=$((PASS+1)) && echo "PASS (CLI): build binary exists & executable" || { echo "FAIL (CLI): build binary exists"; FAIL=$((FAIL+1)); }
 [ "$(./hello_app)" = "hello" ] && PASS=$((PASS+1)) && echo "PASS (CLI): built binary runs" || { echo "FAIL (CLI): built binary runs"; FAIL=$((FAIL+1)); }
 
-check "--version prints semver"           0     "hmx 0.9.0"       "$BIN" --version
-check "-v prints semver"                  0     "hmx 0.9.0"       "$BIN" -v
+# The version is pinned in exactly one place — CMakeLists' project(VERSION) —
+# so a release bump can never leave this test asserting a stale string.
+VERSION="$(sed -n 's/^project(hmx VERSION \([0-9][0-9.]*\).*/\1/p' "$REPO/CMakeLists.txt")"
+[ -n "$VERSION" ] || { echo "FAIL (CLI): could not read VERSION from CMakeLists.txt"; exit 1; }
+check "--version prints semver"           0     "hmx $VERSION"    "$BIN" --version
+check "-v prints semver"                  0     "hmx $VERSION"    "$BIN" -v
 check "--help lists usage"                0     "Usage:"          "$BIN" --help
 check "-h lists commands"                 0     "run"             "$BIN" -h
 

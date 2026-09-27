@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(hmx VERSION 0.9.0 LANGUAGES CXX)
+project(hmx VERSION 0.10.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -45,7 +45,7 @@ set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME "hmx")
 set(CPACK_PACKAGE_VENDOR "HMX")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_CONTACT "Himanshu Kumar <himanshu2010.dev@gmail.com>")
+set(CPACK_PACKAGE_CONTACT "Himanshu Kumar <himanshujsr462@gmail.com>")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "HMX — a small statically typed systems language")
 set(CPACK_PACKAGE_DESCRIPTION
     "HMX is a small statically typed systems language that transpiles to C. "

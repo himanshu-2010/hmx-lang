@@ -18,16 +18,21 @@
 #endif
 
 #ifndef HMX_VERSION
-#define HMX_VERSION "0.9.0"
+#define HMX_VERSION "0.10.0"
 #endif
 
-#if !defined(_WIN32) || defined(__MINGW32__)
+// <sys/wait.h> is POSIX-only. It does not exist in MSVC *or* in MinGW-w64
+// (msys2's mingw64 toolchain ships the POSIX headers under the msys
+// environment, not mingw64), so including it for __MINGW32__ broke the
+// Windows build with "sys/wait.h: No such file or directory".
+//
+// The WEXITSTATUS fallback that used to live here was wrong for Windows too:
+// neither MSVC nor MinGW returns a wait status from system() — both hand
+// back the child's exit code verbatim, so `fn main() -> int { return 42 }`
+// would have exited 0 under the (s >> 8) shift. The Windows run path reads
+// the value as-is instead; see the _WIN32 branch in run_file().
+#ifndef _WIN32
 #include <sys/wait.h>
-#else
-/* MSVC has no sys/wait.h; system() returns a wait-status-like int. */
-#ifndef WEXITSTATUS
-#define WEXITSTATUS(s) (((s) >> 8) & 0xFF)
-#endif
 #endif
 
 // Human-readable name for a termination signal (avoids strsignal's dependency
@@ -454,9 +459,17 @@ int main(int argc, char* argv[]) {
             exit_code = 1;
         }
 #else
+        // No fork/waitpid on Windows: go through the shell. system() already
+        // returns the child's exit code (not a wait status), so it is used
+        // verbatim — see the <sys/wait.h> note at the top of this file.
         std::string run_cmd = exe_path;
         int run_result = system(run_cmd.c_str());
-        exit_code = WEXITSTATUS(run_result);
+        if (run_result == -1) {
+            fprintf(stderr, "Error: failed to execute %s\n", run_cmd.c_str());
+            exit_code = 127;
+        } else {
+            exit_code = run_result;
+        }
 #endif
         if (!keep_c) {
             remove(c_path.c_str());

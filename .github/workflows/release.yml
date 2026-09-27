@@ -7,6 +7,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)cut a release for, e.g. v0.10.0"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -15,6 +21,10 @@ jobs:
   build:
     name: build (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
+    # Fail fast instead of burning the 6-hour default: the macOS job of
+    # v0.9.0 sat for six hours and was killed by the platform timeout,
+    # which said nothing about what actually went wrong.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -25,8 +35,21 @@ jobs:
             label: macos-arm64
           - os: windows-latest
             label: windows-x86_64
+    env:
+      # Homebrew can block for hours on a runner: a background
+      # `brew update` holds the global lock, and any interactive prompt
+      # waits forever without a TTY. Both are what turned the v0.9.0
+      # macOS job into a six-hour stall.
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      NONINTERACTIVE: "1"
+      # github.ref_name is the *branch* on a workflow_dispatch run, so the
+      # packaging steps read the tag from here instead of GITHUB_REF_NAME.
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Install deps (Linux)
         if: runner.os == 'Linux'
@@ -35,9 +58,21 @@ jobs:
       - name: Install deps (macOS)
         if: runner.os == 'macOS'
         run: |
+          set -euo pipefail
+          # `|| true` on cleanup: a failed autoremove must not fail the job
+          # after the toolchain is already in place.
+          brew cleanup || true
           brew install cmake flex bison ninja
-          echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
-          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          # flex, bison and ninja are keg-only on macOS: their binaries are
+          # not linked into /opt/homebrew/bin, so every one of them needs
+          # its prefix on PATH explicitly (v0.9.0 only did flex and bison,
+          # which is why the build step could not see cmake/ninja).
+          for f in flex bison ninja cmake; do
+            p="$(brew --prefix "$f")/bin"
+            [ -d "$p" ] && echo "$p" >> "$GITHUB_PATH"
+          done
+          echo "--- versions ---"
+          for t in cmake flex bison ninja; do command -v "$t" >/dev/null || { echo "$t NOT on PATH"; exit 1; }; done
 
       - name: Install deps (Windows / MSYS2 MinGW)
         if: runner.os == 'Windows'
@@ -96,21 +131,23 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          ver="${RELEASE_TAG#v}"
           cd build && cpack -G DEB
-          mv "hmx-${GITHUB_REF_NAME#v}-Linux.deb" "hmx_${GITHUB_REF_NAME#v}_amd64.deb"
+          mv "hmx-${ver}-Linux.deb" "hmx_${ver}_amd64.deb"
 
       - name: Package tarball (Linux & macOS)
         if: runner.os != 'Windows'
         shell: bash
         run: |
+          ver="${RELEASE_TAG#v}"
           rm -rf stage && cmake --install build --prefix "$PWD/stage"
-          tar -C stage -czf "hmx-${GITHUB_REF_NAME#v}-${{ matrix.label }}.tar.gz" bin/hmx
+          tar -C stage -czf "hmx-${ver}-${{ matrix.label }}.tar.gz" bin/hmx
 
       - name: Package zip (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          ver="${GITHUB_REF_NAME#v}"
+          ver="${RELEASE_TAG#v}"
           cmake --install build --prefix "$(pwd -W)/stage"
           # pwd -W gives wind32-style forward-slash paths, which both cmake
           # and PowerShell accept; run under msys2 so cmake is on PATH.
@@ -129,11 +166,24 @@ jobs:
     name: publish release
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      # SHA256SUMS ships next to the artifacts so install.sh can verify what
+      # it downloads instead of trusting the connection. Generated here, after
+      # the merge, so it covers every platform in one file.
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum hmx*.tar.gz hmx*.zip hmx*.deb 2>/dev/null | sort -k2 > SHA256SUMS
+          cat SHA256SUMS
+
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          fail_on_unmatched_files: true
           files: dist/**

@@ -76,3 +76,78 @@ jobs:
 
       - name: Valgrind ownership checks
         run: ./tests/run_valgrind_tests.sh --fixtures
+
+  portability:
+    # The Windows and macOS builds used to be exercised only by
+    # release.yml, so a <sys/wait.h> that does not exist under MinGW-w64 sat
+    # unnoticed until a release attempt died on it. Every push now compiles
+    # the compiler and runs the CLI suite (which pins exit-code
+    # propagation) on both.
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            label: macos
+            shell: bash
+          - os: windows-latest
+            label: windows (MinGW)
+            shell: 'msys2 {0}'
+    env:
+      # A background `brew update` holding the global lock, or an
+      # interactive prompt on a TTY-less runner, is what turned the v0.9.0
+      # macOS release job into a six-hour stall.
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      NONINTERACTIVE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake flex bison ninja
+          for f in flex bison ninja cmake; do
+            p="$(brew --prefix "$f")/bin"
+            [ -d "$p" ] && echo "$p" >> "$GITHUB_PATH"
+          done
+
+      - name: Install deps (Windows / MSYS2 MinGW)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            flex
+            bison
+          update: true
+
+      - name: Configure & build
+        shell: ${{ matrix.shell }}
+        run: |
+          if command -v ninja >/dev/null; then
+            cmake -S . -B build -G Ninja && cmake --build build
+          else
+            cmake -S . -B build && cmake --build build --config Release
+          fi
+
+      - name: CLI suite
+        shell: ${{ matrix.shell }}
+        run: ./tests/run_cli_tests.sh
+
+      - name: Integration suite
+        shell: ${{ matrix.shell }}
+        run: ./tests/run_integration.sh
+
+  packaging:
+    name: packaging manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Manifest consistency gate
+        run: ./tests/run_packaging_tests.sh
