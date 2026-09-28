@@ -1,7 +1,7 @@
 # REMAINING.md
 
 Everything still open on `hmx-lang`, grouped by **what is actually blocking it**
-rather than by subsystem. Last updated 2026-09-28 against `main` @ `1a60046`,
+rather than by subsystem. Last updated 2026-09-28 against `main` @ `e1c5881`,
 release `v0.10.0` @ `501188f`.
 
 Nothing in section A is a code problem. The manifests are written, pinned to
