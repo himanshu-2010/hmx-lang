@@ -162,7 +162,7 @@ prior fixtures, and lands one complete feature.
   `release.yml` (ubuntu/macos-Arm/windows-MinGW → tar.gz + zip + `.deb` on a
   `v*` tag), distro-aware `install/install.sh` (apt/pacman+paru+yay/dnf/brew/
   generic binary) + `install/install.ps1` (winget→scoop→zip), and repo
-  packaging manifests (`packaging/arch/PKBUILD`, `packaging/brew/hmx.rb`,
+  packaging manifests (`packaging/arch/PKGBUILD`, `packaging/brew/hmx.rb`,
   `packaging/scoop/hmx.json`, `packaging/winget/hmx.installer.yaml`) for the
   first release, **v0.9.0**. External submissions (AUR, Homebrew tap, Scoop
   bucket, winget-pkgs, Launchpad PPA, and the `REPLACE_WITH_TAG_SHA` brew

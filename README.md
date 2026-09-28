@@ -597,8 +597,8 @@ The current regression suite contains:
 | Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions), reserved-keyword misuse | 238/238 passed |
 | Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics, borrowed-param field writes | 143/143 passed |
 | CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes, generated-C portability and warning-cleanliness, unwritable-cwd and unreadable-source diagnostics, `#line` path escaping | 478/478 passed |
-| Packaging | Release version consistency across all nine manifests, no placeholder digests, manifest URLs vs. the names the release workflow actually produces, declared runtime vs. build deps, installer checksum verification, container build/tag/push and smoke-test wiring, release asset completeness, installer package-manager safety | 73/73 passed |
-| Total | 551 test cases | 551/551 passed |
+| Packaging | Release version consistency across all nine manifests, no placeholder digests, manifest URLs vs. the names the release workflow actually produces, declared runtime vs. build deps, installer checksum verification, container build/tag/push and smoke-test wiring, release asset completeness, installer package-manager safety, winget three-file manifest schema, AUR manifest buildability (`makepkg`-verified) | 94/94 passed |
+| Total | 572 test cases | 572/572 passed |
 
 Two further gates need extra tools and are not part of that count:
 

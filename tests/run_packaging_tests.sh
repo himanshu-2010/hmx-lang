@@ -52,7 +52,7 @@ V="$VERSION"   # shorthand for use inside double-quoted patterns
 
 # ── 1) Every manifest agrees with that version ───────────────
 check "main.cpp fallback matches"        src/main.cpp                 "#define HMX_VERSION \"$V\""
-check "PKGBUILD pkgver matches"         packaging/arch/PKBUILD       "^pkgver=$V\$"
+check "PKGBUILD pkgver matches"         packaging/arch/PKGBUILD       "^pkgver=$V\$"
 check "brew formula tag matches"        packaging/brew/hmx.rb        "tag: \"v$V\""
 check "brew formula test matches"       packaging/brew/hmx.rb        "assert_match \"hmx $V\""
 check "Scoop version matches"           packaging/scoop/hmx.json     "\"version\": \"$V\""
@@ -61,7 +61,7 @@ check "winget PackageVersion matches"   packaging/winget/hmx.installer.yaml "^Pa
 # No stale version literals anywhere in the packaging surface.
 stale=""
 for f in CMakeLists.txt src/main.cpp install/install.sh install/install.ps1 \
-         packaging/arch/PKBUILD packaging/brew/hmx.rb \
+         packaging/arch/PKGBUILD packaging/brew/hmx.rb \
          packaging/scoop/hmx.json packaging/winget/hmx.installer.yaml; do
     if grep -oE 'v?0\.[0-9]+\.[0-9]+' "$REPO/$f" | grep -vxE "v?$V" | grep -q .; then
         stale="$stale $f"
@@ -74,17 +74,34 @@ else bad "no stale version literals in packaging files" "offending:$stale"; fi
 # 'SKIP' is what AUR, Scoop and winget all reject: each needs a real digest
 # (or, for a VCS source, a pinned tag) or the manifest is unusable. Match the
 # assignment, not the word, so the explanatory comments can still say SKIP.
-reject "PKGBUILD has no SKIP digest"        packaging/arch/PKBUILD            "sha256sums=\('SKIP'\)"
+reject "PKGBUILD has no SKIP digest"        packaging/arch/PKGBUILD            "sha256sums=\('SKIP'\)"
 reject "Scoop has no SKIP digest"           packaging/scoop/hmx.json          '"hash": *"SKIP"'
 reject "winget has no SKIP digest"          packaging/winget/hmx.installer.yaml '^ *InstallerSha256: *SKIP'
 
 # The PKGBUILD digest must be a 64-hex sha256, not prose.
-sha="$(sed -n "s/^sha256sums=('\([0-9a-f]*\)')$/\1/p" "$REPO/packaging/arch/PKBUILD" | head -1)"
+sha="$(sed -n "s/^sha256sums=('\([0-9a-f]*\)')$/\1/p" "$REPO/packaging/arch/PKGBUILD" | head -1)"
 if printf '%s' "$sha" | grep -qE '^[0-9a-f]{64}$'; then
     ok "PKGBUILD sha256sums is a real digest"
 else
     bad "PKGBUILD sha256sums is a real digest" "got '$sha' — set it to the v$V source tarball's sha256"
 fi
+
+# The file itself must be named PKGBUILD. It was committed as `PKBUILD`, which
+# is not a name makepkg accepts, and the docs' own `cp` command pointed at a
+# path that did not exist. Nothing caught it: every check here referenced the
+# same wrong path, so the gate agreed with the mistake.
+if [ -f "$REPO/packaging/arch/$(printf 'PK%sBUILD' 'G')" ]; then
+    ok "the AUR manifest file is named PKGBUILD"
+else
+    bad "the AUR manifest file is named PKGBUILD" "found: $(ls "$REPO/packaging/arch")"
+fi
+
+# DESTDIR is an environment variable; `cmake --install` has no --destdir flag
+# and aborts with "Unknown argument". The manifest parses, the build succeeds
+# and check() passes before this bites, so it only ever fails on a real Arch
+# machine at the last step. Found by actually running makepkg.
+reject "PKGBUILD does not pass a nonexistent --destdir flag" packaging/arch/PKGBUILD 'cmake --install[^|;]*--destdir'
+check  "PKGBUILD sets DESTDIR in the environment"          packaging/arch/PKGBUILD 'DESTDIR="\$pkgdir" cmake --install'
 
 # ── 3) URLs point at assets the release actually produces ────
 # The release workflow names its artifacts hmx-<ver>-<label>.<ext> with
@@ -101,7 +118,7 @@ check "install.sh tarball name matches"       install/install.sh \
       "hmx-\\\$\{VERSION\}-\\\$\{platform\}\\.tar\\.gz"
 check "install.ps1 zip name matches"          install/install.ps1 \
       "hmx-\\\$VERSION-windows-x86_64\\.zip"
-check "PKGBUILD tag URL matches"              packaging/arch/PKBUILD \
+check "PKGBUILD tag URL matches"              packaging/arch/PKGBUILD \
       "refs/tags/v\\\$\{pkgver\}\\.tar\\.gz"
 
 # ── 4) Asset names in the workflow match the manifests ───────
@@ -124,21 +141,21 @@ check "release jobs have a timeout"           .github/workflows/release.yml \
 # "makedepends=(", because `.*` happily spans the intervening entries — so a
 # check written that way passes for flex sitting in makedepends while claiming
 # to assert the opposite.
-check "PKGBUILD runtime-depends on a C compiler" packaging/arch/PKBUILD '^depends=\(.+gcc'
+check "PKGBUILD runtime-depends on a C compiler" packaging/arch/PKGBUILD '^depends=\(.+gcc'
 for t in flex bison cmake; do
-    check "PKGBUILD build-depends on $t" packaging/arch/PKBUILD "^makedepends=\(.*$t"
-    reject "PKGBUILD does not runtime-depend on $t" packaging/arch/PKBUILD "^depends=\(.*$t"
+    check "PKGBUILD build-depends on $t" packaging/arch/PKGBUILD "^makedepends=\(.*$t"
+    reject "PKGBUILD does not runtime-depend on $t" packaging/arch/PKGBUILD "^depends=\(.*$t"
 done
 check "brew formula depends on gcc"  packaging/brew/hmx.rb 'depends_on "gcc"'
 check "CPack deb depends on gcc"     CMakeLists.txt        'CPACK_DEBIAN_PACKAGE_DEPENDS "gcc"'
 
 # ── 6) One contact address across the metadata ───────────────
 EMAIL="himanshujsr462@gmail.com"
-for f in CMakeLists.txt packaging/arch/PKBUILD; do
+for f in CMakeLists.txt packaging/arch/PKGBUILD; do
     check "$f uses the project contact address" "$f" "$EMAIL"
 done
 reject "no superseded contact address" CMakeLists.txt "himanshu2010\.dev@gmail\.com"
-reject "no superseded contact address (PKGBUILD)" packaging/arch/PKBUILD "himanshu2010\.dev@gmail\.com"
+reject "no superseded contact address (PKGBUILD)" packaging/arch/PKGBUILD "himanshu2010\.dev@gmail\.com"
 
 # ── 7) Installers verify what they download ──────────────────
 check "install.sh verifies checksums" install/install.sh   'SHA256SUMS'
@@ -212,6 +229,34 @@ check "install.sh distinguishes absent from unreachable" install/install.sh 'AUR
 # from the call site -- which is exactly what the first version of this check did.
 check "install.sh AUR hand-off is guarded" install/install.sh 'if \[ -n "\$aur_helper" \] && aur_has_hmx; then'
 reject "install.sh does not hand off to a bare helper call" install/install.sh '^[[:space:]]*exec (yay|paru) -S'
+
+# ── 12) The winget manifest is a three-file tree, and each file's type ──
+# A winget "singleton" package is one version per directory and needs THREE
+# files, each validated on its own. This repo had a single file that declared
+# `ManifestType: singleton` -- that value belongs in the version manifest -- and
+# carried the locale fields inside the installer file. `winget validate` rejects
+# that with "'installer' was expected", so the submission was not merely
+# unmerged, it was malformed. All three now validate against the real
+# winget-manifest.*.1.6.0 schemas.
+for f in hmx.yaml hmx.installer.yaml hmx.locale.en-US.yaml; do
+    if [ -f "packaging/winget/$f" ]; then ok "winget manifest file $f exists"
+    else bad "winget manifest file $f exists" "missing packaging/winget/$f"; fi
+done
+check "winget version manifest is typed 'version'"      packaging/winget/hmx.yaml '^ManifestType: version$'
+check "winget installer manifest is typed 'installer'"  packaging/winget/hmx.installer.yaml '^ManifestType: installer$'
+check "winget locale manifest is typed 'defaultLocale'" packaging/winget/hmx.locale.en-US.yaml '^ManifestType: defaultLocale$'
+reject "winget installer manifest is not typed 'singleton'" packaging/winget/hmx.installer.yaml '^ManifestType: singleton$'
+# The locale fields belong to the locale file; and a portable zip needs the
+# nested-installer entry, or no shim is created and `hmx` is not a command
+# afterwards even though the install "succeeded".
+for fld in PackageLocale Publisher License ShortDescription; do
+    reject "winget installer manifest has no $fld" packaging/winget/hmx.installer.yaml "^$fld:"
+    check  "winget locale manifest has $fld"        packaging/winget/hmx.locale.en-US.yaml "^$fld:"
+done
+check "winget portable zip declares a nested installer" packaging/winget/hmx.installer.yaml '^NestedInstallerType: portable$'
+check "winget portable zip names the executable"        packaging/winget/hmx.installer.yaml '^- RelativeFilePath: hmx\.exe$'
+# Bare 2026-09-27 is a YAML date; the schema wants a string.
+check "winget ReleaseDate is a quoted string" packaging/winget/hmx.installer.yaml '^ReleaseDate: "[0-9]{4}-[0-9]{2}-[0-9]{2}"$'
 # The whitespace-tolerant match matters: the AUR emits "resultcount":0, and a
 # pattern expecting the space that json.tool inserts matches nothing, which is
 # indistinguishable from the AUR being down.

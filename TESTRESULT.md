@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-27  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 478 / 478 (64 integration + 238 negative + 143 stress + 33 CLI); web-playground vitest 455 / 455 (448 parity + 7 app); valgrind ownership matrix + all fixtures 69 / 69; packaging gate 73 / 73 (manifests carry the real digests of the published v0.10.0 release; the installer no longer hands an unconfirmed package name to an AUR helper)
+**Status:** ALL TESTS PASSED — native 478 / 478 (64 integration + 238 negative + 143 stress + 33 CLI); web-playground vitest 455 / 455 (448 parity + 7 app); valgrind ownership matrix + all fixtures 69 / 69; packaging gate 94 / 94 (manifests carry the real digests of the published v0.10.0 release; the installer no longer hands an unconfirmed package name to an AUR helper; the winget manifest is a valid three-file tree; the AUR manifest has been through a real `makepkg` build)
 
 ---
 

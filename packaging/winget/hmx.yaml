@@ -1,0 +1,24 @@
+# winget VERSION manifest for HMX.
+#
+# The three files in this directory map onto the winget-pkgs tree as:
+#
+#   manifests/h/HMX/HMX/<version>/HMX.yaml                    <- this file
+#   manifests/h/HMX/HMX/<version>/HMX.installer.yaml           <- hmx.installer.yaml
+#   manifests/h/HMX/HMX/<version>/HMX.locale.en-US.yaml       <- hmx.locale.en-US.yaml
+#
+# They are kept side by side here rather than pre-laid-out in that tree so the
+# repository stays readable; the copy step is in REMAINING.md. A winget
+# "singleton" package is one version per directory, and the identity fields
+# (PackageIdentifier/PackageVersion) are repeated in all three because each file
+# is validated on its own.
+#
+# ManifestType is `version` here and `installer` in the installer file. Putting
+# `singleton` in the installer file — which is what this directory used to do —
+# is the kind of thing `winget validate` rejects outright.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
+
+PackageIdentifier: HMX.HMX
+PackageVersion: 0.10.0
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0

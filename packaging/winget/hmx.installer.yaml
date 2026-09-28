@@ -1,19 +1,33 @@
-# winget manifest for HMX (installer type: MSI is not produced yet;
-# this uses the portable zip and requires the ZIP + scoped installer).
-# Publish to microsoft/winget-pkgs under manifests/h/HMX/HMX/<version>/.
+# winget INSTALLER manifest for HMX.
+#
+# The release produces a portable zip (no MSI), so this is InstallerType: zip
+# with a `portable` nested installer pointing at the single executable. That is
+# how winget models "unpack a zip and put a binary on the PATH" — the
+# NestedInstallerFiles entry is what creates the shim, so without it
+# `winget install HMX.HMX` succeeds and then `hmx` is not a command.
+#
+# InstallerSha256 is the sha256 of hmx-0.10.0-windows-x86_64.zip, which is also
+# in the release's SHA256SUMS. winget-pkgs convention is uppercase hex.
+# tests/run_packaging_tests.sh checks it against that file's shape and the
+# version, so a re-cut release that changes the zip cannot leave this stale
+# without turning the packaging job red.
+#
+# ManifestType is `installer`. See hmx.yaml for why the three files are split.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+
 PackageIdentifier: HMX.HMX
 PackageVersion: 0.10.0
-PackageLocale: en-US
-Publisher: HMX
-PackageName: HMX
-PackageUrl: https://github.com/himanshu-2010/hmx-lang
-License: MIT
-ShortDescription: HMX — a small statically typed systems language that transpiles to C
 InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+- RelativeFilePath: hmx.exe
+# ReleaseDate is quoted because bare 2026-09-27 is a YAML *date*, and the winget
+# schema wants a string — which is the difference between passing validation and
+# not. Manifests in the wild leave it bare, so this trips people up.
+ReleaseDate: "2026-09-27"
 Installers:
-  - Architecture: x64
-    InstallerUrl: https://github.com/himanshu-2010/hmx-lang/releases/download/v0.10.0/hmx-0.10.0-windows-x86_64.zip
-    InstallerSha256: 659260dbdf5e3c364a50f8f62c930354774a31311535fec1c502a7e3bb212608
-    InstallerLocation: hmx.exe
-ManifestType: singleton
+- Architecture: x64
+  InstallerUrl: https://github.com/himanshu-2010/hmx-lang/releases/download/v0.10.0/hmx-0.10.0-windows-x86_64.zip
+  InstallerSha256: 659260DBDF5E3C364A50F8F62C930354774A31311535FEC1C502A7E3BB212608
+ManifestType: installer
 ManifestVersion: 1.6.0

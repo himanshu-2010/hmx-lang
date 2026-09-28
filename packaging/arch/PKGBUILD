@@ -5,7 +5,7 @@
 # To submit this to the AUR as the package "hmx" (the file must be named
 # PKGBUILD there):
 #   git clone https://aur.archlinux.org/hmx.git && cd hmx
-#   cp <this repo>/packaging/arch/PKBUILD .
+#   cp <this repo>/packaging/arch/PKGBUILD .
 #   makepkg --printsrcinfo > .SRCINFO   # commit .SRCINFO too
 #   git add PKGBUILD .SRCINFO && git commit -m 'hmx 0.10.0' && git push
 #
@@ -25,7 +25,7 @@ license=('MIT')
 depends=('gcc')
 makedepends=('cmake' 'ninja' 'flex' 'bison' 'git')
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/himanshu-2010/hmx-lang/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('50323ddb07efae1627e945825ce37e944fd640470c97b94ef7ddeaa21bc25e99')
+sha256sums=('bafbf0023bbf6b72d4683c17bf5944af1e1e859fc75fe91ae1d6d8ff958bb12a')
 
 # The source tarball is the primary input. If it is unavailable (a mirror or
 # a local checkout, e.g. when packaging straight from a git clone), fall back
@@ -97,5 +97,12 @@ EOF
 }
 
 package() {
-  cmake --install build --destdir "$pkgdir"
+  # DESTDIR is an environment variable, not a flag: `cmake --install` has no
+  # --destdir option and fails with "Unknown argument". Found by actually
+  # running makepkg, which is the only way this shows up — the manifest parses
+  # fine, and the build and check() both succeed first, so it fails late and
+  # only on a real Arch machine.
+  # build() already set CMAKE_INSTALL_PREFIX=/usr, so this lands in
+  # $pkgdir/usr/bin/hmx and pacman owns /usr.
+  DESTDIR="$pkgdir" cmake --install build
 }

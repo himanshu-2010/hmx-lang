@@ -852,7 +852,7 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   `apt`), pacman (AUR via paru/yay, binary fallback), dnf (binary fallback),
   brew (macOS Homebrew), else the generic `linux|x86_64|arm64` tarball;
   `install/install.ps1` tries winget → scoop → direct zip (user PATH).
-- **Repo packaging manifests:** `packaging/arch/PKBUILD` (AUR), `packaging/brew/hmx.rb`
+- **Repo packaging manifests:** `packaging/arch/PKGBUILD` (AUR), `packaging/brew/hmx.rb`
   (Homebrew tap `himanshu-2010/homebrew-hmx`), `packaging/scoop/hmx.json`,
   `packaging/winget/hmx.installer.yaml`. The brew `revision` and scoop/winget
   hashes are stamped at release time from the actual tag/build.
@@ -1404,6 +1404,68 @@ Confirmed by deleting it and watching that one check fail.
 - **Hygiene:** native **478/478** (64 / 238 / 143 / 33), valgrind **69/69**,
   ASan+LSan-clean; web vitest **455/455**, `gen-data.mts` parity 0 failures;
   packaging **73/73**.
+
+## Running `makepkg` found three bugs that reading the manifest never would
+
+The AUR manifest had been reviewed, digested against a release, and gated by
+`run_packaging_tests.sh` — 91 checks green — and it still could not build. All
+three bugs were invisible to review because each one is locally plausible.
+
+**1. The file was not named `PKGBUILD`.** It was committed as `PKBUILD`. Two
+distinct consequences: `makepkg` requires the exact filename, so no AUR build
+could ever have started; and the submission instructions, both in the manifest's
+own header and in the docs, said `cp packaging/arch/PKGBUILD .`, which is a path
+that did not exist. The packaging gate agreed with the mistake rather than
+catching it, because every check referenced the same wrong path — a gate that
+reads the file it is testing cannot notice the file is misnamed. There is now an
+explicit check that the file exists under the name `makepkg` wants, built from
+`chr(71)`-style construction so the assertion is about bytes and not about
+whether anyone typed the letter correctly.
+
+**2. The pinned digest was for a different artifact.** GitHub serves two tarball
+endpoints for one tag and they are not the same bytes:
+
+```
+/archive/refs/tags/v0.10.0.tar.gz   root hmx-lang-0.10.0/                bafbf002…   <- what the PKGBUILD fetches
+/tarball/v0.10.0                   root himanshu-2010-hmx-lang-501188f/   50323ddb…   <- what `gh api` returns
+```
+
+The pinned value was `50323ddb`, taken from the `gh api` call, and `makepkg`
+rejected the download at `Validating source files with sha256sums`. This also
+corrects the previous entry: the top directory it describes,
+`himanshu-2010-hmx-lang-500dfa6`, is the `/tarball/` root, not what this
+PKGBUILD downloads. The `_src()` fix from that entry is unaffected and still
+correct — locating the tree that contains `CMakeLists.txt` is right for either
+root — but the reason it was needed was the endpoint, not a bad name.
+
+**3. `package()` passed a flag that does not exist.** It ran
+`cmake --install build --destdir "$pkgdir"`. There is no `--destdir`;
+`DESTDIR` is an environment variable, and `cmake --install` aborts with
+`Unknown argument`. This is the worst of the three, because it is the last step:
+the source downloads, the digest verifies, nine objects compile, `hmx` links,
+and `check()` reports `packaging check ok` — then packaging fails. Every gate in
+this repo is a check on text, and no textual check can see that a flag is
+missing from an external tool's CLI.
+
+After all three: `hmx-0.10.0-1-x86_64.pkg.tar.zst` builds, contains
+`usr/bin/hmx` plus the licence, declares `depend = gcc`, and that binary
+transpiles and runs a program. The manifest's header now carries the extraction
+procedure as a runnable snippet, and that snippet was extracted from the document
+and executed rather than eyeballed — its first two versions were wrong, pulling
+the `url=` line instead of `source=(` (a 14-byte download) and leaving
+`${pkgver}` unexpanded.
+
+The general lesson is the one worth carrying: **the packaging gate went 91/91
+green on a manifest that could not build.** Text assertions verify that a file
+says the right things; only running the packager verifies that the packager
+accepts it. Both release-registry submissions still lack this — winget is
+schema-validated but never installed, and the brew formula has never been
+`brew install`-ed.
+
+- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), packaging **94/94**,
+  valgrind **69/69**, ASan+LSan-clean; web vitest **455/455**, `gen-data.mts`
+  parity 0 failures. The three new packaging checks were each confirmed by
+  reintroducing the bug they cover.
 
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
