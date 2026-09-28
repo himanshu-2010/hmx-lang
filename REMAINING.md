@@ -79,6 +79,35 @@ git commit -m 'hmx 0.10.0'
 git push
 ```
 
+`.SRCINFO` is a cache the AUR web interface regenerates, but it must be committed
+or the package page is blank until something does. This is the real output of
+`makepkg --printsrcinfo` on the current `PKGBUILD` — after your `cp`, diff yours
+against it and they should be identical. If `sha256sums` is anything other than
+`bafbf002…` you have picked up the wrong tarball (see C2).
+
+```
+pkgbase = hmx
+	pkgdesc = HMX — a small statically typed systems language that transpiles to C
+	pkgver = 0.10.0
+	pkgrel = 1
+	url = https://github.com/himanshu-2010/hmx-lang
+	arch = x86_64
+	license = MIT
+	makedepends = cmake
+	makedepends = ninja
+	makedepends = flex
+	makedepends = bison
+	makedepends = git
+	depends = gcc
+	source = hmx-0.10.0.tar.gz::https://github.com/himanshu-2010/hmx-lang/archive/refs/tags/v0.10.0.tar.gz
+	sha256sums = bafbf0023bbf6b72d4683c17bf5944af1e1e859fc75fe91ae1d6d8ff958bb12a
+
+pkgname = hmx
+```
+
+After the push, `yay -S hmx` becomes the path `install.sh` takes instead of the
+prebuilt tarball, and the "not in the AUR yet" warning on Arch goes away.
+
 ### A2. winget-pkgs — the manifest is now valid, it just needs a PR
 
 The single-file manifest this repo used to carry was **schema-invalid**: it
