@@ -13,6 +13,17 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# $ErrorActionPreference = "Stop" escalates *cmdlet* errors. It does nothing for
+# a native command's non-zero exit code: winget and scoop report failure that
+# way, and PowerShell only sets $? = $false. Without the check below, a failed
+# `winget install` fell straight through to "installed via winget!" and `exit 0`
+# — the installer reporting success with nothing installed.
+#
+# There is no preference variable that fixes this: $PSNativeCommandUseErrorActionPreference
+# arrived in PowerShell 7.4 and is $false by default, and the invocation in this
+# file's header is `powershell`, i.e. Windows PowerShell 5.1, which has no such
+# variable at all. So test $LASTEXITCODE and `throw` — a throw IS catchable.
 $Repo  = "himanshu-2010/hmx-lang"
 $Api   = "https://api.github.com/repos/$Repo"
 
@@ -35,6 +46,7 @@ if (Get-Command winget -ErrorAction SilentlyContinue) {
     Write-Hmx "winget found — installing HMX.HMX"
     try {
         & winget install --id HMX.HMX --source winget --version "$VERSION" --accept-source-agreements --accept-package-agreements
+        if ($LASTEXITCODE -ne 0) { throw "winget exited $LASTEXITCODE" }
         Write-Hmx "installed via winget!" "Green"
         exit 0
     } catch {
@@ -45,18 +57,20 @@ if (Get-Command winget -ErrorAction SilentlyContinue) {
 }
 
 # ── 2) Scoop ─────────────────────────────────────────────────
-# The bucket is a placeholder: the manifest ships in this repo under
-# packaging/scoop/. Until someone publishes the bucket, fall through to the
-# verified download rather than failing on a missing repository.
+# This repo is a real scoop bucket: the manifest lives at bucket/hmx.json, which
+# is where scoop looks. `bucket add` is therefore expected to succeed, and a
+# failure here means something else is wrong — so the fall-through to the
+# verified zip is a real fallback, not the normal path.
 if (Get-Command scoop -ErrorAction SilentlyContinue) {
     Write-Hmx "scoop found — trying the hmx bucket" "Yellow"
     try {
         scoop bucket add hmx "https://github.com/$Repo" 2>$null | Out-Null
         scoop install "hmx@$VERSION"
+        if ($LASTEXITCODE -ne 0) { throw "scoop exited $LASTEXITCODE" }
         Write-Hmx "installed via scoop!" "Green"
         exit 0
     } catch {
-        Write-Hmx "scoop has no hmx bucket yet — using the verified direct zip" "Yellow"
+        Write-Hmx "scoop could not install hmx ($_) — using the verified direct zip" "Yellow"
     }
 } else {
     Write-Hmx "scoop not found — using the direct binary zip" "Yellow"
@@ -77,6 +91,7 @@ try {
     # Verify before extracting: an unverified compiler is worse than none.
     $sumsUrl = "$Base/SHA256SUMS"
     $want = $null
+    $sumsError = $null
     try {
         $sums = (Invoke-WebRequest -Uri $sumsUrl).Content
         foreach ($line in ($sums -split "`n")) {
@@ -84,7 +99,7 @@ try {
             if ($parts.Count -ge 2 -and $parts[1] -eq $asset) { $want = $parts[0]; break }
         }
     } catch {
-        Write-Hmx "release has no SHA256SUMS — skipping checksum verification" "Yellow"
+        $sumsError = $_.Exception.Message
     }
     if ($want) {
         $got = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
@@ -93,6 +108,12 @@ try {
             throw "checksum mismatch for ${asset}: expected $want, got $got"
         }
         Write-Hmx "checksum verified" "Green"
+    } else {
+        # Refusing to install is only safe if we then actually fail. A missing
+        # SHA256SUMS — or one with no entry for this asset — means we cannot tell
+        # a good download from a tampered one, and a compiler is the last thing to
+        # install blind. This path used to warn and install anyway.
+        throw "cannot verify $asset against SHA256SUMS ($sumsError) — refusing to install unverified."
     }
 
     Write-Hmx "extracting to $dir"

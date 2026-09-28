@@ -54,8 +54,13 @@ verify() {
     local file="$1" name="$2" sums want got
     sums="$(fetch "$BASE/SHA256SUMS" 2>/dev/null || true)"
     if [ -z "$sums" ]; then
-        warn "release has no SHA256SUMS — skipping checksum verification"
-        return 0
+        # A missing SHA256SUMS used to be a warning followed by an unverified
+        # install, which contradicted this file's own header. Without the sums
+        # there is no way to tell a good download from a tampered one, and a
+        # compiler is the worst thing to install blind. Every release ships the
+        # file — the release workflow asserts it — so its absence means something
+        # is wrong, not that verification is optional.
+        die "release has no SHA256SUMS (refusing to install unverified)"
     fi
     want="$(printf '%s\n' "$sums" | awk -v n="$name" '$2 == n {print $1; exit}')"
     if [ -z "$want" ]; then

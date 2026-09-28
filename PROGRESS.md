@@ -853,7 +853,7 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   brew (macOS Homebrew), else the generic `linux|x86_64|arm64` tarball;
   `install/install.ps1` tries winget → scoop → direct zip (user PATH).
 - **Repo packaging manifests:** `packaging/arch/PKGBUILD` (AUR), `packaging/brew/hmx.rb`
-  (Homebrew tap `himanshu-2010/homebrew-hmx`), `packaging/scoop/hmx.json`,
+  (Homebrew tap `himanshu-2010/homebrew-hmx`), `bucket/hmx.json`,
   `packaging/winget/hmx.installer.yaml`. The brew `revision` and scoop/winget
   hashes are stamped at release time from the actual tag/build.
 - **Docs:** README install table + refreshed CLI section; SYNTAX.md CLI
@@ -1455,6 +1455,42 @@ and executed rather than eyeballed — its first two versions were wrong, pullin
 the `url=` line instead of `source=(` (a 14-byte download) and leaving
 `${pkgver}` unexpanded.
 
+Reads like a list of unrelated slips, but the shape is identical in all five: a
+locally plausible line of code that no review question catches, because a
+manifest is read as text and text that looks right is right as far as reading
+goes.
+
+## Two more installer bugs, found by reading rather than running
+
+Both are in `install.ps1`, and both are ways of claiming success.
+
+`$ErrorActionPreference = "Stop"` is set at the top of the script, which reads
+like blanket protection. It is not: it escalates *cmdlet* errors and does nothing
+for a native command's exit code. `winget` and `scoop` are native commands, so a
+failed install only set `$? = $false` and fell straight through to
+`Write-Hmx "installed via winget!"` and `exit 0`. No preference variable fixes
+it — `$PSNativeCommandUseErrorActionPreference` is PowerShell 7.4+, defaults to
+`$false`, and the invocation in this file's own header is `powershell`, i.e.
+Windows PowerShell 5.1, which does not have the variable at all. Testing
+`$LASTEXITCODE` and `throw` does work, because a `throw` is catchable.
+
+Separately, both installers treated a missing `SHA256SUMS` as a warning and
+installed anyway — three lines below `install.sh`'s own header promising that
+"an unverified binary is never installed". Every release ships the sums and the
+release workflow asserts it, so absence is a fault rather than an option. Both
+now refuse. Verified against a stub server serving the real asset with the sums
+withheld, with sums that lack an entry, and with a tampered asset: all three
+refuse, and the clean case still installs.
+
+## This repo is now a real scoop bucket
+
+`scoop bucket add <repo>` registers the repo, and scoop then looks for
+`<repo>/bucket/<app>.json`. The manifest lived at `packaging/scoop/hmx.json`, so
+`bucket add` registered a bucket that could never resolve — leaving a broken
+bucket on any Windows machine that ran the installer with scoop present. Moved
+to `bucket/hmx.json`, with a gate that it is there and that no second copy
+exists to drift.
+
 The general lesson is the one worth carrying: **the packaging gate went 91/91
 green on a manifest that could not build.** Text assertions verify that a file
 says the right things; only running the packager verifies that the packager
@@ -1462,10 +1498,10 @@ accepts it. Both release-registry submissions still lack this — winget is
 schema-validated but never installed, and the brew formula has never been
 `brew install`-ed.
 
-- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), packaging **94/94**,
+- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), packaging **104/104**,
   valgrind **69/69**, ASan+LSan-clean; web vitest **455/455**, `gen-data.mts`
-  parity 0 failures. The three new packaging checks were each confirmed by
-  reintroducing the bug they cover.
+  parity 0 failures. Every new check was confirmed by reintroducing the bug it
+  covers.
 
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).

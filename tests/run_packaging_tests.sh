@@ -55,14 +55,14 @@ check "main.cpp fallback matches"        src/main.cpp                 "#define H
 check "PKGBUILD pkgver matches"         packaging/arch/PKGBUILD       "^pkgver=$V\$"
 check "brew formula tag matches"        packaging/brew/hmx.rb        "tag: \"v$V\""
 check "brew formula test matches"       packaging/brew/hmx.rb        "assert_match \"hmx $V\""
-check "Scoop version matches"           packaging/scoop/hmx.json     "\"version\": \"$V\""
+check "Scoop version matches"           bucket/hmx.json     "\"version\": \"$V\""
 check "winget PackageVersion matches"   packaging/winget/hmx.installer.yaml "^PackageVersion: $V\$"
 
 # No stale version literals anywhere in the packaging surface.
 stale=""
 for f in CMakeLists.txt src/main.cpp install/install.sh install/install.ps1 \
          packaging/arch/PKGBUILD packaging/brew/hmx.rb \
-         packaging/scoop/hmx.json packaging/winget/hmx.installer.yaml; do
+         bucket/hmx.json packaging/winget/hmx.installer.yaml; do
     if grep -oE 'v?0\.[0-9]+\.[0-9]+' "$REPO/$f" | grep -vxE "v?$V" | grep -q .; then
         stale="$stale $f"
     fi
@@ -75,7 +75,7 @@ else bad "no stale version literals in packaging files" "offending:$stale"; fi
 # (or, for a VCS source, a pinned tag) or the manifest is unusable. Match the
 # assignment, not the word, so the explanatory comments can still say SKIP.
 reject "PKGBUILD has no SKIP digest"        packaging/arch/PKGBUILD            "sha256sums=\('SKIP'\)"
-reject "Scoop has no SKIP digest"           packaging/scoop/hmx.json          '"hash": *"SKIP"'
+reject "Scoop has no SKIP digest"           bucket/hmx.json          '"hash": *"SKIP"'
 reject "winget has no SKIP digest"          packaging/winget/hmx.installer.yaml '^ *InstallerSha256: *SKIP'
 
 # The PKGBUILD digest must be a 64-hex sha256, not prose.
@@ -108,7 +108,7 @@ check  "PKGBUILD sets DESTDIR in the environment"          packaging/arch/PKGBUI
 # labels linux-x86_64 / macos-arm64 / windows-x86_64, plus
 # hmx_<ver>_amd64.deb. A manifest that guesses a different shape resolves to
 # a 404 no matter how well the build works.
-check "Scoop URL matches the release asset"   packaging/scoop/hmx.json \
+check "Scoop URL matches the release asset"   bucket/hmx.json \
       "releases/download/v$V/hmx-$V-windows-x86_64\\.zip"
 check "winget URL matches the release asset" packaging/winget/hmx.installer.yaml \
       "releases/download/v$V/hmx-$V-windows-x86_64\\.zip"
@@ -162,6 +162,15 @@ check "install.sh verifies checksums" install/install.sh   'SHA256SUMS'
 check "install.sh refuses a bad digest" install/install.sh 'checksum mismatch'
 check "install.ps1 verifies checksums" install/install.ps1 'SHA256SUMS'
 check "install.ps1 refuses a bad digest" install/install.ps1 'checksum mismatch'
+# "Verifies" was the claim; the behaviour was "verifies if it can". A missing
+# SHA256SUMS used to be a warning followed by an unverified install -- of a
+# compiler -- in both installers, which contradicted install.sh's own header
+# ("an unverified binary is never installed"). The sums are always published (the
+# release workflow asserts the asset), so their absence is a fault, not a choice.
+reject "install.sh does not skip verification on a missing SHA256SUMS"  install/install.sh  'skipping checksum verification'
+reject "install.ps1 does not skip verification on a missing SHA256SUMS" install/install.ps1 'skipping checksum verification'
+check  "install.sh refuses an unverified install"  install/install.sh  'refusing to install unverified'
+check  "install.ps1 refuses an unverified install" install/install.ps1 'refusing to install unverified'
 check "installers resolve the latest release" install/install.sh 'releases/latest'
 check "install.ps1 resolves the latest release" install/install.ps1 'releases/latest'
 
@@ -257,9 +266,41 @@ check "winget portable zip declares a nested installer" packaging/winget/hmx.ins
 check "winget portable zip names the executable"        packaging/winget/hmx.installer.yaml '^- RelativeFilePath: hmx\.exe$'
 # Bare 2026-09-27 is a YAML date; the schema wants a string.
 check "winget ReleaseDate is a quoted string" packaging/winget/hmx.installer.yaml '^ReleaseDate: "[0-9]{4}-[0-9]{2}-[0-9]{2}"$'
-# The whitespace-tolerant match matters: the AUR emits "resultcount":0, and a
-# pattern expecting the space that json.tool inserts matches nothing, which is
-# indistinguishable from the AUR being down.
+
+# ── 13) This repo has to BE a scoop bucket, and install.ps1 has to notice ──
+# `scoop bucket add <repo>` registers the repo as a bucket; scoop then looks for
+# <repo>/bucket/<app>.json. The manifest used to live at packaging/scoop/hmx.json,
+# so the bucket add pointed at a repo with no bucket/ directory: on a machine that
+# had scoop, `bucket add` recorded a bucket and then `scoop install hmx` could
+# never resolve — a broken bucket left behind on the user's system. The manifest
+# is now at bucket/hmx.json, which is the only location that works.
+if [ -f "$REPO/bucket/hmx.json" ]; then ok "the scoop manifest is at bucket/hmx.json"
+else bad "the scoop manifest is at bucket/hmx.json" "missing bucket/hmx.json — 'scoop bucket add' would register a broken bucket"; fi
+if [ -d "$REPO/packaging/scoop" ]; then bad "there is no second copy of the scoop manifest" "packaging/scoop/ still exists; two copies will drift"
+else ok "there is no second copy of the scoop manifest"; fi
+check "install.ps1 adds the repo as a bucket" install/install.ps1 'scoop bucket add hmx "https://github.com/\$Repo"'
+
+# ── 14) install.ps1 must not report success it did not achieve ────────────
+# $ErrorActionPreference = "Stop" escalates *cmdlet* errors and does nothing for
+# a native command's exit code. winget and scoop are native commands, so a failed
+# install fell through to "installed via winget!" and `exit 0`: the installer
+# claiming success with nothing installed, and the user never finding out why.
+# The header's own invocation is `powershell` (Windows PowerShell 5.1), which has
+# no $PSNativeCommandUseErrorActionPreference to fall back on -- so the exit code
+# has to be tested explicitly and turned into a throw, which is catchable.
+guards=$(grep -cE 'if \(\$LASTEXITCODE -ne 0\) \{ throw' "$REPO/install/install.ps1")
+if [ "$guards" -ge 2 ]; then ok "install.ps1 checks \$LASTEXITCODE after both winget and scoop"
+else bad "install.ps1 checks \$LASTEXITCODE after both winget and scoop" "found $guards exit-code guard(s); winget and scoop both need one"; fi
+# And neither of them may reach its success message unguarded -- assert the guard
+# sits on the line *after* the call, since `check` for the bare pattern would
+# pass even if the guard were deleted.
+for tool in winget scoop; do
+    if grep -A1 -E "^[[:space:]]+(& )?${tool} (install|bucket add)" "$REPO/install/install.ps1" | grep -qE 'if \(\$LASTEXITCODE -ne 0\)'; then
+        ok "install.ps1 guards the $tool call itself"
+    else
+        bad "install.ps1 guards the $tool call itself" "no \$LASTEXITCODE check on the line after the $tool invocation"
+    fi
+done
 check "install.sh tolerates the AUR's compact JSON" install/install.sh '"resultcount":\[\[:space:\]\]\*'
 reject "install.sh never fuzzy-installs an unverified name" install/install.sh '^[[:space:]]*exec (yay|paru) -S'
 

@@ -18,7 +18,7 @@ against their registries' own schemas but not installed from.
 | Release | `v0.10.0` published, 5 assets, all `HTTP 200` |
 | CI | all 6 jobs green, including `packaging manifests` |
 | Native tests | 478/478 (64 integration + 238 negative + 143 stress + 33 CLI) |
-| Packaging gate | 94/94 |
+| Packaging gate | 104/104 |
 | Valgrind | 69/69 |
 | Web (vitest) | 455/455, `gen-data.mts` parity 0 failures |
 | Container | `ghcr.io/himanshu-2010/hmx-lang:{0.10.0,latest}` verified, exit codes propagate |
@@ -133,26 +133,11 @@ Unsigned release artifacts and installer scripts. If you want signed tags plus
 
 ## B. No credentials needed — say the word
 
-### B1. Scoop is advertised but not real (~10 min)
+Scoop is no longer in this section: it is fixed. `bucket/hmx.json` is where
+scoop looks, `scoop bucket add` + `scoop install hmx` now work for real, and
+`install.ps1` no longer reports success it did not achieve (see C4).
 
-`install.ps1` runs `scoop bucket add hmx <this repo>`, but **this repo is not a
-scoop bucket** — there is no `bucket/` directory. So the Windows installer adds a
-broken bucket to the user's machine as a persistent side effect, then falls
-through to the verified zip. The fallback works; the side effect does not.
-
-The fix is to actually be a bucket:
-
-```bash
-mkdir -p bucket
-cp packaging/scoop/hmx.json bucket/hmx.json
-```
-
-`packaging/scoop/hmx.json` is already a complete scoop manifest (version,
-`bin`, `homepage`, `license`, `architecture.64bit.url` + `hash`, `checkver`,
-`autoupdate`). With a `bucket/` directory, `scoop bucket add` + `scoop install
-hmx` both work for real.
-
-### B2. There is no REPL, and that is the honest answer to "how do I open a shell"
+### B1. There is no REPL, and that is the honest answer to "how do I open a shell"
 
 `hmx shell` and `hmx repl` **do not exist**. The complete CLI is:
 
@@ -270,6 +255,39 @@ Debian/Ubuntu. The tag now points at `501188f` and the release has all five
 assets. It was re-cut within the hour and had zero external consumers, so
 nothing observed the change. **Any further re-cut does have observers.**
 
+### C4. Two installer bugs found by reading, not by running
+
+`install.ps1` had two ways to report success it had not achieved. Both are now
+fixed, and the general shape is worth remembering.
+
+**A failed `winget install` or `scoop install` printed "installed!" and
+`exit 0`.** The script sets `$ErrorActionPreference = "Stop"`, which escalates
+*cmdlet* errors and does nothing whatsoever for a native command's exit code.
+`winget` and `scoop` are native commands, so a failure only set `$? = $false`
+and fell straight through to the success message. There is no preference
+variable that saves you here: `$PSNativeCommandUseErrorActionPreference`
+arrived in PowerShell 7.4, defaults to `$false`, and the invocation in this
+file's own header is `powershell` — Windows PowerShell 5.1, which does not have
+it at all. The fix is to test `$LASTEXITCODE` and `throw`, since a `throw` *is*
+catchable.
+
+**A release with no `SHA256SUMS` installed an unverified binary.** Both
+installers warned and continued. `install.sh`'s own header said "an unverified
+binary is never installed" three lines above a function that did exactly that.
+Every release ships the sums — the release workflow asserts the asset exists — so
+their absence is a fault, not a choice, and both installers now refuse.
+
+Both were verified against a stub HTTP server serving the real asset with the
+sums withheld, with the sums present but no matching entry, and with a tampered
+asset: all three refuse, and the clean case still installs.
+
+The pattern across all five bugs in this file — the misnamed `PKGBUILD`, the
+wrong tarball endpoint, the nonexistent `--destdir` flag, the swallowed exit
+codes, the skipped verification — is that **each was a locally plausible line
+of code that no review question would have caught.** A manifest or installer is
+read as text, and text that looks right is right as far as reading goes. Only
+running the thing verifies it.
+
 ---
 
 ## D. Deliberately not doing
@@ -293,7 +311,7 @@ cmake --build build
 ./tests/run_negative_tests.sh       # 238 compile-error cases
 ./tests/run_stress_tests.sh         # 143 exact-stdout + exit-code cases
 ./tests/run_cli_tests.sh           # 33 CLI behaviour cases
-./tests/run_packaging_tests.sh      # 94 manifest / workflow / installer gates
+./tests/run_packaging_tests.sh      # 104 manifest / workflow / installer gates
 
 ./tests/run_valgrind_tests.sh --fixtures          # 69 ownership checks
 HMX_ASAN=1 ./tests/run_stress_tests.sh             # ASan + LeakSanitizer
