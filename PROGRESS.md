@@ -1530,7 +1530,7 @@ wrapper. On a real Mac, brew's prefix is `/opt/homebrew`, there is no bottle so
 every install is a source build, and the `caveats` text is the user's only clue
 about the keg-only gcc. Five minutes with a Mac closes it.
 
-- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), packaging **108/108**,
+- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), packaging **109/109**,
   valgrind **69/69**, ASan+LSan-clean; web vitest **455/455**, `gen-data.mts`
   parity 0 failures. Every new check was confirmed by reintroducing the bug it
   covers.

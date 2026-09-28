@@ -3,12 +3,27 @@
 #
 #   ./tests/run_packaging_tests.sh
 #
-# The release version and the download URLs are duplicated across nine files
+# The release version and the download URLs are duplicated across eleven files
 # (CMakeLists, main.cpp, install.sh, install.ps1, PKGBUILD, the brew formula,
-# the Scoop manifest, the winget manifest and the release workflow). Nothing
-# used to check that they agreed, so a version bump silently left every
+# the Scoop manifest, the three winget manifests and the release workflow).
+# Nothing used to check that they agreed, so a version bump silently left every
 # installer pointing at an asset that does not exist — which is exactly how
 # apt/pacman/AUR ended up 404ing with no visible cause.
+#
+# Ten of those eleven are in the loop below. The release workflow is not, and
+# cannot be: it deliberately mentions v0.9.0 in comments explaining the six-hour
+# macOS stall and the keg-only PATH problem, so a literal scan flags history as
+# staleness. Its one functional literal is the `e.g. v0.10.0` in the
+# workflow_dispatch description, which is a help string, not a resolved version —
+# the workflow takes the version from the tag. If that ever stops being true, the
+# gate below will not notice; this comment is the warning.
+#
+# The count is not decoration. This list was "nine" until the winget manifest
+# was split into its three required files, and the loop kept its old membership
+# while the header kept its old number — so a bump updated the version
+# manifest's siblings and left hmx.yaml and the locale manifest behind, and
+# nothing noticed. Add a file that names the version to the loop, and update
+# this sentence.
 #
 # This gate is offline by design: it validates the manifests against each
 # other and against CMakeLists, so it runs in CI without a network. It cannot
@@ -57,12 +72,20 @@ check "brew formula tag matches"        packaging/brew/hmx.rb        "tag: \"v$V
 check "brew formula test matches"       packaging/brew/hmx.rb        "assert_match \"hmx $V\""
 check "Scoop version matches"           bucket/hmx.json     "\"version\": \"$V\""
 check "winget PackageVersion matches"   packaging/winget/hmx.installer.yaml "^PackageVersion: $V\$"
+check "winget version manifest matches" packaging/winget/hmx.yaml          "^PackageVersion: $V\$"
 
 # No stale version literals anywhere in the packaging surface.
+# Every file that names a version belongs in this list, and the winget tree is
+# three files, not one: hmx.yaml and the locale manifest were missing here, so a
+# version bump would have updated CMakeLists and the installer manifest and left
+# the version behind in the other two. A manifest with a stale version submits
+# cleanly and then resolves to nothing, which is worse than having no manifest.
 stale=""
 for f in CMakeLists.txt src/main.cpp install/install.sh install/install.ps1 \
          packaging/arch/PKGBUILD packaging/brew/hmx.rb \
-         bucket/hmx.json packaging/winget/hmx.installer.yaml; do
+         bucket/hmx.json \
+         packaging/winget/hmx.yaml packaging/winget/hmx.installer.yaml \
+         packaging/winget/hmx.locale.en-US.yaml; do
     if grep -oE 'v?0\.[0-9]+\.[0-9]+' "$REPO/$f" | grep -vxE "v?$V" | grep -q .; then
         stale="$stale $f"
     fi
