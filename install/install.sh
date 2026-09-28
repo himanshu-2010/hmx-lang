@@ -28,6 +28,38 @@ die()  { printf '\033[1;31mhmx\033[0m %s\n' "$*" >&2; exit 1; }
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# hmx does not contain a C compiler: it emits C and shells out to one, on every
+# run. So "installed" and "usable" are different claims, and only the first was
+# ever made. Every install path here ends in a success message, which is fine --
+# the binary is genuinely there -- but on a machine with no cc the user gets a
+# working `hmx -v` and nothing else, with no hint why their first program fails.
+# The brew formula has the same gap: brew's gcc is keg-only, so
+# `depends_on "gcc"` does not put one on PATH, and the formula's `caveats` block
+# is the only thing that says so.
+require_cc() {
+    local c
+    for c in cc gcc clang; do
+        if have "$c"; then return 0; fi
+    done
+    # Name the remedy for *this* machine. A list that leads with macOS advice is
+    # worse than none, because the reader has to work out which line is theirs.
+    warn "no C compiler found (looked for cc, gcc, clang)."
+    warn "hmx compiles to C, so it needs one at runtime -- every hmx program"
+    warn "will fail until you install it:"
+    case "$(uname -s)" in
+        Darwin)  warn "  xcode-select --install" ;;
+        MINGW*|MSYS*|CYGWIN*)
+                  warn "  winget install --id BrechtSanders.WinLibs.POSIX.UCRT" ;;
+        *)
+            if have apt-get;    then warn "  sudo apt install build-essential"
+            elif have dnf;      then warn "  sudo dnf install gcc"
+            elif have pacman;   then warn "  sudo pacman -S base-devel"
+            elif have apk;      then warn "  sudo apk add build-base"
+            else                     warn "  install a C compiler with your package manager"
+            fi ;;
+    esac
+}
+
 # ── Resolve the release ─────────────────────────────────────
 # HMX_VERSION pins a version; otherwise the newest published release wins.
 # `releases/latest` is the public endpoint — no token needed — and is what
@@ -128,6 +160,7 @@ install_binary() { # <asset> <label>
     fi
     rm -rf "$tmp"
     info "Installed hmx v${VERSION} (${label}). Verify with: hmx --version"
+    require_cc
 }
 
 install_deb() {
@@ -140,6 +173,7 @@ install_deb() {
     else                apt-get install -y "$tmp/hmx.deb"; fi
     rm -rf "$tmp"
     info "Installed hmx v${VERSION}. Verify with: hmx --version"
+    require_cc
 }
 
 # ── Detect platform ──────────────────────────────────────────
@@ -181,7 +215,7 @@ case "$platform" in
         # Homebrew builds from source and covers this case properly.
         if have brew; then
             info "Intel Mac detected — installing via Homebrew (builds from source)"
-            brew tap himanshu-2010/homebrew-hmx && brew install hmx && exit 0
+            brew tap himanshu-2010/homebrew-hmx && brew install hmx && { info "Installed hmx."; require_cc; exit 0; }
         fi
         die "no prebuilt hmx for ${platform} (Intel macOS)."
         build_from_source_hint
@@ -234,7 +268,7 @@ case "$os" in
         if have brew; then
             info "macOS detected — installing via Homebrew"
             if brew tap himanshu-2010/homebrew-hmx 2>/dev/null; then
-                brew install hmx && { info "Installed hmx. Verify with: hmx --version"; exit 0; }
+                brew install hmx && { info "Installed hmx. Verify with: hmx --version"; require_cc; exit 0; }
                 warn "brew install failed — falling back to the release tarball"
             else
                 warn "homebrew-hmx tap unavailable — falling back to the release tarball"

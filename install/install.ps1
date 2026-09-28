@@ -136,4 +136,17 @@ if ($userPath -notlike "*$dir*") {
 
 Write-Hmx "installed hmx v$VERSION to $dir" "Green"
 Write-Hmx "open a NEW terminal and run:  hmx --version" "Green"
-Write-Hmx "hmx transpiles to C, so a C compiler (gcc/cc/clang) must be on PATH." "Yellow"
+
+# hmx emits C and shells out to a compiler, so "installed" and "usable" are
+# different claims. This used to be a static sentence reminding the user; it is
+# now a check, because the reminder is easy to scroll past and the failure it
+# prevents shows up later as an hmx program that will not build.
+$cc = @("gcc", "cc", "clang") | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue }
+if ($cc) {
+    Write-Hmx "found a C compiler: $($cc[0])" "Green"
+} else {
+    Write-Hmx "no C compiler found (looked for gcc, cc, clang)." "Yellow"
+    Write-Hmx "hmx compiles to C, so every program will fail until you install one:" "Yellow"
+    Write-Hmx "  winget install --id BrechtSanders.WinLibs.POSIX.UCRT" "Yellow"
+    Write-Hmx "or the MSVC Build Tools from https://visualstudio.microsoft.com/visual-cpp-build-tools/" "Yellow"
+}

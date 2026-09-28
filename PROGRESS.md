@@ -1527,10 +1527,34 @@ to `\b` and confirmed against both spellings.
 
 What this still does not cover: it ran on Linux, and it skipped Homebrew's own
 wrapper. On a real Mac, brew's prefix is `/opt/homebrew`, there is no bottle so
-every install is a source build, and the `caveats` text is the user's only clue
-about the keg-only gcc. Five minutes with a Mac closes it.
+every install is a source build, and the keg-only gcc means the `caveats` text is
+the user's only clue. Five minutes with a Mac closes it.
 
-- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), packaging **109/109**,
+## "Installed" was never the same claim as "usable"
+
+Chasing the keg-only gcc remark in the brew formula turned up a gap that has
+nothing to do with brew. `hmx` does not contain a C compiler — it emits C and
+shells out to one on every run. So an install that succeeds on a machine with no
+`cc`, `gcc` or `clang` yields a working `hmx --version` and a first program that
+will not build.
+
+`install.ps1` carried a static sentence about this, which is the kind of thing
+that is technically a warning and practically invisible. `install.sh` said
+nothing at all. Both now probe, and `require_cc` in install.sh names the remedy
+for the machine it is actually on — `apt`, `dnf`, `pacman`, `apk`,
+`xcode-select --install`, or the WinLibs UCRT under msys2 — because the first
+draft listed all of them unconditionally and led with macOS advice on Linux,
+which makes the reader do the matching themselves. Verified across nine
+combinations: each platform gets its own line, and the function stays silent
+when any of the three compilers is present.
+
+The gate for it initially did not bite. The pattern matched the tool names, and
+the *warning text* contains the tool names, so deleting the probe left the check
+passing — the same trap as the AUR hand-off check, and the second time it has
+happened in this repo. Asserting the lookup itself (`Get-Command $_` /
+`for c in cc gcc clang`) fixed it, and both controls then failed as they should.
+
+- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), packaging **117/117**,
   valgrind **69/69**, ASan+LSan-clean; web vitest **455/455**, `gen-data.mts`
   parity 0 failures. Every new check was confirmed by reintroducing the bug it
   covers.

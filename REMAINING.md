@@ -1,7 +1,7 @@
 # REMAINING.md
 
 Everything still open on `hmx-lang`, grouped by **what is actually blocking it**
-rather than by subsystem. Last updated 2026-09-28 against `main` @ `9d39a82`,
+rather than by subsystem. Last updated 2026-09-28 against `main` @ `1a60046`,
 release `v0.10.0` @ `501188f`.
 
 Nothing in section A is a code problem. The manifests are written, pinned to
@@ -22,7 +22,7 @@ part worth reading even if you do none of them.
 | Release | `v0.10.0` published, 5 assets, all `HTTP 200` |
 | CI | all 6 jobs green, including `packaging manifests` |
 | Native tests | 478/478 (64 integration + 238 negative + 143 stress + 33 CLI) |
-| Packaging gate | 109/109 |
+| Packaging gate | 117/117 |
 | Valgrind | 69/69 |
 | Web (vitest) | 455/455, `gen-data.mts` parity 0 failures |
 | Container | `ghcr.io/himanshu-2010/hmx-lang:{0.10.0,latest}` verified, exit codes propagate |
@@ -166,10 +166,13 @@ prints `sum of squares: 14`.
 
 What this does **not** cover: it was Linux, not macOS, and it skipped Homebrew's
 own wrapper. Three things could still differ on a real Mac — brew's `gcc` is
-keg-only so `depends_on "gcc"` does not put it on `PATH` (the `caveats` block
-says so, and `install.sh` is what falls back when it is missing), the prefix is
-`/opt/homebrew` rather than wherever I pointed it, and no bottle exists so every
-install is a source build. So this needs five minutes on a Mac to close:
+keg-only, so `depends_on "gcc"` does **not** put a compiler on `PATH` and the
+formula's `caveats` block is the only place that says so; the prefix is
+`/opt/homebrew` rather than wherever I pointed it; and there is no bottle, so
+every install is a source build. `install.sh` does not paper over the first of
+those: it now probes for `cc`/`gcc`/`clang` after installing and prints the
+remedy for the machine it is on, but it cannot install a compiler for you. So
+this needs five minutes on a Mac to close:
 
 ```bash
 brew tap himanshu-2010/homebrew-hmx
@@ -325,10 +328,10 @@ Debian/Ubuntu. The tag now points at `501188f` and the release has all five
 assets. It was re-cut within the hour and had zero external consumers, so
 nothing observed the change. **Any further re-cut does have observers.**
 
-### C4. Two installer bugs found by reading, not by running
+### C4. Three installer bugs found by reading, not by running
 
-`install.ps1` had two ways to report success it had not achieved. Both are now
-fixed, and the general shape is worth remembering.
+`install.ps1` and `install.sh` each had a way of reporting success they had not
+achieved. All are fixed, and the general shape is worth remembering.
 
 **A failed `winget install` or `scoop install` printed "installed!" and
 `exit 0`.** The script sets `$ErrorActionPreference = "Stop"`, which escalates
@@ -351,12 +354,38 @@ Both were verified against a stub HTTP server serving the real asset with the
 sums withheld, with the sums present but no matching entry, and with a tampered
 asset: all three refuse, and the clean case still installs.
 
-The pattern across all five bugs in this file — the misnamed `PKGBUILD`, the
+**"Installed" was claimed; "usable" never was.** `hmx` does not carry a C
+compiler — it emits C and shells out to one on *every run*. So an install that
+succeeds on a machine with no `cc`, `gcc` or `clang` gives a working `hmx -v` and
+a first program that will not build. `install.ps1` mentioned the requirement in a
+static sentence; `install.sh` did not mention it at all. Both now probe, and
+`install.sh` prints the remedy *for the machine it is on* — `apt`, `dnf`,
+`pacman`, `apk`, `xcode-select`, or the WinLibs UCRT under msys2 — because a list
+that always leads with macOS advice is worse than no list.
+
+This one is the cheapest of the three to get wrong and the easiest to miss,
+because the install genuinely succeeded: `hmx` is on disk, `hmx --version` prints
+`hmx 0.10.0`, and the user has no reason to suspect anything until a program
+fails. It is worth separating the two claims in your head — *did it install?* is
+answered by the file existing; *can it run anything?* is a different question
+that nothing in the installer was asking.
+
+The pattern across all six bugs in this file — the misnamed `PKGBUILD`, the
 wrong tarball endpoint, the nonexistent `--destdir` flag, the swallowed exit
-codes, the skipped verification — is that **each was a locally plausible line
-of code that no review question would have caught.** A manifest or installer is
-read as text, and text that looks right is right as far as reading goes. Only
-running the thing verifies it.
+codes, the skipped verification, the unprobed toolchain — is that **each was a
+locally plausible line of code that no review question would have caught.** A
+manifest or installer is read as text, and text that looks right is right as far
+as reading goes. Only running the thing verifies it — which is why the AUR
+manifest, the brew formula and `require_cc` were all executed rather than
+inspected, and why every gate added here was checked by reintroducing the bug it
+covers. A gate that has never been seen to fail is not known to work.
+
+Two of those six controls did not bite on the first attempt, which is the
+argument for insisting on it. A pattern matching the tool names passed with the
+probe deleted, because the *warning text* also contains the names — the same
+trap as the AUR hand-off check earlier. And the brew `revision:` check required
+a quote, so it passed against the unquoted form. Both were only caught because
+the control was run rather than assumed.
 
 ---
 
@@ -381,7 +410,7 @@ cmake --build build
 ./tests/run_negative_tests.sh       # 238 compile-error cases
 ./tests/run_stress_tests.sh         # 143 exact-stdout + exit-code cases
 ./tests/run_cli_tests.sh           # 33 CLI behaviour cases
-./tests/run_packaging_tests.sh      # 109 manifest / workflow / installer gates
+./tests/run_packaging_tests.sh      # 117 manifest / workflow / installer gates
 
 ./tests/run_valgrind_tests.sh --fixtures          # 69 ownership checks
 HMX_ASAN=1 ./tests/run_stress_tests.sh             # ASan + LeakSanitizer

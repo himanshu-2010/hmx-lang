@@ -210,6 +210,31 @@ reject "install.sh does not skip verification on a missing SHA256SUMS"  install/
 reject "install.ps1 does not skip verification on a missing SHA256SUMS" install/install.ps1 'skipping checksum verification'
 check  "install.sh refuses an unverified install"  install/install.sh  'refusing to install unverified'
 check  "install.ps1 refuses an unverified install" install/install.ps1 'refusing to install unverified'
+
+# hmx emits C and shells out to a compiler on every run, so "installed" and
+# "usable" are different claims. install.ps1 mentioned the requirement in a
+# static sentence nobody had to act on, and install.sh said nothing at all —
+# so a machine with no C compiler got a working `hmx -v` and a failing first
+# program with no hint why. Both now probe. The remedy is chosen per machine:
+# a list that always leads with `xcode-select` is worse than none.
+for f in install/install.sh install/install.ps1; do
+    n=$(grep -cE 'cc.*gcc.*clang|gcc, cc, clang' "$REPO/$f")
+    if [ "$n" -ge 1 ]; then ok "$f mentions a C compiler"
+    else bad "$f mentions a C compiler" "no mention of cc/gcc/clang in $f"; fi
+done
+# Mentioning is not probing. A pattern over the tool names matches the warning
+# text ("looked for gcc, cc, clang") on its own, so this first version passed
+# with the probe deleted -- the same trap as the AUR hand-off check. Assert the
+# lookup itself instead: PowerShell must call Get-Command, bash must call `have`.
+check "install.ps1 actually probes for a C compiler" install/install.ps1 'Get-Command \$_ -ErrorAction SilentlyContinue'
+check "install.sh actually probes for a C compiler"  install/install.sh  'for c in cc gcc clang; do'
+check "install.sh names the remedy for this machine" install/install.sh 'apt install build-essential'
+check "install.sh handles macOS"  install/install.sh 'xcode-select --install'
+check "install.sh handles msys2"  install/install.sh 'MINGW\*\|MSYS\*\|CYGWIN\*'
+# require_cc must run on the paths that report success, not merely exist.
+n=$(grep -c 'require_cc' "$REPO/install/install.sh")
+if [ "$n" -ge 4 ]; then ok "install.sh calls require_cc on every install path"
+else bad "install.sh calls require_cc on every install path" "only $n reference(s); the two install functions and both brew paths need one"; fi
 check "installers resolve the latest release" install/install.sh 'releases/latest'
 check "install.ps1 resolves the latest release" install/install.ps1 'releases/latest'
 
