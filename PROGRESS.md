@@ -1491,14 +1491,46 @@ bucket on any Windows machine that ran the installer with scoop present. Moved
 to `bucket/hmx.json`, with a gate that it is there and that no second copy
 exists to drift.
 
-The general lesson is the one worth carrying: **the packaging gate went 91/91
-green on a manifest that could not build.** Text assertions verify that a file
-says the right things; only running the packager verifies that the packager
-accepts it. Both release-registry submissions still lack this — winget is
-schema-validated but never installed, and the brew formula has never been
-`brew install`-ed.
+## The brew formula: run it, minus the part that needs Homebrew
 
-- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), packaging **104/104**,
+`himanshu-2010/homebrew-hmx/Formula/hmx.rb` had never been executed in any form.
+There is no brew and no ruby on the build box, so reading it was the only option
+available — and reading is exactly what let the PKGBUILD's three bugs through.
+
+But the formula is three `system` calls and one `assert_match`. All of that is
+runnable without Homebrew, so it was run: `git clone --depth 1 --branch v0.10.0`
+(what `url …, tag:` makes brew do), then the three `system` calls from
+`def install`, then the `test do` assertion.
+
+```
+501188f, matching tag: "v0.10.0"
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release   ok
+cmake --build build                            [100%] Built target hmx
+cmake --install build --prefix <prefix>        bin/hmx + share/doc/hmx/LICENSE
+hmx --version                                  hmx 0.10.0     ← test block passes
+```
+
+The `test do` block only checks the version string, so the check it omits was
+added: the installed binary compiling and running a `for` loop over an array
+(`sum of squares: 14`). `--prefix` is a genuine `cmake --install` flag, which is
+the sort of thing that is worth knowing rather than assuming given what the
+PKGBUILD was doing with `--destdir`.
+
+Two new gates, for the two traps the formula's own comments warn about: the
+`caveats` block must keep naming the runtime C compiler (brew's gcc is keg-only,
+so `depends_on "gcc"` puts nothing on `PATH` — drop the caveat and the install
+succeeds into an `hmx` that cannot compile), and no `revision:` may reappear
+(a stale one makes brew fail with "revision is no longer part of the
+repository"). The `revision:` control initially did not fire, because the
+pattern required a quote and the first version I inserted was unquoted; widened
+to `\b` and confirmed against both spellings.
+
+What this still does not cover: it ran on Linux, and it skipped Homebrew's own
+wrapper. On a real Mac, brew's prefix is `/opt/homebrew`, there is no bottle so
+every install is a source build, and the `caveats` text is the user's only clue
+about the keg-only gcc. Five minutes with a Mac closes it.
+
+- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), packaging **108/108**,
   valgrind **69/69**, ASan+LSan-clean; web vitest **455/455**, `gen-data.mts`
   parity 0 failures. Every new check was confirmed by reintroducing the bug it
   covers.

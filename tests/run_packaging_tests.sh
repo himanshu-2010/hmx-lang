@@ -147,6 +147,22 @@ for t in flex bison cmake; do
     reject "PKGBUILD does not runtime-depend on $t" packaging/arch/PKGBUILD "^depends=\(.*$t"
 done
 check "brew formula depends on gcc"  packaging/brew/hmx.rb 'depends_on "gcc"'
+# brew's gcc is keg-only, so `depends_on "gcc"` does NOT put a C compiler on
+# PATH. The installed binary transpiles to C and shells out to gcc/cc/clang at
+# runtime, so the caveat is the only thing telling the user to install one --
+# drop it and the install "succeeds" into a hmx that cannot compile anything.
+check "brew formula caveats about the runtime C compiler" packaging/brew/hmx.rb 'C compiler \(gcc, cc or clang\) must be on PATH'
+# The formula deliberately has no `revision:`; the comment above it explains that
+# a stale one makes brew fail with "revision is no longer part of the
+# repository". Nothing stops someone adding one back with a value that has
+# since been deleted, and the failure is famously unhelpful.
+reject "brew formula has no revision: to pin a moved tag" packaging/brew/hmx.rb '^[[:space:]]*revision\b'
+# The three system calls in `def install` were each executed against a clean
+# clone of the tag (see REMAINING.md A3). `--prefix` is a real cmake --install
+# flag, unlike the `--destdir` the PKGBUILD used to pass; this asserts the form
+# that was actually run, so a later edit has to be a deliberate one.
+check "brew formula installs with cmake --install --prefix" packaging/brew/hmx.rb '"cmake", "--install", "build", "--prefix", prefix'
+reject "brew formula passes no nonexistent install flag" packaging/brew/hmx.rb '\-\-destdir'
 check "CPack deb depends on gcc"     CMakeLists.txt        'CPACK_DEBIAN_PACKAGE_DEPENDS "gcc"'
 
 # ── 6) One contact address across the metadata ───────────────

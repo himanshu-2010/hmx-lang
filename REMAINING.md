@@ -1,13 +1,17 @@
 # REMAINING.md
 
 Everything still open on `hmx-lang`, grouped by **what is actually blocking it**
-rather than by subsystem. Written 2026-09-27 against `main` @ `c6d90df`,
+rather than by subsystem. Last updated 2026-09-28 against `main` @ `9d39a82`,
 release `v0.10.0` @ `501188f`.
 
 Nothing in section A is a code problem. The manifests are written, pinned to
-real digests, and validated — they need an account to push from. The AUR
-manifest has been through a real `makepkg` build; the others have been checked
-against their registries' own schemas but not installed from.
+real digests, and **executed** — the AUR one through a real `makepkg` build, the
+brew one by replicating Homebrew's own steps against a clean clone of the tag.
+They need an account to push from, not a fix.
+
+What is left is genuinely small: one `git push` to the AUR, one PR to
+winget-pkgs, one `brew install` on a Mac, and one GPG key. Section C is the
+part worth reading even if you do none of them.
 
 ---
 
@@ -18,19 +22,22 @@ against their registries' own schemas but not installed from.
 | Release | `v0.10.0` published, 5 assets, all `HTTP 200` |
 | CI | all 6 jobs green, including `packaging manifests` |
 | Native tests | 478/478 (64 integration + 238 negative + 143 stress + 33 CLI) |
-| Packaging gate | 104/104 |
+| Packaging gate | 108/108 |
 | Valgrind | 69/69 |
 | Web (vitest) | 455/455, `gen-data.mts` parity 0 failures |
 | Container | `ghcr.io/himanshu-2010/hmx-lang:{0.10.0,latest}` verified, exit codes propagate |
 
-### Name availability — all four are free (checked 2026-09-27)
+### Name availability — all four are free (re-checked 2026-09-28)
 
 | Registry | Name | Result |
 |---|---|---|
-| AUR | `hmx` | free — RPC `resultcount: 0` |
+| AUR | `hmx` | free — RPC `{"resultcount":0}` |
 | winget | `HMX.HMX` | free — `api.winget.run` 404 |
-| Scoop | `hmx` | free — absent from Main and Extras |
-| Homebrew core | `hmx` | free — `Formulae/h/hmx.rb` 404 |
+| Scoop | `hmx` | free — 404 in both Main and Extras |
+| Homebrew core | `hmx` | free — `Formula/h/hmx.rb` 404 |
+
+Worth re-checking immediately before each submission: these are the kind of name
+someone else can take between writing a manifest and opening a PR.
 
 ---
 
@@ -135,10 +142,34 @@ identifier and rejects a mismatch. That layout was reproduced locally and all
 three files validate in place, but `winget validate` itself has not been run,
 since it needs Windows.
 
-### A3. `brew install` has never actually been run
+### A3. The brew formula: the build is verified, `brew install` itself is not
 
 `himanshu-2010/homebrew-hmx/Formula/hmx.rb` is published and **byte-identical** to
-`packaging/brew/hmx.rb`. Nobody has ever installed from it:
+`packaging/brew/hmx.rb`.
+
+Everything the formula *does* has now been run. There is no brew or ruby on this
+box, so instead of reading it I replicated it: `git clone --branch v0.10.0` (what
+`url ..., tag:` makes brew do), then the three `system` calls from `def install`,
+then the `test do` assertion.
+
+```
+$ git clone --depth 1 --branch v0.10.0 …   → 501188f, matching tag: "v0.10.0"
+$ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release   ok
+$ cmake --build build                            [100%] Built target hmx
+$ cmake --install build --prefix <prefix>        installs bin/hmx + share/doc/hmx/LICENSE
+$ hmx --version                                  hmx 0.10.0    ← the test block passes
+```
+
+And the thing the formula's `test` block does *not* check — that the installed
+binary compiles and runs something — also passes: a `for` loop over an array
+prints `sum of squares: 14`.
+
+What this does **not** cover: it was Linux, not macOS, and it skipped Homebrew's
+own wrapper. Three things could still differ on a real Mac — brew's `gcc` is
+keg-only so `depends_on "gcc"` does not put it on `PATH` (the `caveats` block
+says so, and `install.sh` is what falls back when it is missing), the prefix is
+`/opt/homebrew` rather than wherever I pointed it, and no bottle exists so every
+install is a source build. So this needs five minutes on a Mac to close:
 
 ```bash
 brew tap himanshu-2010/homebrew-hmx
@@ -146,12 +177,8 @@ brew install hmx
 hmx --version          # expect: hmx 0.10.0
 ```
 
-`install.sh` reaches for this tap automatically on macOS, so an untested formula
-is a live path today, not only a manual one.
-
-Needs a Mac or Linuxbrew — not something I can do from here. The formula builds
-from the git tag rather than a release tarball, because the release only ships a
-macOS arm64 tarball and Homebrew must also install on Intel.
+`install.sh` reaches for this tap automatically on macOS, so it is a live path
+today, not only a manual one.
 
 ### A4. GPG signing
 
@@ -230,6 +257,20 @@ PKGBUILD           tag=7555427a  main=bafbf002  (skewed, by design)
 hmx.json           tag=91095fe4  main=659260db  (skewed, by design)
 hmx.installer.yaml tag=91095fe4  main=659260db  (skewed, by design)
 ```
+
+Read the tag column at the paths the tag actually uses, which are the
+*pre-rename* ones — the tag predates both `PKGBUILD` and the scoop move:
+
+```bash
+git show v0.10.0:packaging/arch/PKBUILD     | grep -oiE '\b[0-9a-f]{64}\b' | head -1
+git show v0.10.0:packaging/scoop/hmx.json   | grep -oiE '\b[0-9a-f]{64}\b' | head -1
+grep -oiE '\b[0-9a-f]{64}\b' bucket/hmx.json | head -1
+```
+
+`main`'s column reads from the current paths. Note `hmx.installer.yaml` carries
+its digest uppercase, which is what winget wants and what a lowercase-only grep
+silently misses — a check written that way reports "no digest" on a file that has
+one.
 
 If you must re-cut: re-pin the three digests from the *new* release afterwards
 and re-run `./tests/run_packaging_tests.sh`.
@@ -340,7 +381,7 @@ cmake --build build
 ./tests/run_negative_tests.sh       # 238 compile-error cases
 ./tests/run_stress_tests.sh         # 143 exact-stdout + exit-code cases
 ./tests/run_cli_tests.sh           # 33 CLI behaviour cases
-./tests/run_packaging_tests.sh      # 104 manifest / workflow / installer gates
+./tests/run_packaging_tests.sh      # 108 manifest / workflow / installer gates
 
 ./tests/run_valgrind_tests.sh --fixtures          # 69 ownership checks
 HMX_ASAN=1 ./tests/run_stress_tests.sh             # ASan + LeakSanitizer
