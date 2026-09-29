@@ -1554,7 +1554,7 @@ passing — the same trap as the AUR hand-off check, and the second time it has
 happened in this repo. Asserting the lookup itself (`Get-Command $_` /
 `for c in cc gcc clang`) fixed it, and both controls then failed as they should.
 
-- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), packaging **117/117**,
+- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), packaging **130/130**,
   valgrind **69/69**, ASan+LSan-clean; web vitest **455/455**, `gen-data.mts`
   parity 0 failures. Every new check was confirmed by reintroducing the bug it
   covers.
