@@ -310,7 +310,7 @@ reject "install.sh does not hand off to a bare helper call" install/install.sh '
 # carried the locale fields inside the installer file. `winget validate` rejects
 # that with "'installer' was expected", so the submission was not merely
 # unmerged, it was malformed. All three now validate against the real
-# winget-manifest.*.1.6.0 schemas.
+# winget-manifest.*.1.12.0 schemas.
 for f in hmx.yaml hmx.installer.yaml hmx.locale.en-US.yaml; do
     if [ -f "packaging/winget/$f" ]; then ok "winget manifest file $f exists"
     else bad "winget manifest file $f exists" "missing packaging/winget/$f"; fi
@@ -330,6 +330,76 @@ check "winget portable zip declares a nested installer" packaging/winget/hmx.ins
 check "winget portable zip names the executable"        packaging/winget/hmx.installer.yaml '^- RelativeFilePath: hmx\.exe$'
 # Bare 2026-09-27 is a YAML date; the schema wants a string.
 check "winget ReleaseDate is a quoted string" packaging/winget/hmx.installer.yaml '^ReleaseDate: "[0-9]{4}-[0-9]{2}-[0-9]{2}"$'
+
+# ── 12b) The submission *layout*, derived rather than assumed ──
+# Both of these were found by reading microsoft/winget-pkgs' own
+# doc/ValidationFailureGuide.md, after PR microsoft/winget-pkgs#442621 came back
+# red on step "02. Manifest Validation". Neither failure had ever been seen here
+# before, and neither is visible from the manifest's own contents.
+#
+# (a) Manifest-Version-Deprecated. The repository accepts 1.12.0 and 1.10.0.
+#     The first submission said 1.6.0 -- correct when written, quietly wrong
+#     later, because "the newest version anyone remembers" is not a constant.
+# (b) Manifest-Path-Error. The three filenames are prefixed with the *whole*
+#     PackageIdentifier, not the application name. The first submission used
+#     HMX.yaml where the tree needs HMX.HMX.yaml, and got the folders right,
+#     which is what made it look correct.
+#
+# So (b) is derived from PackageIdentifier and PackageVersion and compared with
+# the paths hmx.yaml documents. Hardcoding the expected strings would have left
+# the same trap in place for the next version bump: the names change with the
+# identifier, and a stale hand-written comment fails silently until a CI run.
+WINGET_SCHEMA_VERSION="1.12.0"
+WINGET_ID="$(sed -n 's/^PackageIdentifier:[[:space:]]*//p' packaging/winget/hmx.yaml | head -1 | tr -d '\r')"
+WINGET_VER="$(sed -n 's/^PackageVersion:[[:space:]]*//p'     packaging/winget/hmx.yaml | head -1 | tr -d '\r')"
+
+# (a) the accepted schema version, in the field and in the editor hint. A field
+#     bump without the comment bump passes a grep for the field alone, and the
+#     comment is what an editor uses to validate as you type.
+for f in hmx.yaml hmx.installer.yaml hmx.locale.en-US.yaml; do
+    check "winget $f declares ManifestVersion $WINGET_SCHEMA_VERSION" \
+        "packaging/winget/$f" "^ManifestVersion: $WINGET_SCHEMA_VERSION\$"
+    check "winget $f \$schema hint matches ManifestVersion" \
+        "packaging/winget/$f" "^# yaml-language-server: \\\$schema=https://aka\.ms/winget-manifest\.[a-zA-Z]+\.$WINGET_SCHEMA_VERSION\.schema\.json\$"
+done
+# And nothing anywhere still names a schema version the repository has dropped.
+if grep -rhoE 'winget-manifest\.[a-zA-Z]+\.[0-9]+\.[0-9]+\.[0-9]+\.schema\.json' packaging/winget \
+   | grep -vE "\.$WINGET_SCHEMA_VERSION\.schema\.json$" | grep -q .; then
+    bad "no winget schema hint is older than $WINGET_SCHEMA_VERSION" \
+        "$(grep -rhoE 'winget-manifest\.[a-zA-Z]+\.[0-9]+\.[0-9]+\.[0-9]+\.schema\.json' packaging/winget | sort -u | sed 's/^/   also present: /')"
+else
+    ok "no winget schema hint is older than $WINGET_SCHEMA_VERSION"
+fi
+
+# (b) the layout. First the identifier has to be shaped so the derivation means
+#     anything: exactly one dot, both parts non-empty.
+if printf '%s' "$WINGET_ID" | grep -qE '^[^.]+\.[^.]+$'; then
+    ok "winget identifier has one dot and two non-empty parts ($WINGET_ID)"
+else
+    bad "winget identifier has one dot and two non-empty parts" \
+        "got '$WINGET_ID' — the path derivation below assumes <Publisher>.<Package>"
+fi
+WINGET_PUB="${WINGET_ID%%.*}"
+WINGET_PKG="${WINGET_ID#*.}"
+WINGET_DIR="manifests/$(printf '%s' "$WINGET_PUB" | cut -c1 | tr 'A-Z' 'a-z')/$WINGET_PUB/$WINGET_PKG/$WINGET_VER"
+if [ -n "$WINGET_VER" ]; then
+    ok "winget submission directory derives to $WINGET_DIR"
+else
+    bad "winget submission directory derives" "no PackageVersion in packaging/winget/hmx.yaml"
+fi
+# ...and the documented paths must be exactly those, all three.
+for suffix in "" ".installer" ".locale.en-US"; do
+    want="$WINGET_DIR/$WINGET_ID$suffix.yaml"
+    if grep -qF "$want" packaging/winget/hmx.yaml; then
+        ok "winget hmx.yaml documents $want"
+    else
+        bad "winget hmx.yaml documents $want" \
+            "the copy step in hmx.yaml does not name this path; winget-pkgs wants <PackageIdentifier>$suffix.yaml inside $WINGET_DIR"
+    fi
+done
+# The old, wrong filenames must not linger anywhere as if they were the plan.
+reject "winget hmx.yaml does not document the pre-fix HMX.yaml path" \
+    packaging/winget/hmx.yaml 'manifests/h/HMX/HMX/[0-9.]+/HMX\.(installer|locale\.en-US)?\.yaml'
 
 # ── 13) This repo has to BE a scoop bucket, and install.ps1 has to notice ──
 # `scoop bucket add <repo>` registers the repo as a bucket; scoop then looks for

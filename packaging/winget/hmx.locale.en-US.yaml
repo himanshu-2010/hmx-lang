@@ -7,7 +7,15 @@
 # ShortDescription is deliberately ASCII and under winget's 80-character cap;
 # the em dash the README uses is legal here but buys nothing in a package
 # listing, and non-ASCII in these fields is a recurring source of PR rejections.
-# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+#
+# Publisher and PackageName need not equal the folder names — winget-pkgs
+# matches the *folders* against PackageIdentifier, which here is HMX.HMX, so the
+# tree is manifests/h/HMX/HMX/. A real package with a human-readable Publisher
+# string and a mechanical identifier (hello-efficiency-inc.raven-reader) is
+# exactly the same shape.
+#
+# ManifestVersion 1.12.0 is the version winget-pkgs currently accepts. See hmx.yaml.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
 
 PackageIdentifier: HMX.HMX
 PackageVersion: 0.10.0
@@ -36,4 +44,4 @@ Tags:
 - transpiler
 ReleaseNotesUrl: https://github.com/himanshu-2010/hmx-lang/releases/tag/v0.10.0
 ManifestType: defaultLocale
-ManifestVersion: 1.6.0
+ManifestVersion: 1.12.0
