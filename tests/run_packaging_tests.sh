@@ -488,6 +488,97 @@ else
       "missing, wrong length, or a single repeated character"
 fi
 
+# --- 12d. Commit signing is configured, and checked the canonical way ---------
+#
+# Two separate things went wrong here, and they are worth separate gates because
+# they fail in opposite directions.
+#
+# First: commit.gpgsign was unset while tag.gpgsign was true. git commit then
+# produced ordinary unsigned commits and exited 0, with no warning -- and
+# `git config --get user.signingkey` answered with the correct fingerprint a
+# moment earlier, which is a convincing lie. A gate that only reads the config
+# would also have passed, because tag.gpgsign genuinely was set.
+#
+# Second: the signature was then "verified" by pulling the gpgsig header out of
+# the commit object and handing it to gpg, which reports BAD SIGNATURE on a
+# commit git itself calls good. The continuation lines of that header are each
+# prefixed with a space, and forgetting to strip that verifies mangled bytes. It
+# fails by making a good signature look bad, which is the direction that sends
+# you hunting for a problem that is not there.
+if [ -x tools/verify-signing.sh ]; then
+  ok "tools/verify-signing.sh exists and is executable"
+else
+  bad "tools/verify-signing.sh exists and is executable" "missing or not chmod +x"
+fi
+
+if grep -q 'git verify-commit' tools/verify-signing.sh 2>/dev/null; then
+  ok "the signing checker verifies with git verify-commit"
+else
+  bad "the signing checker verifies with git verify-commit" "no 'git verify-commit' found; signatures are being checked some other, less reliable way"
+fi
+
+# The anti-pattern, stated as a prohibition rather than as a pattern to match.
+# The first version of this gate tried to recognise the bad shape with a regex
+# over two lines at once and matched nothing at all, including the bad shape
+# itself -- a green gate that had never failed. "Never call gpg --verify here" is
+# both simpler and impossible to match by accident: git verify-commit is the only
+# way this script has any business checking a signature, so any direct gpg call
+# is either the bug or a worse version of it. Mentions in comments do not count.
+if grep -vE '^\s*#' tools/verify-signing.sh 2>/dev/null | grep -q 'gpg --verify'; then
+  bad "the signing checker never calls gpg --verify directly" \
+      "it pipes something to gpg --verify; if that something is a gpgsig header it is mangled, and it reports a good signature as bad"
+else
+  ok "the signing checker never calls gpg --verify directly"
+fi
+
+# The settings themselves. commit.gpgsign is the one that was missing and the
+# only one of the four whose absence produces no diagnostic at all -- so it is
+# checked on its own, rather than as part of a group that passes if any member
+# is present.
+# Three settings have an exact required value and one does not, so they are
+# checked as separate literal patterns rather than by splitting a "key=value"
+# string -- that split cannot express "the value is a fingerprint, so require
+# only the key", and the version that tried went red on user.signingkey while
+# every other gate was fine.
+#
+# The value has to be a whole value. A bare prefix match happily accepts
+# "commit.gpgsign true-ish", which git does not, so a typo would satisfy the
+# gate that exists to catch exactly that kind of typo.
+for setting in "gpg.format openpgp" "commit.gpgsign true" "tag.gpgsign true"; do
+  set_key=${setting%% *}
+  set_val=${setting#* }
+  if grep -qE "git config (--global )?${set_key} ${set_val}([[:space:]]|$)" REMAINING.md; then
+      ok "REMAINING.md documents git config ${set_key} ${set_val}"
+  else
+      bad "REMAINING.md documents git config ${set_key} ${set_val}" \
+          "not found; a setting that is only ever typed into a terminal is a setting that gets lost"
+  fi
+done
+
+# user.signingkey carries a fingerprint, so require the key and let the value be
+# whatever the current one is. A stale fingerprint in the docs is a real risk and
+# is handled by the install.sh constant gates instead, which is the place the
+# value actually has to be right.
+if grep -qE 'git config (--global )?user.signingkey [0-9A-F]{40}' REMAINING.md; then
+    ok "REMAINING.md documents git config user.signingkey <fingerprint>"
+else
+    bad "REMAINING.md documents git config user.signingkey <fingerprint>" \
+        "not found; a signing key that is only ever set interactively is lost with the shell history"
+fi
+
+# And the trap, in prose. Matched against a dedicated sentence rather than a
+# phrase that happens to appear in a code comment: an earlier version of this
+# gate matched a comment on the commit.gpgsign line, which meant it went red
+# whenever the very setting it was meant to protect was edited. A gate coupled
+# to the thing it guards is worse than no gate, because the fix looks like the
+# bug.
+if grep -q 'HMX_SIGNING_TRAP' REMAINING.md; then
+  ok "REMAINING.md carries the tag.gpgsign trap marker"
+else
+  bad "REMAINING.md carries the tag.gpgsign trap marker" \
+      "the HMX_SIGNING_TRAP marker is missing; see the note in section 12d"
+fi
+
 echo
 if [ "$FAIL" -eq 0 ]; then
     echo "Packaging Tests Passed: $PASS, Failed: 0  (version $VERSION)"

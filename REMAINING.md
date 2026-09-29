@@ -25,7 +25,7 @@ confirm the GPG key is added to your GitHub account.
 | Release | `v0.10.0` published, 5 assets, all `HTTP 200` |
 | CI | all 6 jobs green, including `packaging manifests` |
 | Native tests | 478/478 (64 integration + 238 negative + 143 stress + 33 CLI) |
-| Packaging gate | 134/134 |
+| Packaging gate | 142/142 |
 | Valgrind | 69/69 |
 | Web (vitest) | 455/455, `gen-data.mts` parity 0 failures |
 | Container | `ghcr.io/himanshu-2010/hmx-lang:{0.10.0,latest}` verified, exit codes propagate |
@@ -327,7 +327,9 @@ git config --global user.signingkey 3D987F64DC5DE0F56A383805117A9800DEC4FCCC
 git config --global tag.gpgsign true
 ```
 
-`tag.gpgsign` alone was set at first, and `git commit` produced perfectly ordinary
+<!-- HMX_SIGNING_TRAP -->
+**The trap: `tag.gpgsign` does not sign commits.** It was set, and
+`commit.gpgsign` was not, and `git commit` then produced perfectly ordinary
 **unsigned** commits with exit status 0 — no warning, no error. It was found by
 looking for the `gpgsig` header in the commit object rather than trusting the
 config or the exit code. Worth remembering: "the signing key is configured" and
@@ -635,7 +637,7 @@ cmake --build build
 ./tests/run_negative_tests.sh       # 238 compile-error cases
 ./tests/run_stress_tests.sh         # 143 exact-stdout + exit-code cases
 ./tests/run_cli_tests.sh           # 33 CLI behaviour cases
-./tests/run_packaging_tests.sh      # 134 manifest / workflow / installer gates
+./tests/run_packaging_tests.sh      # 142 manifest / workflow / installer gates
 
 ./tests/run_valgrind_tests.sh --fixtures          # 69 ownership checks
 HMX_ASAN=1 ./tests/run_stress_tests.sh             # ASan + LeakSanitizer
