@@ -438,6 +438,56 @@ done
 check "install.sh tolerates the AUR's compact JSON" install/install.sh '"resultcount":\[\[:space:\]\]\*'
 reject "install.sh never fuzzy-installs an unverified name" install/install.sh '^[[:space:]]*exec (yay|paru) -S'
 
+# --- 12c. The repository signing key is defined once, and shown from there ---
+#
+# install.sh tells the reader which key signs the pacman repository so that they
+# can check it against what they actually imported. That makes the string
+# load-bearing rather than decorative: a rotated key that left a stale literal in
+# the help message would not be merely untidy, it would have the reader compare
+# against the wrong fingerprint and trust the wrong key. So the value lives in
+# one constant, quoted wherever it is displayed, and these gates keep it that way
+# across a rotation -- which is exactly the moment a hardcoded string is most
+# likely to be forgotten.
+#
+# The counts below are over *shape*, not over a value the checker has seen. A
+# gate that knows the current fingerprint would happily pass the day a second,
+# stale copy of a *different* one was pasted in; counting every 40-hex-uppercase
+# run catches a new one the checker has never heard of.
+fpr_defs=$(grep -cE '^HMX_SIGNING_FPR="[0-9A-F]{40}"$' install/install.sh || true)
+if [ "$fpr_defs" = "1" ]; then
+  ok "install.sh defines the signing fingerprint exactly once, as a constant"
+else
+  bad "install.sh defines the signing fingerprint exactly once, as a constant" \
+      "found $fpr_defs matching definition lines, expected exactly 1"
+fi
+
+fpr_total=$(grep -oE '[0-9A-F]{40}' install/install.sh | wc -l | tr -d ' ')
+if [ "$fpr_total" = "1" ]; then
+  ok "no second fingerprint literal is baked into install.sh"
+else
+  bad "no second fingerprint literal is baked into install.sh" \
+      "$fpr_total bare 40-hex literals present; all but the definition are copies waiting to go stale"
+fi
+
+# The help text must interpolate the constant rather than re-spell it.
+if grep -E "printf .*the signing key is %s" install/install.sh | grep -q 'HMX_SIGNING_FPR'; then
+  ok "the pacman help text prints the fingerprint from the constant"
+else
+  bad "the pacman help text prints the fingerprint from the constant" \
+      "no printf using \$HMX_SIGNING_FPR; the help text is spelling the key out again"
+fi
+
+# A typo here is invisible: the value is printed to a user who has no way to know
+# it is wrong, and a placeholder would be printed just as confidently as a real
+# key. Shape is all that is checkable from here -- correctness is the keyring's.
+if grep -qE '^HMX_SIGNING_FPR="[0-9A-F]{40}"$' install/install.sh \
+ && ! grep -qE '^HMX_SIGNING_FPR="([0-9A-F])\1{39}"$' install/install.sh; then
+  ok "the signing fingerprint is 40 hex characters and not a placeholder"
+else
+  bad "the signing fingerprint is 40 hex characters and not a placeholder" \
+      "missing, wrong length, or a single repeated character"
+fi
+
 echo
 if [ "$FAIL" -eq 0 ]; then
     echo "Packaging Tests Passed: $PASS, Failed: 0  (version $VERSION)"

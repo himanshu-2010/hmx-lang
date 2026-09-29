@@ -25,7 +25,7 @@ confirm the GPG key is added to your GitHub account.
 | Release | `v0.10.0` published, 5 assets, all `HTTP 200` |
 | CI | all 6 jobs green, including `packaging manifests` |
 | Native tests | 478/478 (64 integration + 238 negative + 143 stress + 33 CLI) |
-| Packaging gate | 130/130 |
+| Packaging gate | 134/134 |
 | Valgrind | 69/69 |
 | Web (vitest) | 455/455, `gen-data.mts` parity 0 failures |
 | Container | `ghcr.io/himanshu-2010/hmx-lang:{0.10.0,latest}` verified, exit codes propagate |
@@ -284,45 +284,55 @@ hmx --version          # expect: hmx 0.10.0
 which cc gcc clang     # one of the three must exist before `hmx run` works
 ```
 
-### A4. GPG signing — working locally, one scope grant left
+### A4. GPG signing — the key is **gone**, so a new one is required
 
-A key exists and works. `ed25519`, sign-only, no expiry, fingerprint
-`E20338C6BEB6BBE978F913DBE6AED9C613DDCF5E`. Git is configured to sign both
-commits and tags with it, and a signed commit and a signed tag were both created
-and verified locally.
+**The private key no longer exists.** It was generated in `/tmp`, without a
+passphrase, and `/tmp` has since been cleaned. Fingerprint
+`E20338C6BEB6BBE978F913DBE6AED9C613DDCF5E` is now **orphaned**: the pacman
+repository it signed is published and still installs correctly for users — they
+verify against the *published public* key — but **nobody can publish a new version
+to that repository**, and the commits and tags it signed can no longer be
+re-verified locally at all.
 
-GitHub reports `verification.reason = unknown_key` for them, which is the
-expected state until the public half is on the account: GitHub can see the
-signature is valid GPG but cannot attribute it to you. Adding the key needs a
-token scope the current one lacks, and `gh auth refresh` is interactive:
-
-```bash
-gh auth refresh -h github.com -s admin:gpg_key
-gh api -X POST user/gpg_keys --field armored_public_key="$(cat hmx-signing-key.asc)"
-```
-
-**The key was generated with no passphrase and lives in `/tmp`, which does not
-survive a reboot.** Do it properly on your own machine rather than adopting this
-one — generate a key with a passphrase you remember, add that, and discard this
-one:
+Worth recording as a mistake rather than a chore. That key was a real key serving
+a real purpose, and it was still disposable, because disposable was all it ever
+was. A passphrase-less signing key in a temp directory is not a half-finished
+version of a signing key; it is a key that will evaporate, and the only question
+was when. It evaporated. Generate the replacement on a machine that persists, with
+a passphrase, and treat the fingerprint as long-lived infrastructure — because
+from here on, rotating it is a re-sign of a published repository.
 
 ```bash
-gpg --full-generate-key          # ed25519, sign only, with a passphrase
-gpg --armor --export <fpr> | tee hmx-signing-key.asc
+# 1. Generate a real key, on a machine that persists. ed25519, sign-only, with a
+#    passphrase you will still remember in a year.
+gpg --full-generate-key
+gpg --list-secret-keys --keyid-format long          # note the fingerprint
+
+# 2. Back the private half up somewhere that is not /tmp, before anything else.
+gpg --armor --export-secret-keys <fpr> > ~/keys/hmx-signing-secret.asc
+
+# 3. Publish the public half, and add it to the GitHub account so commits and tags
+#    read as Verified rather than unknown_key. The token needs a scope it lacks.
 gh auth refresh -h github.com -s admin:gpg_key
+gpg --armor --export <fpr> > hmx-signing-key.asc
 gh api -X POST user/gpg_keys --field armored_public_key="$(cat hmx-signing-key.asc)"
+
+# 4. Point git at it, for this repository and globally.
 git config gpg.format openpgp
 git config user.signingkey <fpr>
 git config tag.gpgsign true
 ```
 
-Until that happens, **the pacman repository below is signed with the `/tmp`
-key**, and that fingerprint is the one `hmx-pacman` publishes. Replacing it means
-re-signing the repo — `build-repo.sh` takes the fingerprint as an argument
-precisely so that is a one-line change.
+`verification.reason = unknown_key` on the existing signed commits is a separate
+and much smaller problem: GitHub can see a valid GPG signature but cannot
+attribute it to an account. It clears the moment the public key is on the account,
+in step 3. It does not rescue the orphaned key, because that key is gone.
 
-A4 also unblocked the pacman work: a third-party repository is only worth having
-if it is signed.
+Rotating also means re-signing the pacman repository (A5): replace
+`hmx-signing-key.asc` in `himanshu-2010/hmx-pacman`, re-run `build-repo.sh` with
+the new fingerprint, and update the single `HMX_SIGNING_FPR` constant in
+`install/install.sh` — which the packaging gate now enforces appears exactly
+once, precisely so that this rotation is one edit instead of a search.
 
 ### A5. Arch users are covered by a signed pacman repository (new, live)
 
@@ -616,7 +626,7 @@ cmake --build build
 ./tests/run_negative_tests.sh       # 238 compile-error cases
 ./tests/run_stress_tests.sh         # 143 exact-stdout + exit-code cases
 ./tests/run_cli_tests.sh           # 33 CLI behaviour cases
-./tests/run_packaging_tests.sh      # 130 manifest / workflow / installer gates
+./tests/run_packaging_tests.sh      # 134 manifest / workflow / installer gates
 
 ./tests/run_valgrind_tests.sh --fixtures          # 69 ownership checks
 HMX_ASAN=1 ./tests/run_stress_tests.sh             # ASan + LeakSanitizer

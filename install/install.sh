@@ -51,6 +51,13 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # verified, remains the default path and is a perfectly good install.
 PACMAN_REPO_NAME="hmx"
 PACMAN_REPO_URL="https://himanshu-2010.github.io/hmx-pacman"
+# One definition, quoted wherever it is shown, because the whole point of telling
+# someone a fingerprint is that they can check it. A rotated key that left a stale
+# literal in a help message would not merely be untidy: the reader would compare
+# against the wrong string and trust the wrong key. tests/run_packaging_tests.sh
+# asserts this value is the only 40-hex literal in the script, so a rotation is
+# one edit here rather than a hunt.
+HMX_SIGNING_FPR="E20338C6BEB6BBE978F913DBE6AED9C613DDCF5E"
 
 pacman_repo_known() { grep -qs "^\[$PACMAN_REPO_NAME\]" /etc/pacman.conf; }
 
@@ -88,8 +95,10 @@ install_from_pacman_repo() {
 }
 
 offer_pacman_repo() {
-    # A quoted heredoc, so the fingerprint line has to be literal: an unquoted
-    # one would also expand $arch and anything else a future edit adds.
+    # Quoted heredoc, so the prose cannot expand $arch or anything a later edit
+    # adds. The one thing that *must* stay in sync with the repository is the
+    # fingerprint, so it comes from the variable above and the heredoc stops just
+    # short of it.
     cat <<'EOF'
 
   A signed pacman repository is also available, built from the same PKGBUILD:
@@ -98,8 +107,11 @@ offer_pacman_repo() {
 
   It adds one stanza to /etc/pacman.conf and imports a signing key, so it is
   opt-in rather than the default. Signatures are enforced, not decorative --
-  the signing key is E20338C6BEB6BBE978F913DBE6AED9C613DDCF5E.
 EOF
+    # The fingerprint's whole line lives here rather than in the heredoc above,
+    # because a heredoc always ends its last line, which would wrap the sentence
+    # onto a second one. Two leading spaces, to match the prose.
+    printf '  the signing key is %s.\n' "$HMX_SIGNING_FPR"
     if [ "${HMX_PACMAN_REPO:-0}" = "1" ]; then
         echo
         if install_from_pacman_repo; then
