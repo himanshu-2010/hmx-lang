@@ -36,6 +36,86 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # The brew formula has the same gap: brew's gcc is keg-only, so
 # `depends_on "gcc"` does not put one on PATH, and the formula's `caveats` block
 # is the only thing that says so.
+# ── pacman repository (a stopgap for an AUR that will not accept packages) ──
+#
+# The AUR is the right answer for Arch and this is not a replacement for it. It
+# exists only because AUR registration is currently closed behind an anti-bot
+# challenge, and the maintainers' own PKGBUILD -- already verified with makepkg
+# -- has nowhere to be submitted. The package is built from that same PKGBUILD,
+# so the two cannot drift, and the AUR is checked first on every run: the moment
+# `hmx` appears there, install.sh hands off and never reaches this code.
+#
+# It is opt-in and not the default, because setting it up means appending to
+# /etc/pacman.conf and importing a GPG key. A `curl | bash` script should not do
+# either to a machine that did not ask for it. The prebuilt binary, checksum-
+# verified, remains the default path and is a perfectly good install.
+PACMAN_REPO_NAME="hmx"
+PACMAN_REPO_URL="https://himanshu-2010.github.io/hmx-pacman"
+
+pacman_repo_known() { grep -qs "^\[$PACMAN_REPO_NAME\]" /etc/pacman.conf; }
+
+install_from_pacman_repo() {
+    have gpg || { warn "gpg is not installed; cannot verify the repository key"; return 1; }
+    have sudo || { warn "sudo is not available; cannot edit /etc/pacman.conf"; return 1; }
+
+    info "Importing the hmx repository signing key"
+    # Additive and non-destructive: --import adds a keyring entry, it does not
+    # replace one. The key is also what makes SigLevel=Required work, so this is
+    # the step that actually establishes trust rather than a formality.
+    if ! curl -fsSL "$PACMAN_REPO_URL/hmx-signing-key.asc" | gpg --import; then
+        warn "could not import the repository key -- not touching /etc/pacman.conf"
+        return 1
+    fi
+
+    # pacman will still ask whether to trust a key it has not seen before. That
+    # prompt is the correct place to check the fingerprint, so do not suppress
+    # it and do not try to pre-empt it with --noconfirm on the sync.
+    if ! pacman_repo_known; then
+        info "Adding [$PACMAN_REPO_NAME] to /etc/pacman.conf"
+        printf '\n[%s]\nSigLevel = Required DatabaseRequired\nServer = %s/$arch\n' \
+            "$PACMAN_REPO_NAME" "$PACMAN_REPO_URL" \
+            | sudo tee -a /etc/pacman.conf >/dev/null
+    else
+        info "Repository already present in /etc/pacman.conf"
+    fi
+
+    info "Installing hmx from the signed repository"
+    # No --noconfirm on the sync: that is where pacman asks about the key, and
+    # answering it blind is exactly what a signature is supposed to prevent.
+    sudo pacman -Sy --needed
+    sudo pacman -S --noconfirm --needed "$PACMAN_REPO_NAME"
+    return $?
+}
+
+offer_pacman_repo() {
+    # A quoted heredoc, so the fingerprint line has to be literal: an unquoted
+    # one would also expand $arch and anything else a future edit adds.
+    cat <<'EOF'
+
+  A signed pacman repository is also available, built from the same PKGBUILD:
+
+    HMX_PACMAN_REPO=1 curl -fsSL https://raw.githubusercontent.com/himanshu-2010/hmx-lang/main/install/install.sh | bash
+
+  It adds one stanza to /etc/pacman.conf and imports a signing key, so it is
+  opt-in rather than the default. Signatures are enforced, not decorative --
+  the signing key is E20338C6BEB6BBE978F913DBE6AED9C613DDCF5E.
+EOF
+    if [ "${HMX_PACMAN_REPO:-0}" = "1" ]; then
+        echo
+        if install_from_pacman_repo; then
+            info "Installed hmx from $PACMAN_REPO_URL. Verify with: hmx --version"
+            require_cc
+            exit 0
+        fi
+        warn "the pacman repository could not be set up — falling back to the prebuilt binary"
+    fi
+    cat <<'EOF'
+
+  Continuing with the prebuilt binary: that is a complete, verified install
+  too, and it is what most people want.
+EOF
+}
+
 require_cc() {
     local c
     for c in cc gcc clang; do
@@ -208,21 +288,88 @@ build_from_source_hint() {
     sudo cmake --install build --prefix /usr/local
 EOF
 }
+
+# Actually do it, rather than printing the recipe and exiting.
+#
+# This exists because "no prebuilt binary for your platform" is a much worse
+# answer than "here is a compiler, hold on". The release publishes one macOS
+# binary, for arm64, because that is the only macOS runner it has — so every
+# Intel Mac, and any Mac where the tarball 404s, previously dead-ended on a
+# wall of text. That is a fine answer for a README and a poor one for an
+# installer whose whole job is to install something.
+#
+# Built from the release tag, not main, so what gets installed is the same source
+# the release binaries came from. The toolchain is checked first and named,
+# because "cmake: command not found" after a successful clone is not a useful
+# error to hand someone on a Mac.
+build_from_source() {
+    local tmp
+    tmp="$(mktemp -d)"
+    info "No prebuilt hmx for ${platform} — building from source (v${VERSION})"
+    for t in git cmake; do
+        if ! have "$t"; then
+            die "building from source needs '$t', which is not on PATH.
+      On macOS:  xcode-select --install   (then: brew install cmake)"
+        fi
+    done
+    info "Fetching the v${VERSION} source"
+    if ! git clone -q --depth 1 --branch "v${VERSION}" "https://github.com/${REPO}.git" "$tmp/hmx-lang"; then
+        rm -rf "$tmp"
+        die "could not fetch the v${VERSION} source from GitHub"
+    fi
+    info "Compiling (this takes a couple of minutes)"
+    (
+        cd "$tmp/hmx-lang" &&
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release &&
+        cmake --build build
+    ) >"$tmp/build.log" 2>&1 || {
+        warn "the build failed; last lines of the log:"
+        tail -20 "$tmp/build.log" >&2
+        rm -rf "$tmp"
+        exit 1
+    }
+    install_built "$tmp/hmx-lang/build/hmx"
+    rm -rf "$tmp"
+    info "Built hmx v${VERSION} from source. Verify with: hmx --version"
+    require_cc
+}
+
+# Put a binary somewhere on PATH, with the same three-way fallback as
+# install_binary: /usr/local/bin if writable, else sudo, else ~/.local/bin.
+install_built() {
+    local bin="$1"
+    [ -x "$bin" ] || die "the build produced no executable at $bin"
+    if [ -w /usr/local/bin ]; then
+        install -m 0755 "$bin" /usr/local/bin/hmx
+    elif have sudo; then
+        sudo install -m 0755 "$bin" /usr/local/bin/hmx
+    else
+        mkdir -p "$HOME/.local/bin"
+        install -m 0755 "$bin" "$HOME/.local/bin/hmx"
+        warn 'installed to ~/.local/bin — add it to your PATH:'
+        warn '  echo '\''export PATH="$HOME/.local/bin:$PATH"'\'' >> ~/.bashrc && source ~/.bashrc'
+    fi
+}
+
 case "$platform" in
     linux-x86_64|macos-arm64) ;;
     macos-x86_64)
-        # No Intel macOS binary is published (the release job runs on arm64);
-        # Homebrew builds from source and covers this case properly.
+        # No Intel macOS binary is published (the release job runs on arm64).
+        # Homebrew is preferred when present because it manages the install;
+        # without it, build from source rather than dead-ending.
         if have brew; then
             info "Intel Mac detected — installing via Homebrew (builds from source)"
-            brew tap himanshu-2010/homebrew-hmx && brew install hmx && { info "Installed hmx."; require_cc; exit 0; }
+            if brew tap himanshu-2010/homebrew-hmx 2>/dev/null && brew install hmx; then
+                info "Installed hmx."; require_cc; exit 0
+            fi
+            warn "Homebrew could not install hmx — building from source instead"
         fi
-        die "no prebuilt hmx for ${platform} (Intel macOS)."
-        build_from_source_hint
+        build_from_source
+        exit 0
         ;;
     *)
-        die "no prebuilt hmx for ${platform}.
-      Published targets: linux-x86_64, macos-arm64."
+        die "unsupported platform: ${platform}
+      Published binaries: linux-x86_64, macos-arm64."
         build_from_source_hint
         ;;
 esac
@@ -251,7 +398,10 @@ case "$os" in
             case "$aur_helper:${AUR_STATE}" in
                 :*)            warn "Arch Linux detected but no AUR helper (paru/yay) found — installing the prebuilt binary" ;;
                 *:present)     die "internal error: AUR confirmed but the hand-off was skipped" ;;
-                *:absent)      warn "hmx is not in the AUR yet — installing the prebuilt binary" ;;
+                *:absent)      warn "hmx is not in the AUR yet (registration is disabled behind an anti-bot gate)"
+                              offer_pacman_repo
+                              install_binary "hmx-${VERSION}-${platform}.tar.gz" "$platform"
+                              exit 0 ;;
                 *)             warn "could not confirm hmx is in the AUR (RPC unreachable) — installing the prebuilt binary" ;;
             esac
             install_binary "hmx-${VERSION}-${platform}.tar.gz" "$platform"
