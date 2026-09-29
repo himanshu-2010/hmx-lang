@@ -284,55 +284,64 @@ hmx --version          # expect: hmx 0.10.0
 which cc gcc clang     # one of the three must exist before `hmx run` works
 ```
 
-### A4. GPG signing — the key is **gone**, so a new one is required
+### A4. GPG signing — done, with a passphrase this time
 
-**The private key no longer exists.** It was generated in `/tmp`, without a
-passphrase, and `/tmp` has since been cleaned. Fingerprint
-`E20338C6BEB6BBE978F913DBE6AED9C613DDCF5E` is now **orphaned**: the pacman
-repository it signed is published and still installs correctly for users — they
-verify against the *published public* key — but **nobody can publish a new version
-to that repository**, and the commits and tags it signed can no longer be
-re-verified locally at all.
+The first key is **gone**, and that is the lesson rather than a chore. It was
+generated in `/tmp` with no passphrase; `/tmp` was cleaned; fingerprint
+`E20338C6BEB6BBE978F913DBE6AED9C613DDCF5E` is orphaned. The pacman repository it
+signed still installs for users — they verify against the *published public* key —
+but nobody could publish a new version to it. A passphrase-less key in a temp
+directory is not a half-finished signing key; it is a disposable one, and the only
+open question was when it would evaporate.
 
-Worth recording as a mistake rather than a chore. That key was a real key serving
-a real purpose, and it was still disposable, because disposable was all it ever
-was. A passphrase-less signing key in a temp directory is not a half-finished
-version of a signing key; it is a key that will evaporate, and the only question
-was when. It evaporated. Generate the replacement on a machine that persists, with
-a passphrase, and treat the fingerprint as long-lived infrastructure — because
-from here on, rotating it is a re-sign of a published repository.
+**The replacement is `3D987F64DC5DE0F56A383805117A9800DEC4FCCC`** — ed25519,
+sign-only, no expiry, **with a passphrase**, and it is on the GitHub account
+(`admin:gpg_key` scope granted, `user/gpg_keys` id 5360221). Verified rather than
+assumed:
+
+- the secret half is `iter+salt S2K … [v4 protected]` — i.e. actually encrypted,
+  not merely claimed to be
+- a real commit carries a `gpgsig` header, and gpg reports **Good signature**
+- the key round-trips out of `~/keys/hmx-signing-key.asc` and back in
+
+Backups, none of which existed for the first key:
+
+| File | What it is |
+|---|---|
+| `~/keys/hmx-signing-secret.asc` | armored secret key — needs the passphrase to use |
+| `~/keys/gnupg-backup/` | the whole keyring, including trustdb and revocation certs |
+| `~/keys/hmx-signing-key.asc` | public half, safe to publish |
+| `~/keys/hmx-revocation.asc` | revocation certificate, generated once and never seen |
+
+None of these are in any git repository, which is deliberate: a secret key inside a
+checkout is one `git add -A` away from being published.
+
+#### What git needs, and the setting that is easy to miss
+
+Four settings, and omitting any one of them fails quietly rather than loudly:
 
 ```bash
-# 1. Generate a real key, on a machine that persists. ed25519, sign-only, with a
-#    passphrase you will still remember in a year.
-gpg --full-generate-key
-gpg --list-secret-keys --keyid-format long          # note the fingerprint
-
-# 2. Back the private half up somewhere that is not /tmp, before anything else.
-gpg --armor --export-secret-keys <fpr> > ~/keys/hmx-signing-secret.asc
-
-# 3. Publish the public half, and add it to the GitHub account so commits and tags
-#    read as Verified rather than unknown_key. The token needs a scope it lacks.
-gh auth refresh -h github.com -s admin:gpg_key
-gpg --armor --export <fpr> > hmx-signing-key.asc
-gh api -X POST user/gpg_keys --field armored_public_key="$(cat hmx-signing-key.asc)"
-
-# 4. Point git at it, for this repository and globally.
-git config gpg.format openpgp
-git config user.signingkey <fpr>
-git config tag.gpgsign true
+git config --global gpg.format openpgp
+git config --global commit.gpgsign true      # commits. tag.gpgsign is TAGS only.
+git config --global user.signingkey 3D987F64DC5DE0F56A383805117A9800DEC4FCCC
+git config --global tag.gpgsign true
 ```
 
-`verification.reason = unknown_key` on the existing signed commits is a separate
-and much smaller problem: GitHub can see a valid GPG signature but cannot
-attribute it to an account. It clears the moment the public key is on the account,
-in step 3. It does not rescue the orphaned key, because that key is gone.
+`tag.gpgsign` alone was set at first, and `git commit` produced perfectly ordinary
+**unsigned** commits with exit status 0 — no warning, no error. It was found by
+looking for the `gpgsig` header in the commit object rather than trusting the
+config or the exit code. Worth remembering: "the signing key is configured" and
+"this commit is signed" are different claims, and only one of them is checked by
+exit status.
 
-Rotating also means re-signing the pacman repository (A5): replace
-`hmx-signing-key.asc` in `himanshu-2010/hmx-pacman`, re-run `build-repo.sh` with
-the new fingerprint, and update the single `HMX_SIGNING_FPR` constant in
-`install/install.sh` — which the packaging gate now enforces appears exactly
-once, precisely so that this rotation is one edit instead of a search.
+#### Still open: re-signing the pacman repository (A5)
+
+The published repository is signed by the orphaned key, so the new fingerprint
+means re-signing it: replace `hmx-signing-key.asc` in `himanshu-2010/hmx-pacman`,
+re-run `build-repo.sh`, and update the single `HMX_SIGNING_FPR` constant in
+`install/install.sh`. The last of those is done and pushed. Until the repository is
+re-signed, `hmx-pacman` advertises a key that nobody holds a private half for —
+which works for existing users and is not a good state to leave in.
 
 ### A5. Arch users are covered by a signed pacman repository (new, live)
 
@@ -351,7 +360,7 @@ anyone who can get an AUR account.
 
 ```bash
 curl -fsSL https://himanshu-2010.github.io/hmx-pacman/hmx-signing-key.asc | gpg --import
-gpg --lsign-key E20338C6BEB6BBE978F913DBE6AED9C613DDCF5E
+gpg --lsign-key 3D987F64DC5DE0F56A383805117A9800DEC4FCCC
 echo -e "[hmx]\nSigLevel = Required DatabaseRequired\nServer = https://himanshu-2010.github.io/hmx-pacman/\$arch" \
   | sudo tee -a /etc/pacman.conf
 sudo pacman -Sy hmx

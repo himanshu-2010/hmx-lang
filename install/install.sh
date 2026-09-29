@@ -57,7 +57,7 @@ PACMAN_REPO_URL="https://himanshu-2010.github.io/hmx-pacman"
 # against the wrong string and trust the wrong key. tests/run_packaging_tests.sh
 # asserts this value is the only 40-hex literal in the script, so a rotation is
 # one edit here rather than a hunt.
-HMX_SIGNING_FPR="E20338C6BEB6BBE978F913DBE6AED9C613DDCF5E"
+HMX_SIGNING_FPR="3D987F64DC5DE0F56A383805117A9800DEC4FCCC"
 
 pacman_repo_known() { grep -qs "^\[$PACMAN_REPO_NAME\]" /etc/pacman.conf; }
 
