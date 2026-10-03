@@ -25,7 +25,7 @@ confirm the GPG key is added to your GitHub account.
 | Release | `v0.10.0` published, 5 assets, all `HTTP 200` |
 | CI | all 6 jobs green, including `packaging manifests` |
 | Native tests | 478/478 (64 integration + 238 negative + 143 stress + 33 CLI) |
-| Packaging gate | 142/142 |
+| Packaging gate | 147/147 |
 | Valgrind | 69/69 |
 | Web (vitest) | 455/455, `gen-data.mts` parity 0 failures |
 | Container | `ghcr.io/himanshu-2010/hmx-lang:{0.10.0,latest}` verified, exit codes propagate |
@@ -362,11 +362,41 @@ anyone who can get an AUR account.
 
 ```bash
 curl -fsSL https://himanshu-2010.github.io/hmx-pacman/hmx-signing-key.asc | gpg --import
-gpg --lsign-key 3D987F64DC5DE0F56A383805117A9800DEC4FCCC
+sudo pacman-key --lsign 3D987F64DC5DE0F56A383805117A9800DEC4FCCC
 echo -e "[hmx]\nSigLevel = Required DatabaseRequired\nServer = https://himanshu-2010.github.io/hmx-pacman/\$arch" \
   | sudo tee -a /etc/pacman.conf
 sudo pacman -Sy hmx
 ```
+
+#### The signing-key trap, measured rather than assumed
+
+This was recorded here because the first fix for it was **wrong**. The
+end-to-end test failed with `error: hmx: signature from "..." is unknown
+trust`, and the obvious reading — local signing does not establish trust, so
+it must be `pacman-key --lsign` — is not what happens. `pacman-key --lsign` is
+implemented as a plain `gpg --lsign-key` with `2>/dev/null` (line 494 of
+`/usr/bin/pacman-key`), i.e. the two commands are the same thing.
+
+What actually distinguishes the working case from the failing one is whether
+the keyring holds a **local secret key** to sign with:
+
+| keyring state | `gpg --lsign-key` | validity | `pacman -Sy` under `SigLevel = Required` |
+|---|---|---|---|
+| has a local secret key (normal Arch) | exit 0 | `f` full | **exit 0** |
+| none, `--batch --yes` | **exit 0** | `-` unchanged | `unknown trust` |
+| none, `--command-fd 0` | exit 2 | `-` unchanged | `unknown trust` |
+
+So ownertrust is not required at all — full validity is enough, and the
+throwaway keyring that produced the failure simply had nothing to sign with.
+The row worth remembering is the second: with no local secret key the command
+**reports success**, printing `Key not changed so no update needed` and exiting
+0, while changing nothing. The first visible symptom is therefore several steps
+later, in a pacman error that names neither signing nor the keyring.
+
+The practical consequence for testing: an end-to-end test in a throwaway
+keyring must either run `pacman-key --init` or import ownertrust directly
+(`gpg --import-ownertrust` with `<fpr>:6:`), or it will fail for a reason that
+has nothing to do with the repository being tested.
 
 Or the same thing plus the trust steps:
 
@@ -637,7 +667,7 @@ cmake --build build
 ./tests/run_negative_tests.sh       # 238 compile-error cases
 ./tests/run_stress_tests.sh         # 143 exact-stdout + exit-code cases
 ./tests/run_cli_tests.sh           # 33 CLI behaviour cases
-./tests/run_packaging_tests.sh      # 142 manifest / workflow / installer gates
+./tests/run_packaging_tests.sh      # 147 manifest / workflow / installer gates
 
 ./tests/run_valgrind_tests.sh --fixtures          # 69 ownership checks
 HMX_ASAN=1 ./tests/run_stress_tests.sh             # ASan + LeakSanitizer

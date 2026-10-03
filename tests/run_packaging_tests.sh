@@ -487,7 +487,111 @@ else
   bad "the signing fingerprint is 40 hex characters and not a placeholder" \
       "missing, wrong length, or a single repeated character"
 fi
+# --- 12e. The signing key appears in docs in two spellings, and only in one ---
+#
+# Found the hard way. Rotating to 3D987F64 was done with a `sed` matching the
+# bare 40-hex form, and it looked like a complete job: the gate in 12c went green
+# and no live fingerprint was left stale in the unspaced spelling. But the pacman
+# README also printed the key in the spaced human form --
+#   E203 38C6 BEB6 BBE9 78F9 13DB E6AE D9C6 13DD CF5E
+# -- which no `[0-9A-F]{40}` pattern can match. Two lines below it, the same file
+# had been updated to the new key. So the document told a reader to check their
+# fingerprint against the *orphaned* one, one line above telling them to trust the
+# new one. Every gate was green because every gate was looking at a spelling that
+# happened to be correct.
+#
+# The fix is not a better sed. It is that the spaced form is now checked too, and
+# that a fingerprint which is not the live one has to be accounted for by name
+# rather than waved through.
+LIVE_FPR=$(grep -oE '^HMX_SIGNING_FPR="[0-9A-F]{40}"' install/install.sh | grep -oE '[0-9A-F]{40}' || true)
 
+# Every spaced fingerprint anywhere in the docs or installer must un-space to
+# either the live key or an explicitly retired one. Spacing groups are 4 hex
+# chars, so the assembled value is unambiguous to normalise back.
+spaced_bad=0
+for f in *.md install/install.sh install/install.ps1 packaging/*/*.yaml packaging/*/PKGBUILD packaging/brew/hmx.rb; do
+[ -f "$f" ] || continue
+while read -r sp; do
+  [ -z "$sp" ] && continue
+  flat=$(printf '%s' "$sp" | tr -d ' ')
+  case "$flat" in
+    "$LIVE_FPR"|"3D987F64DC5DE0F56A383805117A9800DEC4FCCC") ;;
+    *) spaced_bad=$((spaced_bad + 1))
+       echo "      $f: $(printf '%s' "$sp" | cut -c1-30)..." ;;
+  esac
+done <<EOF
+$(grep -ohE '[0-9A-F]{4}( [0-9A-F]{4}){9}' "$f" || true)
+EOF
+done
+if [ "$spaced_bad" -eq 0 ]; then
+ok "every spaced fingerprint in the docs is a known key"
+else
+bad "every spaced fingerprint in the docs is a known key" \
+    "$spaced_bad spaced fingerprint(s) match neither the live key nor the retired list; a spaced form is invisible to a 40-hex grep, so a rotation leaves it behind silently"
+fi
+
+# The bare form, same rule -- but scoped like the gate below it. Counting a
+# retired key anywhere as stale makes the gate permanently red, because
+# REMAINING.md deliberately records the orphaned fingerprint as history. A gate
+# that cannot go green gets ignored, so the historical mention has to be
+# excluded here rather than special-cased in the failure message.
+bare_stale=0
+for f in *.md; do
+  [ "$f" = "REMAINING.md" ] && continue
+  while read -r h; do
+    [ -z "$h" ] && continue
+    if [ "$h" != "$LIVE_FPR" ]; then
+      bare_stale=$((bare_stale + 1))
+      echo "      $f: $h"
+    fi
+  done <<EOF
+$(grep -ohE '[0-9A-F]{40}' "$f" 2>/dev/null || true)
+EOF
+done
+if [ "$bare_stale" -eq 0 ]; then
+  ok "no doc outside REMAINING.md quotes a retired fingerprint"
+else
+  bad "no doc outside REMAINING.md quotes a retired fingerprint" \
+      "$bare_stale mention(es); only REMAINING.md may name a retired key, and only to say it is gone"
+fi
+
+# A retired key is legitimate exactly once: as history, in the file that says the
+# key is gone. Anywhere else it is an instruction someone might follow.
+orphan_in_others=0
+for f in *.md; do
+[ "$f" = "REMAINING.md" ] && continue
+n=$(grep -ohE '[0-9A-F]{40}' "$f" 2>/dev/null | grep -cvE "^$LIVE_FPR\$" || true)
+[ "$n" != "0" ] && { orphan_in_others=$((orphan_in_others + n)); echo "      $f: $n"; }
+done
+if [ "$orphan_in_others" -eq 0 ]; then
+ok "the retired key appears only in the file that explains it"
+else
+bad "the retired key appears only in the file that explains it" \
+    "$orphan_in_others retired-key mention(s) outside REMAINING.md"
+fi
+
+# The pacman README lives in another repo, so it cannot be checked from here.
+# What can be checked is that this repo documents the trust step at all, because
+# the first version of that text asserted a mechanism that measurement then
+# contradicted -- see the note in REMAINING.md.
+# Anchored to the start of a line, so it has to be a command somebody would run.
+# The first version of this gate was an unanchored substring match, and it passed
+# with the command line itself rewritten -- because the surrounding prose happened
+# to contain the same words. A gate that reads its own justification instead of
+# the instruction it guards is checking that the docs discuss the topic at all.
+if grep -qE '^[[:space:]]*(sudo[[:space:]]+)?pacman-key --lsign [0-9A-F]{40}' REMAINING.md; then
+  ok "REMAINING.md gives the pacman trust step as a runnable command"
+else
+  bad "REMAINING.md gives the pacman trust step as a runnable command" \
+      "no line is the command 'pacman-key --lsign <40-hex fingerprint>'; prose that mentions it does not tell a user what to type"
+fi
+
+if grep -q 'Key not changed so no update needed' REMAINING.md; then
+ok "REMAINING.md records that a no-op lsign reports success"
+else
+bad "REMAINING.md records that a no-op lsign reports success" \
+    "the silent-success case is the one that cost time; without it the next reader assumes lsign works and moves on"
+fi
 # --- 12d. Commit signing is configured, and checked the canonical way ---------
 #
 # Two separate things went wrong here, and they are worth separate gates because
