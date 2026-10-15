@@ -30,8 +30,10 @@ lerna-debug.log*
 session-*.md
 
 # --- Native compiler ---
-# Build directory
+# Build directory (plus the out-of-tree variants used by the test runners:
+# build-asan/, build-fuzz/, and any other build-* the tooling creates)
 build/
+build-*/
 
 # Generated files
 build_temp.c

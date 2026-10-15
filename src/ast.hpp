@@ -66,9 +66,37 @@ std::string tuple_type_to_string(const std::vector<TypeDesc>& members);
 
 struct ASTNode {
     virtual ~ASTNode() = default;
+    // Source line the node was parsed from, or 0 when it does not carry one
+    // (every expression). Statement overrides it. The nesting guard uses it to
+    // point at the deepest statement; exposing it as a virtual avoids a
+    // dynamic_cast to the Statement *base* class, which misbehaves under the
+    // C++ ABI bundled by some libFuzzer runtimes (see gather_children in
+    // ast.cpp).
+    virtual int source_line() const { return 0; }
 };
 
 using ASTNodePtr = std::unique_ptr<ASTNode>;
+
+// --- Deep-AST safety --------------------------------------------------------
+// The parser reduces left-recursive chains (`1+1+...+1`) without growing the
+// bison stack, so a modest source file can build an AST whose *depth* is
+// bounded only by the input size. Every recursive tree walk (the type
+// resolver, codegen) and the default recursive destructor would then overflow
+// the C stack. The helpers below traverse the tree with an explicit work list
+// instead of the C stack, so they are safe for a tree of any depth:
+//   destroy_ast    - free a subtree (root included) of any depth
+//   ast_max_depth  - measure the deepest path and the line of its deepest
+//                    statement
+// `~Program` is defined in terms of destroy_ast, so every `delete program`
+// path (main's cleanup and the fuzz target) is safe. The resolver rejects any
+// program deeper than HMX_MAX_NESTING before running a recursive walk over it.
+void destroy_ast(ASTNode* node);
+int ast_max_depth(ASTNode* node, int* out_line);
+
+// Maximum expression/statement nesting depth. Kept well under the C-stack
+// budget of the recursive resolver walks on every supported build, including
+// AddressSanitizer/libFuzzer (which inflate frames several-fold).
+constexpr int HMX_MAX_NESTING = 200;
 
 struct Expression : ASTNode {
     TypeKind resolved_type = TypeKind::Unknown;
@@ -222,6 +250,7 @@ struct Statement : ASTNode {
     int nl_id = -1;                       // unique loop id (assigned by resolver for every loop)
     bool nl_target = false;               // true if some nested function non-locally exits this loop
     struct FunctionDecl* nl_owner = nullptr;  // function whose body lexically contains this loop
+    int source_line() const override { return line; }
     virtual ~Statement() = default;
 };
 
@@ -433,4 +462,15 @@ struct Program : ASTNode {
     std::vector<StmtPtr> statements;
     std::vector<std::string> use_files;           // `use "path.hmx"` at top of file
     std::string source_file;                      // entry .hmx path (set by driver)
+    // Freed with the iterative destroy_ast so a deeply nested program (e.g. a
+    // long left-recursive expression chain) does not overflow the C stack.
+    ~Program() override;
 };
+
+// Iterative free helpers for the bison semantic-value containers whose
+// destructors would otherwise recurse through their elements.
+void destroy_expr_list(std::vector<ExprPtr>* v);
+void destroy_stmt_list(std::vector<StmtPtr>* v);
+void destroy_param_list(std::vector<FunctionDecl::Param>* v);
+void destroy_case_list(std::vector<SwitchCase>* v);
+void destroy_param(FunctionDecl::Param* p);

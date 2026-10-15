@@ -78,15 +78,39 @@
     return NUMBER;
 }
 \"([^"\\]|\\.)*\" {
-    int len = strlen(yytext);
-    char* str = (char*)malloc(len - 1);
-    memcpy(str, yytext + 1, len - 2);
-    str[len - 2] = '\0';
+    // Source is text, so a raw NUL byte is an error. Two things depend on
+    // catching it here. strlen() stops at the NUL, so the old length arithmetic
+    // ran off the match and malloc/memcpy saw a negative size -- malloc aborted
+    // the compiler (found by the front-end fuzzer). And codegen copies the value
+    // verbatim into a C string literal, where a raw NUL cannot survive. Write
+    // "\0" (backslash-zero) for a NUL byte inside a string.
+    if ((int)strlen(yytext) != yyleng) {
+        fprintf(stderr,
+            "Error [line %d]: NUL byte in source; write \\0 for a NUL byte\n",
+            yylineno);
+        yyterminate();
+    }
+    char* str = (char*)malloc(yyleng - 1);
+    memcpy(str, yytext + 1, yyleng - 2);
+    str[yyleng - 2] = '\0';
     yylval.sval = str;
     return STRING;
 }
 
-\'[^\'\\]\'        { yylval.sval = strdup(yytext + 1); yylval.sval[1] = '\0'; return CHAR; }
+\'[^\'\\]\'        {
+    // The same NUL rule as a string. strdup(yytext + 1) also made a 1-byte
+    // allocation for a NUL and then wrote sval[1], one past the end.
+    if (yytext[1] == '\0') {
+        fprintf(stderr,
+            "Error [line %d]: NUL byte in source; write \\0 for a NUL byte\n",
+            yylineno);
+        yyterminate();
+    }
+    yylval.sval = (char*)malloc(2);
+    yylval.sval[0] = yytext[1];
+    yylval.sval[1] = '\0';
+    return CHAR;
+}
 
 ([a-zA-Z_]|[^\x00-\x7F])([a-zA-Z0-9_]|[^\x00-\x7F])* { yylval.sval = strdup(yytext); return IDENTIFIER; }
 
@@ -125,6 +149,15 @@
 "&&"              { return AND; }
 "||"              { return OR; }
 "!"               { return NOT; }
+
+\x00              {
+    // A NUL outside any literal (one inside a string or char is caught by those
+    // rules). Same reason: source is text.
+    fprintf(stderr,
+        "Error [line %d]: NUL byte in source; write \\0 for a NUL byte\n",
+        yylineno);
+    return 1;
+}
 
 .                 { fprintf(stderr, "Unexpected character: %s at line %d\n", yytext, yylineno); return 1; }
 

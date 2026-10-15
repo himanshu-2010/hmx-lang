@@ -73,12 +73,12 @@ production compiler. See [SYNTAX.md](SYNTAX.md) for the authoritative reference 
 `npm install && npm run dev` opens the playground editor locally. The web
 compiler is a TypeScript port of the front half (lexer → LALR parser tables →
 resolver) plus a JavaScript backend, and its gate is byte-for-byte parity with
-the native compiler across 448 parity cases:
+the native compiler across 451 parity cases:
 
 ```bash
 npm install
 npm run dev        # local dev server
-npm test           # vitest — 448 parity cases + app tests
+npm test           # vitest — 451 parity cases + app tests
 npm run build      # type-check + production build → dist/
 npm start          # serve the production build (Antideploy's Procfile command)
 npm run lint       # oxlint
@@ -609,7 +609,7 @@ The current regression suite contains:
 | Suite | Coverage | Result |
 | --- | --- | --- |
 | Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals, structs/enums/aliases, refcounted text views & copy-on-write | 64/64 passed |
-| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions), reserved-keyword misuse | 238/238 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions), reserved-keyword misuse, deep-nesting limit | 245/245 passed |
 | Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics, borrowed-param field writes | 143/143 passed |
 | CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes, generated-C portability and warning-cleanliness, unwritable-cwd and unreadable-source diagnostics, `#line` path escaping | 33/33 passed |
 | Packaging | Release version consistency across all ten version-bearing manifests, no placeholder digests, manifest URLs vs. the names the release workflow actually produces, declared runtime vs. build deps, installer checksum verification, container build/tag/push and smoke-test wiring, release asset completeness, installer package-manager safety, winget three-file manifest schema, AUR manifest buildability (`makepkg`-verified), scoop bucket layout, installer success reporting, installers refusing unverified downloads, brew formula build form, every version-bearing manifest, installers probing for a runtime C compiler, winget submission layout derived from `PackageIdentifier`, accepted winget schema version, the pacman signing fingerprint defined once, commit signing configured and verified with `git verify-commit`, the site pages (install/license/404/story) matching the repo they describe | 160/160 passed |

@@ -1,8 +1,9 @@
-# CURRENTLOG — the next two work items
+# CURRENTLOG — the two work items before M17 (both done)
 
-> The first two items of the *Recommended sequencing* in `PRODUCTION.md`:
-> 1. Land the in-flight Site work and fix the packaging gates.
-> 2. The Tier 0 safety slice (cycle decision, UBSan in CI, front-end fuzzing).
+> **Status: both items landed.** The first two items of the *Recommended
+> sequencing* in `PRODUCTION.md` were:
+> 1. Land the in-flight Site work and fix the packaging gates. ✅
+> 2. The Tier 0 safety slice (cycle decision, UBSan in CI, front-end fuzzing). ✅
 
 All commands run from `hmx-lang/`.
 
@@ -99,7 +100,34 @@ The widened pattern matched only the
 
 ---
 
-## Item 2 — Tier 0 safety slice
+## Item 2 — Tier 0 safety slice ✅ done
+
+### Result — what landed
+
+All three slices landed together, in one signed commit:
+
+- **2a** — `docs/adr/0001-cycle-collection.md` (status: *accepted*) records the
+  decision: keep **A** (reject by-value cycles statically), adopt **C** (`weak`)
+  as the designated mechanism for reference cycles when they become expressible,
+  **defer B**. The negative family
+  `m16_struct_value_{self_containment,mutual_containment,cycle_of_three}` pins
+  the static rejection.
+- **2b** — `HMX_UBSAN=1` added to `src/main.cpp` (compiles the generated C with
+  `-fsanitize=undefined -fno-sanitize-recover=all`); `tests/run_ubsan_tests.sh`
+  is the 3-check control gate; the CI `ubsan` job runs the gate in a *clean*
+  environment, then the integration + stress suites under the hook. Both suites
+  are green under UBSan (64 + 143) with no latent UB to triage.
+- **2c** — `tests/fuzz/fuzz_frontend.cpp` + `tests/fuzz/run_fuzz.sh` (CMake
+  `HMX_BUILD_FUZZER`, target `hmx_fuzz`). The harness parses from memory
+  (`fmemopen` + `yyrestart`), stops after the resolver, and runs with leak
+  detection off (the real compiler leaks the partial AST on error by design).
+  200k inputs across five seeds are clean; `--selftest` proves the harness
+  reports a crash. The CI `fuzz` job runs the self-test and a 50k-input run,
+  `continue-on-error: true` for now.
+
+Counts after Item 2: native **485** (64 integration + 245 negative + 143 stress +
+33 CLI), web vitest **466** (451 parity + 15 app), valgrind **69**, packaging
+**160**, UBSan control **3**.
 
 ### Why it is second
 These three changes are cheap, independent of each other, and they **de-risk
@@ -125,8 +153,9 @@ runtime then leaks silently.
 almost nothing), and document **C** as the escape hatch when cycles genuinely
 become expressible. Revisit B only if profiling shows leaked cycles.
 
-**Acceptance:** the chosen option is written down with its trade-off table; if A,
-a named negative-test family exists for self-referential by-value types.
+**Done.** ✅ `docs/adr/0001-cycle-collection.md` states the decision and its
+trade-off table; the negative family
+`m16_struct_value_{self_containment,mutual_containment,cycle_of_three}` exists.
 
 ### 2b. Add UBSan to CI (0.4)
 Add a `ubsan` job to `.github/workflows/ci.yml` mirroring the `asan` job but with
@@ -135,9 +164,9 @@ build hook, or a new `HMX_UBSAN=1`). Run the integration + stress suites.
 Any existing UB found is either fixed or documented as a known issue with a
 tracking note.
 
-**Acceptance:** the job exists, runs, and is green; at least one deliberately
-introduced UB case proves the job fails (e.g. an `int` overflow fixture under
-`-fno-sanitize-recover`).
+**Done.** ✅ The `ubsan` job exists and is green. `tests/run_ubsan_tests.sh` is
+the deliberately-introduced-UB control: a signed overflow aborts under
+`HMX_UBSAN=1` and completes normally without it (3/3).
 
 ### 2c. Add a front-end fuzz target (0.5)
 Add a libFuzzer harness over **lexer → parser → resolver** (not codegen, so no
@@ -145,16 +174,32 @@ Add a libFuzzer harness over **lexer → parser → resolver** (not codegen, so 
 negative-test sources. Run a bounded iteration count in CI (or nightly) so it
 cannot flake the required checks, and a longer run on demand.
 
-**Acceptance:** the target builds, runs N iterations without a crash/leak, and a
-known-bad seed (reintroduced bug) is caught.
+**Done.** ✅ The target builds (`hmx_fuzz`), 200k inputs across five seeds run
+without a crash, and `./tests/fuzz/run_fuzz.sh --selftest` proves the harness
+reports a crashing input. It found four real bugs, all fixed here:
 
-### Risks / watch-outs
-- UBSan may surface real latent UB in the generated C (signed overflow is the
-  expected one) — budget time to triage, not just wire up.
-- The fuzzer needs the front end factored so it can run in-process without
-  writing files; if that is too invasive, start with a subprocess harness.
-- Keep both jobs **non-blocking-optional** at first if they would otherwise gate
-  unrelated PRs, then promote to required once stable.
+1. a raw NUL byte as the first byte of a string literal → negative `memcpy`
+   size (now a lexer error, "NUL byte in source");
+2. a raw NUL in a char literal → one-byte heap overflow (same lexer error);
+3. a parse error leaked the partial AST → fuzzer OOM (`parse_file` now frees it);
+4. unbounded AST depth (`1+1+…` and nested `if`s) overflowed the recursive
+   resolver → the `HMX_MAX_NESTING` (200) guard, an iterative `destroy_ast`, and
+   a non-recursive `ast_max_depth` (see the ABI watch-out below).
+
+### Risks / watch-outs (what actually happened)
+- **UBSan found no latent UB** in the suites: integration + stress are clean
+  under the hook, so nothing had to be triaged. The control gate stays so a
+  future regression (a hook that silently stopped adding the flag) is caught.
+- **A Clang 23 libFuzzer ABI trap.** `libclang_rt.fuzzer-x86_64.a` on this
+  machine statically bundles a libc++abi whose `__dynamic_cast` disagrees with
+  libstdc++'s typeinfo vtables: under `-fsanitize=fuzzer,address` a cast to a
+  **base** class silently returns null while an exact-type cast works. The front
+  end now casts only to concrete node types (`gather_children`) and exposes line
+  numbers through a virtual (`ASTNode::source_line`); the constraint is written
+  down in `CMakeLists.txt` so a base-class cast is not re-added by accident.
+  Native (gcc) builds are unaffected.
+- The `fuzz` job is `continue-on-error: true` for now; promote it to required
+  once it has run unattended without a false positive.
 
 ---
 
@@ -164,6 +209,6 @@ known-bad seed (reintroduced bug) is caught.
 Item 1  →  Item 2a  →  Item 2b  →  Item 2c  →  M17 (generics)
 ```
 
-Item 1 must land first (clean green baseline). Items 2a–2c are independent and
-can land in any order, but all three should precede M17 so the new abstractions
-are covered by the new checks from the start.
+Item 1 landed first (clean green baseline). Items 2a–2c all landed together, so
+the abstractions M17 introduces are covered by the new checks from the start.
+M17 (generics) is next.

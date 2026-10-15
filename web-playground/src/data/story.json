@@ -4,9 +4,9 @@
   "intro": "HMX is a small statically typed language by Himanshu Kumar that transpiles to C and ships a native binary — plus a browser playground that runs the whole compiler client-side. This is how it started, where it is now, and what still stands between it and production.",
   "stats": {
     "version": "0.10.0",
-    "nativeTests": 478,
+    "nativeTests": 485,
     "packagingTests": 160,
-    "vitest": 463,
+    "vitest": 466,
     "valgrind": 69
   },
   "chapters": [

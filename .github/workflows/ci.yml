@@ -1,14 +1,23 @@
 name: ci
 
-# Continuous integration on every push and pull request. Three jobs:
+# Continuous integration on every push and pull request. Jobs:
 #   1. build-test   — native compiler + all four suite runners (O2).
 #   2. asan         — every integration/stress fixture built with
 #                     AddressSanitizer + LeakSanitizer (HMX_ASAN=1 hook in
 #                     main.cpp). Catches refcount errors, use-after-free and
 #                     leaks in the M15 reference-counted runtime.
-#   3. valgrind     — valgrind directly on each generated binary (never on the
+#   3. ubsan        — the same two suites under UndefinedBehaviorSanitizer
+#                     (HMX_UBSAN=1), plus tests/run_ubsan_tests.sh, the control
+#                     that proves the hook is still wired up.
+#   4. valgrind     — valgrind directly on each generated binary (never on the
 #                     compiler) via tests/run_valgrind_tests.sh; rejects any
 #                     definite/indirect/possible leak or memory error.
+#   5. fuzz         — Clang libFuzzer over lexer -> parser -> resolver
+#                     (tests/fuzz/run_fuzz.sh). continue-on-error, because a
+#                     fuzz job is inherently noisy and must not gate unrelated
+#                     changes while the harness matures.
+#   6. portability  — macOS + Windows build and run the suites.
+#   7. packaging    — manifest consistency (tests/run_packaging_tests.sh).
 on:
   push:
   pull_request:
@@ -62,6 +71,36 @@ jobs:
       - name: Stress & output suite (ASan)
         run: ./tests/run_stress_tests.sh
 
+  ubsan:
+    name: UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake flex bison ninja-build
+
+      - name: Configure & build
+        run: cmake -S . -B build -G Ninja && cmake --build build
+
+      # Run the control first, in a *clean* environment (no HMX_UBSAN): it
+      # asserts that the same signed overflow aborts with HMX_UBSAN and runs to
+      # completion without it. A hook that quietly stopped adding
+      # -fsanitize=undefined would keep the two suites below green; only this
+      # step would notice.
+      - name: Control gate (hook is wired up)
+        run: ./tests/run_ubsan_tests.sh
+
+      - name: Integration suite (UBSan)
+        env:
+          HMX_UBSAN: "1"
+        run: ./tests/run_integration.sh
+
+      - name: Stress & output suite (UBSan)
+        env:
+          HMX_UBSAN: "1"
+        run: ./tests/run_stress_tests.sh
+
   valgrind:
     name: valgrind ownership matrix
     runs-on: ubuntu-latest
@@ -76,6 +115,29 @@ jobs:
 
       - name: Valgrind ownership checks
         run: ./tests/run_valgrind_tests.sh --fixtures
+
+  fuzz:
+    name: front-end fuzz (libFuzzer)
+    runs-on: ubuntu-latest
+    # Non-blocking on purpose. The corpus is clean today, but a fuzz run is a
+    # random search: a fresh find should surface in this job's log and be fixed
+    # deliberately, not fail an unrelated PR. Flip continue-on-error off once
+    # the harness has run unattended for a while without a false positive.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake flex bison ninja-build clang
+
+      # The self-test feeds an input the harness is built to report as a crash.
+      # It proves the harness actually reaches the front end before we trust a
+      # green "no crash" result from the real run below.
+      - name: Fuzz harness self-test
+        run: ./tests/fuzz/run_fuzz.sh --selftest
+
+      - name: Fuzz (bounded run)
+        run: ./tests/fuzz/run_fuzz.sh 50000
 
   portability-macos:
     # The Windows and macOS builds used to be exercised only by release.yml,

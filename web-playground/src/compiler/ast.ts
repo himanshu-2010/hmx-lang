@@ -757,3 +757,159 @@ export interface Program {
   use_files: string[];
   source_file: string;
 }
+
+// ---------------------------------------------------------------------------
+// Deep-AST safety (mirrors src/ast.cpp / src/ast.hpp)
+// ---------------------------------------------------------------------------
+// The native parser reduces left-recursive chains (`1+1+...+1`) without growing
+// the bison stack, so a modest source can build an AST whose depth is bounded
+// only by the input size; every recursive walk over it (the type resolver, the
+// default destructor) would then overflow the C stack. Native therefore rejects
+// any program deeper than HMX_MAX_NESTING *before* running a recursive walk.
+// The browser resolver is recursive too (it would throw a RangeError around
+// ~10k), so the same guard runs first with the same message and line, keeping
+// the playground in step with the CLI.
+
+/** Maximum expression/statement nesting depth; must equal HMX_MAX_NESTING. */
+export const HMX_MAX_NESTING = 200;
+
+type AstNode = Expression | Statement;
+
+// Enumerate a node's direct children, mirroring gather_children() in
+// src/ast.cpp (in the same order). MUST stay in sync with the node classes
+// above: a node type added without a branch here would hide its subtree, so a
+// deep program of that shape would slip past the guard.
+export function gatherChildren(node: AstNode, out: AstNode[]): void {
+  const push = (n: AstNode | null | undefined): void => {
+    if (n) out.push(n);
+  };
+  const pushList = (v: (AstNode | null | undefined)[]): void => {
+    for (const n of v) if (n) out.push(n);
+  };
+  if (node instanceof BinaryExpr) {
+    push(node.left);
+    push(node.right);
+  } else if (node instanceof NotExpr) {
+    push(node.operand);
+  } else if (node instanceof NegExpr) {
+    push(node.operand);
+  } else if (node instanceof ConditionalExpr) {
+    push(node.condition);
+    push(node.then_expr);
+    push(node.else_expr);
+  } else if (node instanceof CastExpr) {
+    push(node.operand);
+  } else if (node instanceof CallExpr) {
+    pushList(node.args);
+  } else if (node instanceof ArrayLiteral) {
+    pushList(node.elements);
+  } else if (node instanceof TupleLiteral) {
+    pushList(node.values);
+  } else if (node instanceof ArrayIndexExpr) {
+    push(node.base);
+    push(node.index);
+  } else if (node instanceof MemberAccessExpr) {
+    push(node.base);
+  } else if (node instanceof LambdaExpr) {
+    pushList(node.body);
+  } else if (node instanceof VarDecl) {
+    push(node.initializer);
+  } else if (node instanceof AssignStmt) {
+    push(node.rhs);
+  } else if (node instanceof MultiAssignStmt) {
+    push(node.rhs);
+  } else if (node instanceof DestructDecl) {
+    push(node.rhs);
+  } else if (node instanceof ArrayAssignStmt) {
+    push(node.index);
+    push(node.rhs);
+  } else if (node instanceof ElementAssignStmt) {
+    push(node.target);
+    push(node.rhs);
+  } else if (node instanceof MemberAssignStmt) {
+    push(node.base);
+    push(node.rhs);
+  } else if (node instanceof PrintStmt) {
+    pushList(node.args);
+  } else if (node instanceof LoopStmt) {
+    push(node.count);
+    pushList(node.body);
+  } else if (node instanceof WhileStmt) {
+    push(node.condition);
+    pushList(node.body);
+  } else if (node instanceof ForStmt) {
+    push(node.init);
+    push(node.condition);
+    push(node.update);
+    pushList(node.body);
+  } else if (node instanceof DoWhileStmt) {
+    pushList(node.body);
+    push(node.condition);
+  } else if (node instanceof ForeachStmt) {
+    push(node.iterable);
+    pushList(node.body);
+  } else if (node instanceof IfStmt) {
+    push(node.condition);
+    pushList(node.then_body);
+    pushList(node.else_body);
+  } else if (node instanceof SwitchStmt) {
+    push(node.value);
+    for (const c of node.cases) {
+      push(c.value);
+      pushList(c.body);
+    }
+  } else if (node instanceof FunctionDecl) {
+    for (const p of node.params) push(p.default_value);
+    pushList(node.body);
+  } else if (node instanceof ReturnStmt) {
+    pushList(node.values);
+  } else if (node instanceof ExprStmt) {
+    push(node.expr);
+  }
+  // NumberLiteral / DecimalLiteral / StringLiteral / CharLiteral /
+  // BoolLiteral / Identifier / BreakStmt / ContinueStmt / TypeDecl:
+  // no children.
+}
+
+// The line the guard should cite for a node. Only statements carry one;
+// LambdaExpr is an expression that also has a line and must not win, matching
+// source_line() in src/ast.hpp where every Expression returns 0.
+function nodeLine(node: AstNode): number {
+  if (node instanceof LambdaExpr) return 0;
+  const l = (node as { line?: number }).line;
+  return typeof l === "number" ? l : 0;
+}
+
+/**
+ * Depth of the deepest node in `program` (the Program itself is depth 1), and
+ * the line of the deepest statement (0 if none). Iterative, with an explicit
+ * work list, so it is safe at any input depth and never uses the JS call stack.
+ */
+export function astMaxDepth(program: Program): { depth: number; line: number } {
+  let bestDepth = 1;
+  let bestStmtDepth = -1;
+  let bestStmtLine = 0;
+  const stack: { node: AstNode; depth: number }[] = [];
+  // Mirror src/ast.cpp exactly: the Program is depth 1 and children are pushed
+  // in *forward* order, so the LIFO pop visits the LAST child first. That order
+  // decides which statement wins a depth tie, and the parity gate checks the
+  // cited line byte-for-byte.
+  for (const s of program.statements) {
+    stack.push({ node: s, depth: 2 });
+  }
+  while (stack.length > 0) {
+    const frame = stack.pop()!;
+    if (frame.depth > bestDepth) bestDepth = frame.depth;
+    const line = nodeLine(frame.node);
+    if (line > 0 && frame.depth > bestStmtDepth) {
+      bestStmtDepth = frame.depth;
+      bestStmtLine = line;
+    }
+    const kids: AstNode[] = [];
+    gatherChildren(frame.node, kids);
+    for (const k of kids) {
+      stack.push({ node: k, depth: frame.depth + 1 });
+    }
+  }
+  return { depth: bestDepth, line: bestStmtLine };
+}

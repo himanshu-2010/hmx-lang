@@ -2726,6 +2726,17 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
 }
 
 void TypeResolver::resolve(Program& program) {
+    // Reject an over-deep program *before* any recursive walk. The parser can
+    // build a left-recursive chain (`1+1+...+1`) whose depth is bounded only by
+    // the input size; every pass below (collect_type_decls, expand_type_refs,
+    // the resolve walk) would otherwise recurse to that depth and overflow the
+    // C stack. ast_max_depth uses an explicit work list, so it is safe here.
+    int deep_line = 0;
+    if (ast_max_depth(&program, &deep_line) > HMX_MAX_NESTING) {
+        throw CompileError(deep_line,
+                           "program nests too deeply (maximum depth is " +
+                               std::to_string(HMX_MAX_NESTING) + ")");
+    }
     entry_file_ = program.source_file;
     current_file_ = program.source_file;
     collect_type_decls(program);

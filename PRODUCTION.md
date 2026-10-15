@@ -11,9 +11,9 @@
 ## Framing
 
 HMX today is a **solid small language with an unusually mature packaging story**:
-478 native + 160 packaging + 463 vitest tests, ASan/valgrind-gated reference
-counting, signed releases, working installers for Linux/macOS/Windows, and a
-byte-identical browser compiler.
+485 native + 160 packaging + 466 vitest tests, ASan/UBSan/valgrind/fuzz-gated
+reference counting, signed releases, working installers for
+Linux/macOS/Windows, and a byte-identical browser compiler.
 
 What it is **not** yet is a language you would drop into a team's production
 use. The existing roadmap (M17–M28) is a good *feature* list, but it is **not a
@@ -129,9 +129,9 @@ governance files.
 | # | Gap |
 |---|---|
 | 7.1 | **No benchmark suite / perf-regression gate.** Compile-time scaling on large programs is unknown. `[new]` |
-| 7.2 | No fuzzing/property/differential testing beyond web↔native parity; no coverage metric. `[new]` |
-| 7.3 | No UBSan/TSan matrix, no 32-bit/big-endian checks. `[new]` |
-| 7.4 | Error-message surface is covered by 238 negatives, but there is no golden-diagnostics snapshot for message drift. `[new]` |
+| 7.2 | No property/differential testing beyond web↔native parity and the libFuzzer front-end harness; no coverage metric. `[new]` |
+| 7.3 | No TSan matrix, no 32-bit/big-endian checks (UBSan + the `HMX_MAX_NESTING` resolver guard now land in CI). `[new]` |
+| 7.4 | Error-message surface is covered by 245 negatives, but there is no golden-diagnostics snapshot for message drift. `[new]` |
 
 ---
 
@@ -139,14 +139,15 @@ governance files.
 
 The roadmap's order is *roughly* right, but Tier 0 and FFI must be inserted:
 
-1. **Done (this change):** the Site work landed — `InstallPage` / `LicensePage`
-   / `NotFoundPage` / `StoryPage` plus routes, nav and tests — the two broken
+1. **Done:** the Site work landed — `InstallPage` / `LicensePage` /
+   `NotFoundPage` / `StoryPage` plus routes, nav and tests — and the two broken
    section-12f packaging gates were fixed and proven to fail on the bug they
-   cover, and the counts were synced (native 478, packaging 160, vitest 463,
-   valgrind 69). See `CURRENTLOG.md`.
-2. **Tier 0 slice (next):** decide the cycle-collection strategy (0.3), add UBSan
-   to CI (0.4), add a fuzz target for lexer→resolver (0.5). Cheap, and it
-   de-risks M17/M18. → see `CURRENTLOG.md`.
+   cover. See `CURRENTLOG.md`.
+2. **Done:** the Tier 0 slice landed — the cycle-collection ADR
+   (`docs/adr/0001-cycle-collection.md`), UBSan in CI (plus its control gate),
+   and a libFuzzer front-end harness (which found and fixed four bugs). The
+   counts were re-synced (native 485, packaging 160, vitest 466, valgrind 69,
+   UBSan 3). See `CURRENTLOG.md`.
 3. **M17 generics** (1.1) — the hard dependency for collections and half the stdlib.
 4. **M18 error handling** (1.2) + the refcount-cycle decision from step 2.
 5. **M19 numeric tower + checked arithmetic** (1.3, 0.1).

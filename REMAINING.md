@@ -23,11 +23,13 @@ confirm the GPG key is added to your GitHub account.
 | | |
 |---|---|
 | Release | `v0.10.0` published, 5 assets, all `HTTP 200` |
-| CI | all 6 jobs green, including `packaging manifests` |
-| Native tests | 478/478 (64 integration + 238 negative + 143 stress + 33 CLI) |
+| CI | 8 jobs — `build-test`, `asan`, `ubsan`, `valgrind`, `portability-macos`, `portability-windows`, `packaging` (required) + `fuzz` (non-blocking) |
+| Native tests | 485/485 (64 integration + 245 negative + 143 stress + 33 CLI) |
 | Packaging gate | 160/160 |
 | Valgrind | 69/69 |
-| Web (vitest) | 463/463, `gen-data.mts` parity 0 failures |
+| UBSan control | 3/3 |
+| Fuzzer | 200k inputs over 5 seeds, no crash |
+| Web (vitest) | 466/466 (451 parity + 15 app), `gen-data.mts` parity 0 failures |
 | Container | `ghcr.io/himanshu-2010/hmx-lang:{0.10.0,latest}` verified, exit codes propagate |
 | Arch users | signed pacman repo live at `himanshu-2010/hmx-pacman`, installed and tamper-tested |
 | winget | PR [#442621](https://github.com/microsoft/winget-pkgs/pull/442621) — steps 01–10 all pass, waiting only on the CLA |
@@ -664,16 +666,18 @@ Each is standalone; there is no single "test" command. All from `hmx-lang/`.
 cmake --build build
 
 ./tests/run_integration.sh          # 64  .hmx fixture programs, exit 0 = pass
-./tests/run_negative_tests.sh       # 238 compile-error cases
+./tests/run_negative_tests.sh       # 245 compile-error cases
 ./tests/run_stress_tests.sh         # 143 exact-stdout + exit-code cases
 ./tests/run_cli_tests.sh           # 33 CLI behaviour cases
 ./tests/run_packaging_tests.sh      # 160 manifest / workflow / installer gates
 
 ./tests/run_valgrind_tests.sh --fixtures          # 69 ownership checks
+./tests/run_ubsan_tests.sh                         # 3 UBSan control checks
+./tests/fuzz/run_fuzz.sh                           # libFuzzer (lexer→resolver)
 HMX_ASAN=1 ./tests/run_stress_tests.sh             # ASan + LeakSanitizer
 
 npx vite-node web-playground/tools/smoke/gen-data.mts   # re-snapshot + parity
-npm run test        # 463 vitest
+npm run test        # 466 vitest
 npm run lint        # oxlint
 npx tsc --noEmit -p tsconfig.app.json
 ```

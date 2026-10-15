@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-15  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 478 / 478 (64 integration + 238 negative + 143 stress + 33 CLI); web-playground vitest 463 / 463 (448 parity + 15 app); valgrind ownership matrix + all fixtures 69 / 69; packaging gate 160 / 160 (manifests carry the real digests of the published v0.10.0 release; the installer no longer hands an unconfirmed package name to an AUR helper; the winget manifest is a valid three-file tree; the AUR manifest has been through a real `makepkg` build; the site pages — install, license, 404 and story — are gated against the repo they describe)
+**Status:** ALL TESTS PASSED — native 485 / 485 (64 integration + 245 negative + 143 stress + 33 CLI); web-playground vitest 466 / 466 (451 parity + 15 app); valgrind ownership matrix + all fixtures 69 / 69; UBSan control gate 3 / 3; front-end fuzzer clean over 200k inputs (5 seeds); packaging gate 160 / 160 (manifests carry the real digests of the published v0.10.0 release; the installer no longer hands an unconfirmed package name to an AUR helper; the winget manifest is a valid three-file tree; the AUR manifest has been through a real `makepkg` build; the site pages — install, license, 404 and story — are gated against the repo they describe)
 
 ---
 
@@ -118,7 +118,7 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 
 ---
 
-### 2. Negative & Error Handling Suite (238/238 Passed)
+### 2. Negative & Error Handling Suite (245/245 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -986,3 +986,27 @@ both backends.
   same mistake fails loudly next time.
 
 ## Native-only regression report (reference)
+
+## Tier 0 safety slice re-run (2026-10-15)
+
+Infrastructure, not a language milestone: the cycle-collection decision
+(`docs/adr/0001-cycle-collection.md`), UndefinedBehaviorSanitizer in CI, and a
+libFuzzer front-end harness. The harness found and fixed four bugs — two
+raw-NUL lexer crashes, a parse-error partial-AST leak, and an unbounded-nesting
+stack overflow (now a `HMX_MAX_NESTING` = 200 guard in the resolver).
+
+- **Native:** **485/485** — 64 integration + **245** negative (238 + 2
+  cycle-rejection cases from 2a + 3 raw-NUL cases + 2 nesting-limit cases from
+  2c) + 143 stress + 33 CLI.
+- **Web parity (1:1):** `gen-data.mts` — `stress 143 = 0 failures; negative 241
+  = 0; integration 64 = 0`. The new `resolver_nesting_limit_not` case is checked
+  against the native snapshot **verbatim** (the other four negative additions
+  use generated files, which the parity extractor does not read).
+- **Web:** vitest **466/466** (**451** parity + 15 app), `tsc` ✓, oxlint 0
+  errors (pre-existing UI warnings only).
+- **UBSan:** control gate **3/3** — a signed overflow aborts under
+  `HMX_UBSAN=1` and completes without it; integration + stress are green under
+  the hook (no latent UB surfaced).
+- **Fuzzer:** `./tests/fuzz/run_fuzz.sh` — 200,000 inputs over five seeds, no
+  crash; `--selftest` proves the harness reports a crashing input.
+- **Valgrind:** 69/69 (unchanged). **Packaging:** 160/160 (unchanged).

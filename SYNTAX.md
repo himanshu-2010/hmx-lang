@@ -1802,6 +1802,10 @@ Error [line 6]: undefined variable 'nope'
   one supported scalar, `parse_int`/`parse_decimal` take one `text`).
 - **Operator domains**: `%` / `%=` require `int`; unary `-`/`+` require `int` or
   `decimal`.
+- **Nesting depth**: an AST deeper than 200 levels is rejected before
+  type-checking — `Error [line N]: program nests too deeply (maximum depth is
+  200)`. This bounds only pathological input (a long `1+1+…` chain, hundreds of
+  nested `if`s); ordinary programs are nowhere near it.
 
 ### 14.5 Compiler Emergencies (CLI)
 

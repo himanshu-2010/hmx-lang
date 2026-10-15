@@ -35,6 +35,57 @@ target_compile_options(hmx PRIVATE -Wall -Wextra -Wpedantic)
 
 target_compile_definitions(hmx PRIVATE HMX_VERSION="${PROJECT_VERSION}")
 
+# ── Optional front-end fuzz target (Clang libFuzzer) ────────
+# Off by default: GCC ships no libFuzzer, and the target is not part of a normal
+# build. Enable it with Clang, e.g.
+#   cmake -S . -B build-fuzz -DHMX_BUILD_FUZZER=ON -DCMAKE_CXX_COMPILER=clang++
+#   cmake --build build-fuzz --target hmx_fuzz
+# or simply run ./tests/fuzz/run_fuzz.sh, which does both.
+option(HMX_BUILD_FUZZER "Build the libFuzzer front-end target (requires Clang)" OFF)
+
+if(HMX_BUILD_FUZZER)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR
+            "HMX_BUILD_FUZZER=ON needs Clang (libFuzzer is Clang-only); "
+            "configure with -DCMAKE_CXX_COMPILER=clang++.")
+    endif()
+    # The harness links the front end only: lexer -> parser -> resolver, no
+    # codegen and no main.cpp, so libFuzzer supplies main and nothing shells out
+    # to a C compiler.
+    add_executable(hmx_fuzz
+        tests/fuzz/fuzz_frontend.cpp
+        src/ast.cpp
+        src/type_resolver.cpp
+        ${FLEX_Lexer_OUTPUTS}
+        ${BISON_Parser_OUTPUTS}
+    )
+    target_include_directories(hmx_fuzz PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    # -O1 is libFuzzer's recommended build level: it keeps symbols and frame
+    # pointers usable while cutting stack frames enough that the recursive
+    # front-end walks reach the parser's own nesting cap with room to spare.
+    target_compile_options(hmx_fuzz PRIVATE
+        -Wall -Wextra -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer,address)
+    target_link_options(hmx_fuzz PRIVATE -fsanitize=fuzzer,address)
+    # NOTE (dynamic_cast under the libFuzzer runtime) -- referenced from
+    # src/ast.cpp. Some Clang libFuzzer runtimes
+    # (libclang_rt.fuzzer-x86_64.a) statically bundle a libc++abi whose
+    # __dynamic_cast disagrees with the libstdc++ typeinfo vtables the rest of
+    # the binary is built against. The observed failure mode is that a
+    # dynamic_cast to a *base* class (e.g. Statement*, Expression*, ASTNode*)
+    # silently returns null, while a dynamic_cast to the object's exact type
+    # still succeeds (Clang's own fast path, no runtime call). The front end is
+    # therefore written to only ever cast to concrete node types -- see
+    # gather_children()/gather_stmts() in src/ast.cpp -- and helpers that need a
+    # base-class behaviour go through a virtual (ASTNode::source_line). Adding a
+    # base-class dynamic_cast to the front end will compile and may pass a
+    # non-fuzzer build, then silently misbehave under hmx_fuzz. If this runtime
+    # is ever fixed upstream the constraint can be relaxed, but the concrete-cast
+    # style is equally correct everywhere and costs nothing, so it stays.
+endif()
+
 # ── Install ─────────────────────────────────────────────────
 include(GNUInstallDirs)
 install(TARGETS hmx RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

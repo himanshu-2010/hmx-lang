@@ -60,6 +60,8 @@ import {
   typeDescListEquals,
   typeToString,
   tupleTypeToString,
+  HMX_MAX_NESTING,
+  astMaxDepth,
 } from "./ast";
 
 // ---------------------------------------------------------------------------
@@ -2620,6 +2622,17 @@ export class TypeResolver {
   }
 
   resolve(program: Program): void {
+    // Reject runaway nesting before any recursive walk (mirrors the guard at
+    // the top of TypeResolver::resolve in src/type_resolver.cpp). Without it a
+    // deep program would blow the JS call stack with a RangeError instead of a
+    // proper diagnostic.
+    const nesting = astMaxDepth(program);
+    if (nesting.depth > HMX_MAX_NESTING) {
+      throw cmsg(
+        nesting.line,
+        `program nests too deeply (maximum depth is ${HMX_MAX_NESTING})`
+      );
+    }
     this.entry_file_ = program.source_file;
     this.current_file_ = program.source_file;
     this.collectTypeDecls(program);

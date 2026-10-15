@@ -2907,6 +2907,34 @@
       }
     },
     {
+      "name": "m16_struct_value_mutual_containment",
+      "kind": "negative",
+      "source": "struct A {\n        b: B\n    }\n    struct B {\n        a: A\n    }\n    fn main() {\n        let a: A = A(B(A(B(A(0)))))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot contain itself by value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: struct type 'A' cannot contain itself by value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "m16_struct_value_cycle_of_three",
+      "kind": "negative",
+      "source": "struct A {\n        b: B\n    }\n    struct B {\n        c: C\n    }\n    struct C {\n        a: A\n    }\n    fn main() {\n        let a: A = A(B(C(0)))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot contain itself by value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: struct type 'A' cannot contain itself by value\n",
+        "exit": 1
+      }
+    },
+    {
       "name": "m16_type_dup_decl",
       "kind": "negative",
       "source": "struct Point {\n        x: int\n    }\n    enum Point {\n        A\n    }",
@@ -3365,6 +3393,20 @@
       "expected": {
         "stdout": "",
         "stderr": "Error: parse_decimal: invalid decimal 'abc'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "resolver_nesting_limit_not",
+      "kind": "negative",
+      "source": "fn main() {\n        let x = !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!true\n        print(0)\n        print(1)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "nests too deeply \\(maximum depth is 200\\)",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: program nests too deeply (maximum depth is 200)\n",
         "exit": 1
       }
     }

@@ -77,6 +77,31 @@ Program* g_program = nullptr;
 %type <strlist> use_list
 %type <sval> use_stmt
 
+// Free semantic values that are still on the stack when an error unwinds it.
+// Without these, a parse error discards the partial AST -- and every strdup'd
+// token text -- unreclaimed. The compiler exits immediately after a parse
+// error, so the leak is invisible at the CLI, but it is real: it is what capped
+// the front-end fuzzer's run length (tests/fuzz/). Bison calls a destructor
+// only for symbols it *discards*; a rule that reduces normally never triggers
+// one, so ownership transfers like `$$ = $1` stay single-owner.
+%destructor { free($$); } <sval>
+// The <expr>/<stmt> destructors use destroy_ast (an explicit work list) rather
+// than `delete`, because a left-recursive chain already reduced onto the stack
+// can be thousands of levels deep and a recursive delete would overflow the C
+// stack. The container types get matching iterative frees. See ast.hpp.
+%destructor { destroy_ast($$); } <expr> <stmt>
+%destructor { destroy_stmt_list($$); } <stmts>
+%destructor { destroy_expr_list($$); } <args>
+%destructor { destroy_param_list($$); } <params>
+%destructor { destroy_param($$); } <param>
+%destructor { destroy_case_list($$); } <cases>
+%destructor { delete $$; } <tlist> <strlist> <fields> <idlist> <dpat> <tdesc>
+// NOTE: no %destructor for <program>. Bison reclaims the *entire* stack on
+// return, so a <program> destructor would run on success too and free the AST
+// the caller is about to use (a use-after-free, caught by an ASan build of the
+// compiler). Ownership of the program is handed to the caller via g_program;
+// parse_file frees it itself when the parse fails after the final reduction.
+
 %%
 
 program

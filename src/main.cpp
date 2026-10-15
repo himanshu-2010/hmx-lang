@@ -184,8 +184,17 @@ static Program* parse_file(const std::string& path) {
     yyrestart(f);
     int rc = yyparse();
     fclose(f);
-    if (rc != 0) return nullptr;
-    return g_program;
+    if (rc != 0) {
+        // The error can arrive after `program` has reduced (trailing junk), in
+        // which case g_program was assigned. The parser no longer owns it (see
+        // the %destructor note in parser.y), so free it here.
+        delete g_program;
+        g_program = nullptr;
+        return nullptr;
+    }
+    Program* program = g_program;
+    g_program = nullptr;
+    return program;
 }
 
 // Recursively load `use`d modules into `merged`. `base_dir` is the directory
@@ -463,13 +472,22 @@ int main(int argc, char* argv[]) {
     }
 
     // HMX_ASAN=1 builds the generated C with AddressSanitizer (which also
-    // enables LeakSanitizer on Linux/macOS). The CI workflow uses this to
-    // gate refcount errors and leaks in the reference-counted runtime.
+    // enables LeakSanitizer on Linux/macOS). HMX_UBSAN=1 builds it with
+    // UndefinedBehaviorSanitizer and stops at the first undefined behaviour
+    // (-fno-sanitize-recover=all), so a signed overflow or a bad shift aborts
+    // the program instead of silently producing a wrong answer. The CI
+    // workflows use these to gate refcount errors/leaks and latent UB in the
+    // reference-counted runtime. The two compose.
     std::string cc_cmd = cc + " -O2 -o " + exe_path + " " + c_path + " 2>&1";
     const char* asan_env = getenv("HMX_ASAN");
-    if (asan_env && asan_env[0] != '\0' && std::strcmp(asan_env, "0") != 0) {
-        cc_cmd = cc + " -O1 -g -fsanitize=address -fno-omit-frame-pointer -o " +
-                 exe_path + " " + c_path + " 2>&1";
+    const char* ubsan_env = getenv("HMX_UBSAN");
+    bool want_asan = asan_env && asan_env[0] != '\0' && std::strcmp(asan_env, "0") != 0;
+    bool want_ubsan = ubsan_env && ubsan_env[0] != '\0' && std::strcmp(ubsan_env, "0") != 0;
+    if (want_asan || want_ubsan) {
+        std::string flags;
+        if (want_asan) flags += " -fsanitize=address -fno-omit-frame-pointer";
+        if (want_ubsan) flags += " -fsanitize=undefined -fno-sanitize-recover=all";
+        cc_cmd = cc + " -O1 -g" + flags + " -o " + exe_path + " " + c_path + " 2>&1";
     }
     int cc_result = system(cc_cmd.c_str());
 

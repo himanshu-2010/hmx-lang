@@ -35,6 +35,32 @@ test_error() {
     fi
 }
 
+# Like test_error, but the source file is written by the caller. Needed for
+# bytes a shell variable cannot carry: bash truncates a variable at a NUL, so a
+# raw-NUL source has to be created with printf directly.
+test_error_file() {
+    local test_name="$1"
+    local file="$2"
+    local expected_pattern="$3"
+
+    local output
+    set +e
+    output=$("$BIN" run "$file" 2>&1)
+    local exit_code=$?
+    set -e
+
+    if [ $exit_code -ne 0 ] && echo "$output" | grep -qiE "$expected_pattern"; then
+        echo "PASS (Negative): $test_name"
+        PASS=$((PASS+1))
+    else
+        echo "FAIL (Negative): $test_name"
+        echo "   Expected pattern: $expected_pattern"
+        echo "   Got exit code $exit_code with output:"
+        echo "$output" | sed 's/^/   /'
+        FAIL=$((FAIL+1))
+    fi
+}
+
 echo "=== Running Negative / Error Handling Tests ==="
 
 # Name, entry path (relative to temp dir), then repeated "path|content" pairs.
@@ -1751,6 +1777,52 @@ test_error "m16_struct_value_self_containment" \
     }' \
     "cannot contain itself by value"
 
+# The by-value cycle family (ADR 0001). Direct self-containment is above; the
+# error must also catch a cycle spread across two or three structs, where no
+# single declaration refers to itself. Each expected string is the shared
+# "cannot contain itself by value" message, which names the type where the walk
+# closed the loop.
+test_error "m16_struct_value_mutual_containment" \
+    'struct A {
+        b: B
+    }
+    struct B {
+        a: A
+    }
+    fn main() {
+        let a: A = A(B(A(B(A(0)))))
+    }' \
+    "cannot contain itself by value"
+
+test_error "m16_struct_value_cycle_of_three" \
+    'struct A {
+        b: B
+    }
+    struct B {
+        c: C
+    }
+    struct C {
+        a: A
+    }
+    fn main() {
+        let a: A = A(B(C(0)))
+    }' \
+    "cannot contain itself by value"
+
+# A raw NUL byte is not valid source. Both cases used to corrupt memory: a NUL
+# as the first byte of a string literal made strlen() disagree with the match
+# length and malloc() abort, and a NUL in a char literal overflowed a 1-byte
+# strdup. Found by the front-end fuzzer (tests/fuzz/). A shell variable cannot
+# carry a NUL, so the sources are written with printf.
+printf 'fn main() {\n    print("\000b")\n}\n' > "$TMPDIR/nul_in_string.hmx"
+test_error_file "m16_nul_in_string" "$TMPDIR/nul_in_string.hmx" "NUL byte in source"
+
+printf "fn main() {\n    let c: char = '\000'\n}\n" > "$TMPDIR/nul_in_char.hmx"
+test_error_file "m16_nul_in_char" "$TMPDIR/nul_in_char.hmx" "NUL byte in source"
+
+printf 'fn main() {\n    \000\n}\n' > "$TMPDIR/nul_bare.hmx"
+test_error_file "m16_nul_bare" "$TMPDIR/nul_bare.hmx" "NUL byte in source"
+
 test_error "m16_type_dup_decl" \
     'struct Point {
         x: int
@@ -2094,6 +2166,40 @@ test_error "runtime_parse_decimal_invalid" \
         print(parse_decimal("abc"))
     }' \
     "parse_decimal: invalid decimal 'abc'"
+
+# Deep nesting: the guard at the top of TypeResolver::resolve rejects any program
+# whose AST is deeper than HMX_MAX_NESTING (200) *before* a recursive walk runs,
+# so an arbitrarily deep program is a clean diagnostic, never a C-stack overflow
+# (the bug the front-end fuzzer first hit). The message cites the deepest
+# statement's line. A unary `!` chain is the most compact unbounded-depth
+# program and it stays under bison's own stack limits, so the guard is what
+# fires; `test_error` keeps it inside the web parity gate
+# (web-playground/src/compiler/ast.ts astMaxDepth mirrors the native walk).
+# The three statements below tie at the deepest statement depth, so the cited
+# line is decided by child visit order: native pushes children forward, so
+# the LAST child is popped first and wins the tie. The web must mirror that
+# exactly, or it cites a different line. Keep them in lockstep.
+test_error "resolver_nesting_limit_not" \
+    'fn main() {
+        let x = !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!true
+        print(0)
+        print(1)
+    }' \
+    "nests too deeply \(maximum depth is 200\)"
+
+# Statement nesting reaches the same guard through different AST nodes (IfStmt
+# bodies), guarding the hand-written child list in gatherChildren/astMaxDepth.
+# It needs a generated source, so it is a native-only check: gen-data's
+# parseCalls only reads inline `test_error` literals, never `test_error_file`.
+{
+    printf 'fn main() {\n    '
+    for ((i = 0; i < 300; i++)); do printf 'if (true) { '; done
+    printf 'print(0)'
+    for ((i = 0; i < 300; i++)); do printf ' }'; done
+    printf '\n}\n'
+} > "$TMPDIR/nesting_if.hmx"
+test_error_file "resolver_nesting_limit_if" "$TMPDIR/nesting_if.hmx" \
+    "nests too deeply \(maximum depth is 200\)"
 
 echo "Negative Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"
