@@ -779,7 +779,7 @@ type AstNode = Expression | Statement;
 // src/ast.cpp (in the same order). MUST stay in sync with the node classes
 // above: a node type added without a branch here would hide its subtree, so a
 // deep program of that shape would slip past the guard.
-export function gatherChildren(node: AstNode, out: AstNode[]): void {
+function gatherChildren(node: AstNode, out: AstNode[]): void {
   const push = (n: AstNode | null | undefined): void => {
     if (n) out.push(n);
   };
