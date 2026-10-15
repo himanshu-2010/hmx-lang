@@ -1559,6 +1559,41 @@ happened in this repo. Asserting the lookup itself (`Get-Command $_` /
   parity 0 failures. Every new check was confirmed by reintroducing the bug it
   covers.
 
+## The pages a visitor actually lands on, and a story that grows from one file
+
+The site had three routes and no 404. A mistyped link rendered the home page: the
+URL changed, something rendered, and nothing said the page did not exist — so
+"this site has no such page" was indistinguishable from "this site's links are
+broken". `NotFoundPage` now echoes the path someone actually asked for and links
+the routes that do exist. The install and licence pages followed: the install
+page is the one a visitor is most likely to act on, and the licence page is the
+one document where a copy that quietly disagrees with the file that actually
+governs is worse than no page at all.
+
+A **story page** rounds it out — "how it started, how it's going, and what's left
+until production level" — rendered entirely from
+`web-playground/src/data/story.json`. The page is meant to grow by appending to
+that one file, so the file is the contract, and §12f now gates its shape and
+pins `stats.version` to the canonical `CMakeLists.txt` version. The numeric test
+counts in it are deliberately **not** gated: they have no single source of truth
+yet, and gating them would recreate the drift this change is fixing.
+
+The §12f install-command gate had been passing **vacuously**. Its extractor was
+`grep -oE '^\s+(curl|brew|…)'`, and every line of the component starts with
+`code:` or `code={\`` — so the pattern matched nothing and the gate was green
+without checking anything. It also could not see the multi-line template
+literals that carry the pacman repository block. The extractor is now a small
+awk state machine that understands all three forms the page uses, and — because a
+gate whose extractor silently stops matching is exactly how this one died — its
+own output is asserted non-empty. Two commands were genuinely missing from the
+README; both were added.
+
+- **Hygiene:** native **478/478** (64 / 238 / 143 / 33), packaging **160/160**,
+  valgrind **69/69**, ASan+LSan-clean; web vitest **463/463** (448 parity + 15
+  app), `gen-data.mts` parity 0 failures. The six §12f controls were re-run to
+  prove each gate fails on the bug it covers, including the catch-all control
+  that had never fired before.
+
 ## Known issues / deferred
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.

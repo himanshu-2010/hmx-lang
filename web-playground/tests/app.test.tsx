@@ -7,6 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
+import story from "../src/data/story";
 
 // jsdom + React 19: opt into act(...) semantics for this environment.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -50,7 +51,7 @@ describe("app routes", () => {
     expect(t).toContain("Compile in your tab");
     expect(t).toContain("Try the compiler");
     expect(t).toContain("Think in types");
-    expect(t).toContain("468");
+    expect(t).toContain("478");
   });
 
   it("credits the author with a circular portrait", async () => {
@@ -131,5 +132,106 @@ describe("app routes", () => {
     );
     // docs CodeBlocks expose a Run affordance; just assert one exists
     expect(runExample).toBeDefined();
+  });
+
+  it("renders the install page at #/install", async () => {
+    window.location.hash = "#/install";
+    await renderApp();
+    expect(text()).toContain("Install");
+    expect(text()).toContain("install.sh");
+    // The one thing a reader arrived here to find: a command to copy.
+    expect(text()).toContain("curl -fsSL");
+    // The requirement that trips people up after a successful install.
+    expect(text()).toContain("C compiler");
+  });
+
+  it("renders the license page at #/license", async () => {
+    window.location.hash = "#/license";
+    await renderApp();
+    expect(text()).toContain("MIT License");
+    expect(text()).toContain("WITHOUT WARRANTY OF ANY KIND");
+  });
+
+  // The 404 replaces a route that used to render the home page. The old
+  // behaviour passed any test that only asked "did something render", which is
+  // exactly what the test below would have checked.
+  it("shows a 404 for an unknown route instead of the home page", async () => {
+    window.location.hash = "#/definitely-not-a-page";
+    await renderApp();
+    expect(text()).toContain("404");
+    expect(text()).toContain("No such page");
+    // It must echo the path, so a broken link can be diagnosed from the page.
+    expect(text()).toContain("definitely-not-a-page");
+    // And it must NOT be the home page. This is the assertion that distinguishes
+    // a real 404 from the redirect it replaced.
+    expect(text()).not.toContain("Hero");
+  });
+
+  it("links every 404 suggestion to a route that exists", async () => {
+    window.location.hash = "#/nope";
+    await renderApp();
+    const hrefs = Array.from(rootEl.querySelectorAll("a.nf-link")).map(
+      (a) => a.getAttribute("href") ?? "",
+    );
+    expect(hrefs).toEqual(["#/", "#/playground", "#/docs", "#/install", "#/license", "#/story"]);
+
+    // Every suggested path must resolve to a real page. Asserted on the 404
+    // page's own heading rather than the string "404": the install page says
+    // "rather than handed a 404" in its prose, so a bare substring check fails
+    // on a page that is working perfectly.
+    for (const href of hrefs) {
+      window.location.hash = href;
+      await act(async () => {
+        root?.unmount();
+        root = createRoot(rootEl);
+        root.render(<App />);
+      });
+      expect(text()).not.toContain("No such page");
+    }
+  });
+});
+
+describe("story page", () => {
+  it("renders the story at #/story from the data file", async () => {
+    window.location.hash = "#/story";
+    await renderApp();
+    const t = text();
+    expect(t).toContain(story.title);
+    // Every chapter title comes straight from story.json.
+    for (const c of story.chapters) {
+      expect(t).toContain(c.title);
+    }
+  });
+
+  // The point of a data-driven page: adding an entry must render, and dropping
+  // one must fail. A renderer that silently skips a chapter would pass any test
+  // that only asked "did the page render", which is why this counts.
+  it("renders every chapter and every entry in story.json", async () => {
+    window.location.hash = "#/story";
+    await renderApp();
+    const chapters = rootEl.querySelectorAll(".story-chapter");
+    expect(chapters.length).toBe(story.chapters.length);
+    const expected = story.chapters.reduce((n, c) => n + c.entries.length, 0);
+    expect(rootEl.querySelectorAll(".story-entry").length).toBe(expected);
+  });
+
+  it("badges the in-progress entry and links the production gap list", async () => {
+    window.location.hash = "#/story";
+    await renderApp();
+    expect(rootEl.querySelectorAll(".story-badge-current").length).toBeGreaterThan(0);
+    const hrefs = [...rootEl.querySelectorAll(".page-note a")].map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(hrefs).toContain(
+      "https://github.com/himanshu-2010/hmx-lang/blob/main/PRODUCTION.md",
+    );
+  });
+
+  it("exposes the story as a nav tab", async () => {
+    await renderApp();
+    const tabHrefs = [...rootEl.querySelectorAll("a.tab")].map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(tabHrefs).toContain("#/story");
   });
 });

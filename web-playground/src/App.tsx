@@ -5,6 +5,10 @@ import { RunnerProvider } from "./ui/runner-context";
 import { HomePage } from "./ui/Home";
 import { PlaygroundPage } from "./ui/PlaygroundPage";
 import { DocsPage } from "./ui/DocsPage";
+import { InstallPage } from "./ui/InstallPage";
+import { LicensePage } from "./ui/LicensePage";
+import { NotFoundPage } from "./ui/NotFoundPage";
+import { StoryPage } from "./ui/StoryPage";
 import { DarkReaderAlert } from "./ui/DarkReaderAlert";
 import { CursorTrail } from "./ui/CursorTrail";
 
@@ -32,7 +36,10 @@ export default function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/playground" element={<PlaygroundPage />} />
             <Route path="/docs" element={<DocsPage />} />
-            <Route path="*" element={<HomePage />} />
+            <Route path="/install" element={<InstallPage />} />
+            <Route path="/license" element={<LicensePage />} />
+            <Route path="/story" element={<StoryPage />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
           <DarkReaderAlert />
           <CursorTrail />

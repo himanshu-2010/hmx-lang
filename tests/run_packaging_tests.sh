@@ -487,6 +487,246 @@ else
   bad "the signing fingerprint is 40 hex characters and not a placeholder" \
       "missing, wrong length, or a single repeated character"
 fi
+
+# --- 12f. The site's own pages cannot drift from the repo they describe -----
+#
+# Five standalone pages now exist: install, license, 404, story, and the nav that
+# reaches them. Each one is a copy of something that already has an authoritative
+# version in the repository, and each one can drift from it silently -- nothing
+# fails when the licence page paraphrases the licence, or when the install page
+# publishes a URL that has moved, or when the story page restates a version the
+# compiler no longer ships. A licence page is the worst case: a reader has no way
+# to tell which of the two documents governs, and "the website says MIT" is a
+# perfectly good reason to skip reading the file that actually does.
+IP=web-playground/src/ui
+
+# 1. The licence text is a byte-for-byte copy of LICENSE.
+#
+# Compared by extracting the template literal out of the component rather than
+# duplicating the expected text here. A gate that restates what it is checking has
+# to be updated in two places, and the second place is the one that gets missed --
+# which would leave this gate green while the page said something else entirely.
+if [ -f LICENSE ] && [ -f "$IP/LicensePage.tsx" ]; then
+  # Process substitution rather than a temp file: the harness runs under `set -u`
+  # and defines no TMP, so a stray $TMP would abort the whole run instead of
+  # failing one gate.
+  # Strip the wrapper, do not delete the lines. The first and last lines of the
+  # extracted range are the ones carrying `const LICENSE_TEXT = \`MIT License` and
+  # `SOFTWARE.\`;` -- dropping them silently discarded the licence title and its
+  # final sentence, and the comparison failed for a reason that had nothing to do
+  # with drift. Substituting the affixes is what keeps every line of the licence.
+  lic_page() {
+    sed -n '/const LICENSE_TEXT = `/,/`;$/p' "$IP/LicensePage.tsx" \
+      | sed -e '1s/^const LICENSE_TEXT = `//' -e '$s/`;[[:space:]]*$//' \
+            -e 's/[[:space:]]*$//'
+  }
+  # Trailing whitespace is normalised on both sides: a stray space in a
+  # hand-edited file is not a licence divergence, and a gate that reports those
+  # trains people to ignore it.
+  if diff -q <(sed -e 's/[[:space:]]*$//' LICENSE) <(lic_page) >/dev/null; then
+    ok "the license page reproduces LICENSE exactly"
+  else
+    bad "the license page reproduces LICENSE exactly" \
+        "diff LICENSE against the LICENSE_TEXT block in $IP/LicensePage.tsx; the page must be a copy, not a summary"
+  fi
+
+  # The comparison above cannot distinguish "identical" from "both empty", and an
+  # extraction pattern that silently stops matching is the expected way this gate
+  # dies. So its own precondition is asserted too.
+  if [ -n "$(lic_page)" ]; then
+    ok "the license page extraction still matches the component"
+  else
+    bad "the license page extraction still matches the component" \
+        "LICENSE_TEXT extracted empty, so the byte comparison above passed vacuously"
+  fi
+else
+  bad "the license page and LICENSE both exist" "missing LICENSE or $IP/LicensePage.tsx"
+fi
+
+# 2. The version the install page tells people to fetch is this repo's version.
+#
+# An install page naming a released version is useful; one naming a *previous*
+# released version is an instruction to install something superseded, and it keeps
+# working, so nothing reports it broken. Deriving the expected value from the
+# canonical source means a release bump can never leave the page behind.
+# From CMakeLists.txt, which is what section 12 already treats as canonical. The
+# first attempt of this gate reached for package.json, whose 0.1.0 is the web
+# deploy wrapper's version rather than the compiler's, and so flagged the correct
+# 0.10.0 on the install page as stale. Two manifests in this repo legitimately
+# carry unrelated version numbers, which makes "ask a package.json" a guess.
+repo_version="$VERSION"
+if [ -n "$repo_version" ] && [ -f "$IP/InstallPage.tsx" ]; then
+  stale=$(grep -oE 'v?0\.[0-9]+\.[0-9]+' "$IP/InstallPage.tsx" \
+    | tr -d 'v' | sort -u | grep -v "^$repo_version\$" || true)
+  if [ -z "$stale" ]; then
+    ok "the install page names only the current version ($repo_version)"
+  else
+    bad "the install page names only the current version ($repo_version)" \
+        "also names: $(printf '%s' "$stale" | tr '\n' ' ')"
+  fi
+else
+  bad "the install page names only the current version" \
+      "could not derive the repo version, or $IP/InstallPage.tsx is missing"
+fi
+
+# 3. Every nav tab points at a route that exists, and the catch-all is a 404.
+#
+# The catch-all check is the interesting half. It used to render the home page,
+# which looked like working navigation: the URL changed, a page rendered, nothing
+# said anything was wrong. A dead nav tab and a working one are indistinguishable
+# from the outside in that state.
+for tab in $(grep -oE '\{ to: "[^"]+"' "$IP/Nav.tsx" 2>/dev/null | grep -oE '/[^"]+' || true); do
+  if grep -qE 'path="'"$tab"'"' web-playground/src/App.tsx; then
+    ok "nav tab $tab has a matching route"
+  else
+    bad "nav tab $tab has a matching route" "no <Route path=\"$tab\"> in App.tsx; the tab would render the 404"
+  fi
+done
+
+if grep -qE 'path="\*" element=\{<NotFoundPage' web-playground/src/App.tsx; then
+  ok "an unknown route renders the 404 page"
+elif grep -qE 'path="\*" element=\{<HomePage' web-playground/src/App.tsx; then
+  bad "an unknown route renders the 404 page" \
+      "the catch-all still renders <HomePage>, so a bad URL silently lands on the home page with no indication anything is wrong"
+else
+  bad "an unknown route renders the 404 page" "no recognisable catch-all route in App.tsx"
+fi
+
+# 4. Every install command the page publishes is also in the repo's docs.
+#
+# Not a style gate. The install page is the one a visitor is most likely to act on
+# and the one most likely to rot: a moved installer URL is a dead page and nothing
+# in CI notices, because nothing here executes a shell command.
+#
+# The extractor is a tiny state machine, not a line grep. Its first version was
+# `grep -oE '^\s+(curl|...)'`, which matched nothing at all: every line of the
+# component starts with `code:` or `code={\``, so the pattern found zero commands
+# and this gate passed by finding zero things to check. It also could not see the
+# multi-line template literals that carry the pacman repository block. So the
+# extraction now understands all three forms the page uses and -- because a gate
+# whose extractor silently stops matching is exactly how this one died -- its own
+# output is asserted non-empty below.
+extract_install_cmds() {
+  awk '
+    {
+      line = $0
+      if (match(line, /code[[:space:]]*:[[:space:]]*"/)) {
+        s = substr(line, RSTART + RLENGTH); sub(/".*$/, "", s); print s; next
+      }
+      if (match(line, /code[[:space:]]*:[[:space:]]*`/) ||
+          match(line, /code[[:space:]]*=[[:space:]]*\{[[:space:]]*`/)) {
+        s = substr(line, RSTART + RLENGTH)
+        if (index(s, "`") > 0) { sub(/`.*$/, "", s); print s } else { intpl = 1; print s }
+        next
+      }
+      if (intpl) {
+        if (index(line, "`") > 0) { intpl = 0; sub(/`.*$/, "", line); print line; next }
+        print line; next
+      }
+    }
+  ' "$1" \
+    | grep -E '^[[:space:]]*(curl|brew|paru|sudo|docker|git clone)([[:space:]]|$)' \
+    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/\\\$arch/$arch/' \
+    | sort -u
+}
+
+if [ -f "$IP/InstallPage.tsx" ]; then
+  cmds="$(extract_install_cmds "$IP/InstallPage.tsx" || true)"
+  n_cmds=$(printf '%s\n' "$cmds" | grep -c . || true)
+  if [ "$n_cmds" -gt 0 ]; then
+    ok "the install-command extractor finds the page's commands ($n_cmds)"
+  else
+    bad "the install-command extractor finds the page's commands" \
+        "extracted 0 commands from $IP/InstallPage.tsx; every command would pass vacuously, which is how the first version of this gate died"
+  fi
+
+  # README escapes the table pipes as `\|`, so a plain -F match on a command that
+  # contains a pipe never hits the README copy. Normalise the escape on the way in.
+  missing_cmds=0
+  while IFS= read -r cmd; do
+    [ -z "$cmd" ] && continue
+    if ! grep -qF "$cmd" <(sed 's/\\|/|/g' README.md) && ! grep -qF "$cmd" REMAINING.md; then
+      missing_cmds=$((missing_cmds + 1))
+      echo "      $cmd"
+    fi
+  done <<EOF
+$cmds
+EOF
+  if [ "$missing_cmds" -eq 0 ]; then
+    ok "every install command on the page is also in the repo docs"
+  else
+    bad "every install command on the page is also in the repo docs" \
+        "$missing_cmds command(s) appear only on the website; README.md or REMAINING.md is where they are reviewable"
+  fi
+fi
+
+# 5. The story page is data-driven from story.json, and that JSON is well-formed.
+#
+# The page is meant to grow by appending to one file, so the file is the contract:
+# a malformed entry, a duplicate chapter id, or a stale version string is a broken
+# page, and none of them are visible from the component. The version in particular
+# has a single canonical source (CMakeLists), the same one section 12 and the
+# install page are gated against, so a release bump can never leave the story
+# behind. The numeric test counts are deliberately not gated -- they have no single
+# source of truth yet, and gating them would create the drift this file is fixing.
+STORY=web-playground/src/data/story.json
+if [ -f "$STORY" ]; then
+  # JSON is parsed with node, which the repo already requires (root package.json /
+  # npm scripts) and the packaging CI runner has preinstalled. Detect its absence
+  # explicitly so a missing runtime reads as a missing runtime, not as malformed
+  # JSON -- a distinction that matters when the gate goes red on a bare machine.
+  if command -v node >/dev/null 2>&1; then
+  story_err="$(node -e '
+    const fs = require("fs");
+    let s;
+    try { s = JSON.parse(fs.readFileSync("web-playground/src/data/story.json", "utf8")); }
+    catch (e) { process.stdout.write("invalid JSON: " + e.message); process.exit(0); }
+    const errs = [];
+    if (!s.title) errs.push("missing title");
+    if (!s.intro) errs.push("missing intro");
+    if (!Array.isArray(s.chapters) || s.chapters.length === 0) errs.push("no chapters");
+    const ids = new Set();
+    for (const c of s.chapters || []) {
+      if (!c.id) errs.push("a chapter has no id");
+      else if (ids.has(c.id)) errs.push("duplicate chapter id: " + c.id);
+      else ids.add(c.id);
+      if (!c.title) errs.push("chapter " + c.id + " has no title");
+      if (!Array.isArray(c.entries) || c.entries.length === 0)
+        errs.push("chapter " + c.id + " has no entries");
+      for (const e of c.entries || []) {
+        if (!e.title) errs.push("an entry in " + c.id + " has no title");
+        if (!e.date) errs.push("an entry in " + c.id + " has no date");
+      }
+    }
+    process.stdout.write(errs.join("; "));
+  ' 2>&1 || true)"
+  else
+    story_err="the 'node' executable is required to validate story.json and was not found in PATH"
+  fi
+  if [ -z "$story_err" ]; then
+    ok "story.json is well-formed and every chapter/entry is complete"
+  else
+    bad "story.json is well-formed and every chapter/entry is complete" "$story_err"
+  fi
+
+  # The page must render from the data, not from a hard-coded copy of it.
+  if grep -qE 'from "\.\./data/story"' "$IP/StoryPage.tsx" 2>/dev/null; then
+    ok "StoryPage renders from the story data module"
+  else
+    bad "StoryPage renders from the story data module" \
+        "$IP/StoryPage.tsx does not import ../data/story; a page that restates the data will drift from story.json"
+  fi
+
+  story_ver=$(grep -oE '"version"[[:space:]]*:[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"' "$STORY" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+  if [ "$story_ver" = "$repo_version" ]; then
+    ok "story.json names the current version ($repo_version)"
+  else
+    bad "story.json names the current version ($repo_version)" \
+        "story.json says '${story_ver:-nothing}'; it must stay on the canonical CMakeLists version"
+  fi
+else
+  bad "story.json exists" "missing $STORY"
+fi
 # --- 12e. The signing key appears in docs in two spellings, and only in one ---
 #
 # Found the hard way. Rotating to 3D987F64 was done with a `sed` matching the

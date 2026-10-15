@@ -1,0 +1,149 @@
+{
+  "updatedAt": "2026-10-15",
+  "title": "The HMX Story",
+  "intro": "HMX is a small statically typed language by Himanshu Kumar that transpiles to C and ships a native binary — plus a browser playground that runs the whole compiler client-side. This is how it started, where it is now, and what still stands between it and production.",
+  "stats": {
+    "version": "0.10.0",
+    "nativeTests": 478,
+    "packagingTests": 160,
+    "vitest": 463,
+    "valgrind": 69
+  },
+  "chapters": [
+    {
+      "id": "origin",
+      "title": "How it started",
+      "body": "A deliberately small compiler: a Flex lexer, a Bison parser, a C++ AST / type-resolver / code generator, and gcc as the backend.",
+      "entries": [
+        {
+          "date": "Day one",
+          "title": "A minimal transpiler",
+          "detail": "let declarations, print, loop(count), zero-arg functions, arithmetic, and line comments — the whole pipeline from a .hmx source file to a native binary.",
+          "status": "done"
+        },
+        {
+          "date": "2026-09",
+          "title": "Hello-world capable (Phases 1–8)",
+          "detail": "Block comments, comparisons, boolean logic, if/else, assignment, typed function parameters and returns, and function calls with recursion. The language could finally write real programs.",
+          "status": "done"
+        }
+      ]
+    },
+    {
+      "id": "progress",
+      "title": "How it's going",
+      "body": "From hello-world to a packaged, tested, distributed compiler with a byte-identical browser backend.",
+      "entries": [
+        {
+          "date": "2026-09",
+          "title": "Strings, loops, and arrays",
+          "detail": "text + text concatenation, the full loop family (loop/while/for/do-while/foreach), growable and nested arrays, and the array built-ins (push, pop, sort, slice, concat, index_of, contains).",
+          "status": "done"
+        },
+        {
+          "date": "2026-09",
+          "title": "Tuples, destructuring, and text ops",
+          "detail": "Multiple return values via tuples, nested destructuring with ...rest, byte-level text indexing, ord/chr/split, tostr/parse_int/parse_decimal, input(), and variadic print.",
+          "status": "done"
+        },
+        {
+          "date": "2026-09-26",
+          "title": "First-class functions",
+          "detail": "Function types, higher-order calls, closures with transitive captures, anonymous lambdas and currying via partial application, and non-local break/continue.",
+          "status": "done"
+        },
+        {
+          "date": "2026-09-26",
+          "title": "Modules and the web playground",
+          "detail": "Cross-file use modules with top-level state and cycle detection; Unicode identifiers; and a full native-parity compiler ported to TypeScript, so HMX runs entirely in the browser.",
+          "status": "done"
+        },
+        {
+          "date": "2026-09-26",
+          "title": "Memory: a reference-counted runtime (M15)",
+          "detail": "text, arrays, and closure environments are reference-counted, with copy-on-write views; locals own and parameters borrow. Gated under AddressSanitizer + LeakSanitizer and Valgrind.",
+          "status": "done"
+        },
+        {
+          "date": "2026-09-27",
+          "title": "Structures: structs, enums, aliases (M16)",
+          "detail": "Nominal value-type structs, int-backed enums with switch support, and transparent type aliases — plus a heap-use-after-free found and fixed by the new ownership matrix.",
+          "status": "done"
+        },
+        {
+          "date": "2026-09-28",
+          "title": "CLI hardening, soundness, distribution (M9–M14)",
+          "detail": "Bare hmx file.hmx runs, help/version, hmx new, runtime crash reporting, lexer overflow checks, byte arithmetic, global identifier mangling, and module top-level state.",
+          "status": "done"
+        },
+        {
+          "date": "2026-09-29",
+          "title": "Shipped on every channel we can reach (v0.10.0)",
+          "detail": "Signed releases with .deb, tar.gz and zip; install.sh and install.ps1; a Homebrew formula, a Scoop bucket, a winget manifest (PR open), an AUR PKGBUILD, and a signed opt-in pacman repository. Commits are GPG-signed and verified.",
+          "status": "done"
+        },
+        {
+          "date": "2026-10-15",
+          "title": "A real home on the web",
+          "detail": "Install, license, 404 and story pages added to the playground, with the routing and packaging gates that keep them honest.",
+          "status": "current"
+        }
+      ]
+    },
+    {
+      "id": "remaining",
+      "title": "What's left until production level",
+      "body": "The gap between a great small language and a language a team would bet on. Grouped by pillar; the sequencing lives in PRODUCTION.md.",
+      "entries": [
+        {
+          "date": "Tier 0",
+          "title": "Correctness, safety, and trust",
+          "detail": "Checked runtime integer overflow; recoverable errors instead of bare exit(1); a cycle-collection decision before generics; UBSan and TSan in CI; a front-end fuzz target and coverage; diagnosable allocation failures.",
+          "status": "planned"
+        },
+        {
+          "date": "Tier 1",
+          "title": "Language completeness",
+          "detail": "Generics (M17); Option/Result with try/?/defer (M18); a fixed-width numeric tower with checked arithmetic (M19); UTF-8 string semantics; real pattern matching; traits/interfaces; visibility and namespaces; references/ownership; methods, defer/RAII and assert; and the handful of grammar bugs.",
+          "status": "planned"
+        },
+        {
+          "date": "Tier 2",
+          "title": "A standard library",
+          "detail": "There is no standard library today: file and OS I/O, math, HashMap/Set, text utilities, JSON/CSV, regex, dates, and (stretch) networking.",
+          "status": "planned"
+        },
+        {
+          "date": "Tier 3",
+          "title": "Tooling and developer experience",
+          "detail": "A debugger story (-g DWARF, stack traces), a REPL, a formatter, an LSP, a package manager with a manifest and lockfile, a test runner, a doc generator, hmx check, and real warnings with multi-error diagnostics.",
+          "status": "planned"
+        },
+        {
+          "date": "Tier 4",
+          "title": "Compiler and backend",
+          "detail": "An IR layer (M26), a second backend (bytecode VM / LLVM), HMX-level optimization, more prebuilt targets, a self-contained toolchain, and clang coverage in CI.",
+          "status": "planned"
+        },
+        {
+          "date": "Tier 5",
+          "title": "Interop",
+          "detail": "A C FFI so HMX can call OpenSSL, libcurl, SQLite, zlib and friends; packaged C libraries; and an ABI-stability statement.",
+          "status": "planned"
+        },
+        {
+          "date": "Tier 6",
+          "title": "Ecosystem and governance",
+          "detail": "CHANGELOG, CONTRIBUTING, CODE_OF_CONDUCT and SECURITY files; an RFC and deprecation policy; a tutorial/book and a standard-library reference; and published benchmarks.",
+          "status": "planned"
+        },
+        {
+          "date": "Tier 7",
+          "title": "QA and performance",
+          "detail": "A benchmark suite with a performance-regression gate, property and differential testing beyond web parity, a UBSan/TSan matrix, and golden diagnostics.",
+          "status": "planned"
+        }
+      ]
+    }
+  ]
+}

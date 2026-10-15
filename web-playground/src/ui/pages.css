@@ -1,0 +1,385 @@
+/* ─────────────────────────────────────────────────────────────
+   Standalone content pages — install, license, 404
+
+   These share one scroll container and one measure. The measure
+   matters more than it looks: the docs page is a two-column
+   layout with its own width, so without an explicit measure these
+   pages would default to full-bleed and put a 140-character line
+   in front of someone trying to read a licence.
+   ───────────────────────────────────────────────────────────── */
+
+.page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background:
+    radial-gradient(900px 420px at 82% -10%, rgba(230, 57, 70, 0.06), transparent 62%),
+    var(--bg);
+}
+
+.page-inner {
+  max-width: 74ch;
+  margin: 0 auto;
+  padding: 2.6rem 2.2rem 5rem;
+}
+
+.page-eyebrow {
+  display: inline-block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--red-hi);
+  border: 1px solid var(--border-red);
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.page-title {
+  margin: 0 0 0.5rem;
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+}
+
+.page-lede {
+  margin: 0 0 2.2rem;
+  color: var(--muted);
+  font-size: 0.96rem;
+  max-width: 68ch;
+}
+
+.page-h2 {
+  margin: 2.4rem 0 0.7rem;
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.page-h3 {
+  margin: 1.5rem 0 0.4rem;
+  font-size: 0.92rem;
+  color: var(--red-hi);
+}
+
+.page-p {
+  margin: 0 0 0.9rem;
+  font-size: 0.93rem;
+  line-height: 1.62;
+  color: var(--text);
+}
+
+.page-p code,
+.page-li code,
+.page-note code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.86em;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.06em 0.34em;
+  color: var(--red-hi);
+}
+
+.page-ul {
+  margin: 0 0 1rem;
+  padding-left: 1.15rem;
+  font-size: 0.93rem;
+  line-height: 1.6;
+}
+
+.page-li {
+  margin-bottom: 0.42rem;
+}
+
+.page-note {
+  margin: 0 0 1.1rem;
+  padding: 0.7rem 0.9rem;
+  border-left: 2px solid var(--red);
+  background: var(--panel);
+  border-radius: 0 4px 4px 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.58;
+}
+
+.page-note strong {
+  color: var(--text);
+}
+
+/* ── Channel cards, used by the install page ────────────────── */
+
+.channel {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 0.9rem 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.channel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.55rem;
+}
+
+.channel-name {
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+.channel-tag {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.1rem 0.4rem;
+}
+
+.channel-tag-best {
+  color: var(--red-hi);
+  border-color: var(--border-red);
+}
+
+.channel-note {
+  margin: 0.55rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+/* ── 404 ───────────────────────────────────────────────────── */
+
+.nf-code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: clamp(3.4rem, 12vw, 6rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--red);
+  margin: 0 0 0.6rem;
+  text-shadow: 0 0 34px rgba(139, 0, 0, 0.55);
+}
+
+.nf-path {
+  display: inline-block;
+  margin: 0.2rem 0 1.4rem;
+  padding: 0.3rem 0.6rem;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  word-break: break-all;
+  max-width: 100%;
+}
+
+.nf-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.nf-link {
+  font-size: 0.86rem;
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid var(--border-red);
+  border-radius: 5px;
+  padding: 0.42rem 0.8rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.nf-link:hover {
+  background: var(--panel-2);
+  border-color: var(--red);
+}
+
+/* ── Story ─────────────────────────────────────────────────── */
+
+.story-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 0 0 0.7rem;
+}
+
+.story-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 0.5rem 0.85rem;
+  min-width: 6.2rem;
+}
+
+.story-stat-num {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--red-hi);
+  line-height: 1.15;
+}
+
+.story-stat-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--dim);
+}
+
+.story-updated {
+  margin: 0 0 1.6rem;
+  font-size: 0.78rem;
+  color: var(--dim);
+}
+
+.story-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.story-nav-link {
+  font: inherit;
+  font-size: 0.86rem;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+  border: 1px solid var(--border-red);
+  border-radius: 5px;
+  padding: 0.42rem 0.8rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.story-nav-link:hover {
+  background: var(--panel-2);
+  border-color: var(--red);
+}
+
+.story-chapter {
+  scroll-margin-top: 1rem;
+}
+
+.story-timeline {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0 0 0 1.1rem;
+  border-left: 1px solid var(--border);
+}
+
+.story-entry {
+  position: relative;
+  padding: 0 0 1.3rem 0.2rem;
+}
+
+.story-entry::before {
+  content: "";
+  position: absolute;
+  left: -1.42rem;
+  top: 0.42rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--red);
+  border: 2px solid var(--bg);
+}
+
+.story-entry-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.18rem;
+}
+
+.story-date {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.74rem;
+  color: var(--dim);
+  letter-spacing: 0.02em;
+}
+
+.story-badge {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.08rem 0.4rem;
+  color: var(--dim);
+}
+
+.story-badge-done {
+  color: #2e7d32;
+  border-color: rgba(46, 125, 50, 0.5);
+}
+
+.story-badge-current {
+  color: var(--red-hi);
+  border-color: var(--border-red);
+}
+
+.story-badge-planned {
+  color: var(--muted);
+  border-color: var(--border);
+}
+
+.story-entry-title {
+  margin: 0 0 0.22rem;
+  font-size: 0.98rem;
+  letter-spacing: -0.01em;
+}
+
+.story-entry-detail {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.58;
+  color: var(--muted);
+}
+
+/* ── Light theme ───────────────────────────────────────────── */
+
+[data-theme="light"] .page {
+  background:
+    radial-gradient(900px 420px at 82% -10%, rgba(193, 30, 58, 0.05), transparent 62%),
+    var(--bg);
+}
+
+[data-theme="light"] .channel,
+[data-theme="light"] .page-note,
+[data-theme="light"] .nf-path {
+  background: var(--panel);
+}
+
+[data-theme="light"] .page-p code,
+[data-theme="light"] .page-li code,
+[data-theme="light"] .page-note code {
+  background: var(--panel-2);
+}
+
+[data-theme="light"] .nf-code {
+  text-shadow: 0 0 30px rgba(193, 30, 58, 0.18);
+}
+
+[data-theme="light"] .nf-link:hover {
+  background: var(--panel-2);
+}
+
+[data-theme="light"] .story-stat,
+[data-theme="light"] .story-nav-link:hover {
+  background: var(--panel);
+}
+
+[data-theme="light"] .story-badge-done {
+  color: #1b5e20;
+  border-color: rgba(27, 94, 32, 0.5);
+}

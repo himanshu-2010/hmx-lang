@@ -72,13 +72,13 @@ production compiler. See [SYNTAX.md](SYNTAX.md) for the authoritative reference 
 
 `npm install && npm run dev` opens the playground editor locally. The web
 compiler is a TypeScript port of the front half (lexer → LALR parser tables →
-resolver) plus a new JavaScript backend, and its gate is parity with the 445
-native test cases (work in progress across M2–M4):
+resolver) plus a JavaScript backend, and its gate is byte-for-byte parity with
+the native compiler across 448 parity cases:
 
 ```bash
 npm install
 npm run dev        # local dev server
-npm test           # vitest — the 447-case parity harness + app tests
+npm test           # vitest — 448 parity cases + app tests
 npm run build      # type-check + production build → dist/
 npm start          # serve the production build (Antideploy's Procfile command)
 npm run lint       # oxlint
@@ -103,6 +103,21 @@ release's `SHA256SUMS`. Pick the one that matches your platform:
 | **Windows**        | `curl -fsSL https://raw.githubusercontent.com/himanshu-2010/hmx-lang/main/install/install.ps1 \| powershell -Command -` |
 | **Docker**         | `docker run --rm -v "$PWD:/src" ghcr.io/himanshu-2010/hmx run main.hmx` |
 | **From source**    | see [Build](#build) below |
+
+On Debian or Ubuntu, download the `.deb` from the release and install it
+directly:
+
+```bash
+sudo apt install ./hmx_0.10.0_amd64.deb
+```
+
+Every release also carries a `SHA256SUMS`. To verify an archive or binary you
+downloaded by hand, fetch the sums file and check it:
+
+```bash
+curl -fsSLO https://github.com/himanshu-2010/hmx-lang/releases/download/v0.10.0/SHA256SUMS
+sha256sum -c SHA256SUMS
+```
 
 The shell installer picks the best option for your system: the `.deb` on
 Debian/Ubuntu, the AUR on Arch (via `paru`/`yay`), Homebrew on macOS, and the
@@ -596,9 +611,9 @@ The current regression suite contains:
 | Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals, structs/enums/aliases, refcounted text views & copy-on-write | 64/64 passed |
 | Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions), reserved-keyword misuse | 238/238 passed |
 | Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics, borrowed-param field writes | 143/143 passed |
-| CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes, generated-C portability and warning-cleanliness, unwritable-cwd and unreadable-source diagnostics, `#line` path escaping | 478/478 passed |
-| Packaging | Release version consistency across all ten version-bearing manifests, no placeholder digests, manifest URLs vs. the names the release workflow actually produces, declared runtime vs. build deps, installer checksum verification, container build/tag/push and smoke-test wiring, release asset completeness, installer package-manager safety, winget three-file manifest schema, AUR manifest buildability (`makepkg`-verified), scoop bucket layout, installer success reporting, installers refusing unverified downloads, brew formula build form, every version-bearing manifest, installers probing for a runtime C compiler, winget submission layout derived from `PackageIdentifier`, accepted winget schema version, the pacman signing fingerprint defined once, commit signing configured and verified with `git verify-commit` | 147/147 passed |
-| Total | 625 test cases | 625/625 passed |
+| CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes, generated-C portability and warning-cleanliness, unwritable-cwd and unreadable-source diagnostics, `#line` path escaping | 33/33 passed |
+| Packaging | Release version consistency across all ten version-bearing manifests, no placeholder digests, manifest URLs vs. the names the release workflow actually produces, declared runtime vs. build deps, installer checksum verification, container build/tag/push and smoke-test wiring, release asset completeness, installer package-manager safety, winget three-file manifest schema, AUR manifest buildability (`makepkg`-verified), scoop bucket layout, installer success reporting, installers refusing unverified downloads, brew formula build form, every version-bearing manifest, installers probing for a runtime C compiler, winget submission layout derived from `PackageIdentifier`, accepted winget schema version, the pacman signing fingerprint defined once, commit signing configured and verified with `git verify-commit`, the site pages (install/license/404/story) matching the repo they describe | 160/160 passed |
+| Total | 638 test cases | 638/638 passed |
 
 Two further gates need extra tools and are not part of that count:
 

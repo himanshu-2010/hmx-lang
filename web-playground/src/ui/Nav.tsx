@@ -7,6 +7,8 @@ const tabs = [
   { to: "/", label: "Home", end: true, guide: "home-link" },
   { to: "/playground", label: "Playground", end: false, guide: "playground-link" },
   { to: "/docs", label: "Docs", end: false, guide: "docs-link" },
+  { to: "/install", label: "Install", end: false, guide: "install-link" },
+  { to: "/story", label: "Story", end: false, guide: "story-link" },
 ];
 
 /** Red/black top bar: brand, route links, and the GitHub source link. */

@@ -8,8 +8,8 @@ import "./home.css";
 const GITHUB_URL = "https://github.com/himanshu-2010/hmx-lang";
 
 const stats = [
-  { value: "468", label: "native regression cases, all green" },
-  { value: "444", label: "web vs native — byte-identical" },
+  { value: "478", label: "native regression cases, all green" },
+  { value: "448", label: "web vs native — byte-identical" },
   { value: "134", label: "runnable examples in the docs" },
   { value: "0", label: "backend — it compiles in your tab" },
 ];
@@ -498,7 +498,7 @@ export function HomePage() {
                 binary. Exit codes, stdin, Unicode, modules — all there.
               </p>
               <div className="parity-metric">
-                468 regression cases · <b>9</b> module integrations
+                478 regression cases · <b>9</b> module integrations
               </div>
             </div>
           </Reveal>

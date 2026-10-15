@@ -1,8 +1,8 @@
 # HMX Transpiler — Test Execution Report
 
-**Date:** 2026-09-27  
+**Date:** 2026-10-15  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 478 / 478 (64 integration + 238 negative + 143 stress + 33 CLI); web-playground vitest 455 / 455 (448 parity + 7 app); valgrind ownership matrix + all fixtures 69 / 69; packaging gate 147 / 147 (manifests carry the real digests of the published v0.10.0 release; the installer no longer hands an unconfirmed package name to an AUR helper; the winget manifest is a valid three-file tree; the AUR manifest has been through a real `makepkg` build)
+**Status:** ALL TESTS PASSED — native 478 / 478 (64 integration + 238 negative + 143 stress + 33 CLI); web-playground vitest 463 / 463 (448 parity + 15 app); valgrind ownership matrix + all fixtures 69 / 69; packaging gate 160 / 160 (manifests carry the real digests of the published v0.10.0 release; the installer no longer hands an unconfirmed package name to an AUR helper; the winget manifest is a valid three-file tree; the AUR manifest has been through a real `makepkg` build; the site pages — install, license, 404 and story — are gated against the repo they describe)
 
 ---
 
