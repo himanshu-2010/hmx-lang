@@ -115,6 +115,12 @@
   (heap-use-after-free, found by the new valgrind matrix cases) — the member
   write now promotes the param to an owned copy first.
 - **M17** generics via monomorphization (reuse `papp_mangle` instantiation infra).
+  **Design accepted 2026-10-16** — `[T]` type parameters after the declaration
+  name, C++-template semantics (each instantiation checked independently, no
+  constraints), inference at call sites, no explicit instantiation syntax. See
+  `SYNTAX.md` §20 and `docs/adr/0002-generics-monomorphization.md`. Scope:
+  generic functions first, then generic structs; generic `enum`/`alias`
+  declarations deferred.
 - **M18** `Option[T]` / `Result[T,E]` + `try`/`?`/`defer` on existing setjmp
   machinery; hard faults stay print+exit(1) by default, recoverable via `catch`.
 - **M19** int64 / u32 / u64 / float32 + checked-arithmetic flag; BigInt stretch.

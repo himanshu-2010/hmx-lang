@@ -34,6 +34,7 @@ standard C reference documentation, but uses HMX's own syntax, types, and conven
 17. [Type Aliases](#17-type-aliases-spec)
 18. [Structs](#18-structs-spec)
 19. [Enums](#19-enums-spec)
+20. [Generics](#20-generics-spec)
 
 ---
 
@@ -2081,3 +2082,139 @@ Rules:
   use the ordinal.
 - Enum variants cannot be redefined; the ordinal numbering is fixed by
   declaration order.
+
+---
+
+## 20. Generics **[Spec]**
+
+Generics let a function or type be written once and used with many different
+types. A **type parameter** is declared in `[ ]` right after the declaration's
+name — the same brackets the language already uses for array types:
+
+```hmx
+fn identity[T](x: T) -> T { return x }
+
+fn pair[A, B](a: A, b: B) -> (A, B) {
+    return a, b
+}
+
+struct Box[T] {
+    value: T
+}
+
+struct Pair[A, B] {
+    first: A
+    second: B
+}
+```
+
+A declaration's type parameters are in scope for its parameter types, return
+type, field types, and body; they shadow any declared type of the same name and
+must be distinct within one declaration.
+
+### 20.1 Instantiation
+
+A generic type name is used with type arguments in **type position**, in the
+same bracket form:
+
+```hmx
+let b: Box[int] = Box(5)
+let p: Pair[int, text] = Pair(1, "a")
+let boxes: [Box[int]] = [Box(1), Box(2)]
+```
+
+Type arguments are themselves type expressions, so instantiations nest and
+compose with every existing type form: `Box[Pair[int, text]]`, `[Box[int]]`,
+`(Box[int], int)`, `fn(Box[int]) -> int`. The argument count must match the
+parameter count.
+
+### 20.2 Inference at call sites
+
+A generic function is called like any other one; its type arguments are inferred
+from the argument types:
+
+```hmx
+print(identity(5))          // T = int
+print(identity("hi"))       // T = text
+let b = Box(7)              // Box[int]
+```
+
+A constructor call infers its type arguments from its arguments the same way.
+When a type parameter cannot be inferred from the call it is a compile error
+(`cannot infer type argument 'T' for generic function 'identity'`).
+
+There is **no explicit instantiation syntax at the call site**: `identity[int](5)`
+is not valid, because `[` after a name in expression position is array indexing
+(§9). Explicit type arguments are written only in type position — an annotation,
+a parameter or return type, or a field type.
+
+### 20.3 Semantics: monomorphization
+
+Each distinct set of type arguments produces its own **specialization**,
+compiled and type-checked independently (a C++-template model). The generic
+declaration itself emits no code:
+
+```hmx
+fn add_one[T](x: T) -> T { return x + 1 }
+
+add_one(2)         // int specialization: ok
+add_one("a")       // text specialization: compile error ('+' needs matching operands)
+```
+
+There are **no type constraints**. A body is checked once per instantiation, so
+an operation is valid for the instantiations where it type-checks and an error
+for the ones where it does not — the declaration is not validated on its own.
+See `docs/adr/0002-generics-monomorphization.md`.
+
+### 20.4 Rules
+
+- Type parameters are ordinary identifiers scoped to their declaration; they are
+  not types at program scope.
+- Instantiation is recursive and fully checked: `Box[Pair[int, text]]` expands
+  both.
+- **Recursive generics follow the cycle rules** (`docs/adr/0001`): a generic
+  struct may not contain itself by value (`struct Node[T] { next: Node[T] }` is
+  an error), but an array field is fine (`struct Node[T] { kids: [Node[T]] }`).
+- A generic function is called by name so its type arguments can be inferred;
+  passing one as a bare value is not supported in M17.
+
+### 20.5 Rejections
+
+- Duplicate type-parameter name in one declaration.
+- Too few or too many type arguments at an instantiation.
+- Type arguments applied to a non-generic type name, or omitted for a generic
+  name used as a type.
+- Inability to infer a type parameter from the call.
+- A body that fails to type-check for a given instantiation.
+
+### 20.6 Worked example
+
+```hmx
+struct Box[T] {
+    value: T
+}
+
+fn unbox[T](b: Box[T]) -> T {
+    return b.value
+}
+
+fn identity[T](x: T) -> T { return x }
+
+fn main() {
+    let bi = Box(42)              // Box[int]
+    let bt = Box("hi")            // Box[text]
+    print(unbox(bi))              // 42
+    print(unbox(bt))              // hi
+    print(identity(unbox(bi)))    // 42 — T inferred as int
+}
+```
+
+### 20.7 Scope
+
+In M17: generic **functions** and generic **structs**, plus `alias`es that name
+an instantiation (`alias IntBox = Box[int]`).
+
+Not yet specified or implemented: type parameters on `alias` and `enum`
+declarations, variadic generic parameters, explicit instantiation syntax, and
+constraints/traits. `Option[T]` / `Result[T, E]` (M18) and `HashMap[K, V]` /
+`Set` (M21) are built on this feature.
