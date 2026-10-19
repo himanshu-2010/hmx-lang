@@ -51,7 +51,7 @@ describe("app routes", () => {
     expect(t).toContain("Compile in your tab");
     expect(t).toContain("Try the compiler");
     expect(t).toContain("Think in types");
-    expect(t).toContain("485");
+    expect(t).toContain(String(story.stats.nativeTests));
   });
 
   it("credits the author with a circular portrait", async () => {

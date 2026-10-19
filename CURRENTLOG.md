@@ -211,4 +211,6 @@ Item 1  →  Item 2a  →  Item 2b  →  Item 2c  →  M17 (generics)
 
 Item 1 landed first (clean green baseline). Items 2a–2c all landed together, so
 the abstractions M17 introduces are covered by the new checks from the start.
-M17 (generics) is next.
+**M17 is now in progress: M17.1 (generic functions) landed 2026-10-19 — see
+`PROGRESS.md` and `TESTRESULT.md` for the full report. Generic structs (M17.3)
+are next.**

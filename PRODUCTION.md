@@ -11,7 +11,7 @@
 ## Framing
 
 HMX today is a **solid small language with an unusually mature packaging story**:
-485 native + 160 packaging + 466 vitest tests, ASan/UBSan/valgrind/fuzz-gated
+496 native + 160 packaging + 477 vitest tests, ASan/UBSan/valgrind/fuzz-gated
 reference counting, signed releases, working installers for
 Linux/macOS/Windows, and a byte-identical browser compiler.
 
@@ -42,7 +42,7 @@ governance files.
 
 | # | Gap | Status |
 |---|---|---|
-| 1.1 | **Generics / parametric polymorphism** — no `[T]` on functions, structs, or enums. Blocks reusable containers. | `[roadmap M17]` |
+| 1.1 | **Generics / parametric polymorphism** — no `[T]` on functions, structs, or enums. Blocks reusable containers. **M17.1 landed generic functions** (inference + monomorphization); generic **structs** are M17.3, generic enums deferred. | `[roadmap M17]` |
 | 1.2 | **Error handling** — `Option[T]`/`Result[T,E]`, `try`/`?`/`defer`, catchable faults. | `[roadmap M18]` |
 | 1.3 | **Numeric tower** — only `int`(i32) / `decimal`(f64) / `bool` / `char` / `byte`. No i64/u32/u64/float32/usize, no BigInt. | `[roadmap M19]` |
 | 1.4 | **Strings are byte arrays.** `length` = bytes, `text[i]` = a byte, `split` = bytes; identifiers are Unicode but string *values* get no UTF-8 length/index/slice/trim. A production text language needs this. | `[new]` |
@@ -131,7 +131,7 @@ governance files.
 | 7.1 | **No benchmark suite / perf-regression gate.** Compile-time scaling on large programs is unknown. `[new]` |
 | 7.2 | No property/differential testing beyond web↔native parity and the libFuzzer front-end harness; no coverage metric. `[new]` |
 | 7.3 | No TSan matrix, no 32-bit/big-endian checks (UBSan + the `HMX_MAX_NESTING` resolver guard now land in CI). `[new]` |
-| 7.4 | Error-message surface is covered by 245 negatives, but there is no golden-diagnostics snapshot for message drift. `[new]` |
+| 7.4 | Error-message surface is covered by 254 negatives, but there is no golden-diagnostics snapshot for message drift. `[new]` |
 
 ---
 
@@ -148,7 +148,9 @@ The roadmap's order is *roughly* right, but Tier 0 and FFI must be inserted:
    and a libFuzzer front-end harness (which found and fixed four bugs). The
    counts were re-synced (native 485, packaging 160, vitest 466, valgrind 69,
    UBSan 3). See `CURRENTLOG.md`.
-3. **M17 generics** (1.1) — the hard dependency for collections and half the stdlib.
+3. **M17 generics** (1.1) — the hard dependency for collections and half the
+   stdlib. **M17.1 (generic functions) landed 2026-10-19**; generic structs and
+   instantiation in type position are M17.3.
 4. **M18 error handling** (1.2) + the refcount-cycle decision from step 2.
 5. **M19 numeric tower + checked arithmetic** (1.3, 0.1).
 6. **M20/M21 stdlib** — once generics exist, so `HashMap`/`Set` land without a

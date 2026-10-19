@@ -62,6 +62,7 @@ import {
   tupleTypeToString,
   HMX_MAX_NESTING,
   astMaxDepth,
+  deepCloneAst,
 } from "./ast";
 
 // ---------------------------------------------------------------------------
@@ -139,6 +140,14 @@ export interface FunctionSig {
   fn_type: TypeDesc;
 }
 
+/** M17: a generic function declaration, kept aside as a monomorphization
+ *  template. It is never registered in `functions_`/`fn_decls_` and produces
+ *  no code; each distinct call-site inference clones and resolves it. */
+interface GenericTemplate {
+  decl: FunctionDecl;
+  type_params: Set<string>;
+}
+
 export class CompileError extends Error {
   line: number;
   file: string;
@@ -193,6 +202,13 @@ export class TypeResolver {
   private expanded_structs_ = new Map<string, TypeDesc>(); // nominal name -> full struct desc
   private building_structs_ = new Set<string>(); // names whose fields are being expanded (direct chain)
   private expanding_aliases_ = new Set<string>(); // names of aliases mid-expansion (cycle detection)
+
+  // M17 generics: templates registered from declarations, plus the resolved
+  // instantiations produced at each call site. `generic_instances_` owns the
+  // clones until `resolve()` splices them into the program for codegen.
+  private generic_fns_ = new Map<string, GenericTemplate>();
+  private instantiated_ = new Set<string>(); // mangled names already built
+  private generic_instances_: FunctionDecl[] = [];
 
   // ---- scope helpers ----
 
@@ -797,6 +813,12 @@ export class TypeResolver {
     } else if (expr instanceof CharLiteral) {
       result = TypeKind.Char;
     } else if (expr instanceof LambdaExpr) {
+      if (expr.resolved) {
+        // Re-resolving an already-synthesized lambda (e.g. a generic call
+        // re-checks its arguments after inferring type parameters) must not
+        // mint a second hoisted function.
+        result = TypeKind.Function;
+      } else {
       const synth = new FunctionDecl("");
       synth.name = `__lam_${this.lambda_counter_++}`;
       while (this.functions_.has(synth.name) || this.fn_decls_.has(synth.name)) {
@@ -822,6 +844,7 @@ export class TypeResolver {
       expr.lambda_type = ftd;
       this.lambda_fns_.push(synth);
       result = TypeKind.Function;
+      }
     } else if (expr instanceof Identifier) {
       let sym = this.findSymbol(expr.name);
       if (!sym) {
@@ -838,6 +861,8 @@ export class TypeResolver {
             result = TypeKind.Function;
           } else if (fit !== undefined && expr.name === "main") {
             throw this.err(this.line(), "cannot use function 'main' as a value");
+          } else if (this.generic_fns_.has(expr.name)) {
+            throw this.err(this.line(), `generic function '${expr.name}' cannot be used as a value`);
           } else {
             throw this.err(this.line(), `undefined variable '${expr.name}'`);
           }
@@ -1103,6 +1128,11 @@ export class TypeResolver {
         result = TypeKind.Struct;
         expr.resolved_type = result;
         return result;
+      }
+      // -- M17 generic call: monomorphize and rewrite to the instantiation --
+      const generic = this.generic_fns_.get(expr.name);
+      if (generic) {
+        expr.name = this.monomorphizeCall(expr, generic);
       }
       // -- call by function name --
       const sig = this.getFunction(expr.name);
@@ -1790,7 +1820,8 @@ export class TypeResolver {
     if (stmt instanceof TypeDecl) {
       throw this.err(stmt.line, "type declarations are only allowed at the top level");
     } else if (stmt instanceof FunctionDecl) {
-      this.resolveFunctionDecl(stmt);
+      // M17: templates are never resolved directly; their instantiations are.
+      if (stmt.type_params.length === 0) this.resolveFunctionDecl(stmt);
       always_returns = false;
     } else if (stmt instanceof VarDecl) {
       this.resolveVarDecl(stmt);
@@ -2509,6 +2540,14 @@ export class TypeResolver {
     };
     if (stmt instanceof FunctionDecl) {
       const fn = stmt;
+      if (fn.type_params.length > 0) {
+        // M17: a template is registered aside and produces no signature/code.
+        this.registerGenericTemplate(fn);
+        return;
+      }
+      if (this.generic_fns_.has(fn.name)) {
+        throw this.err(fn.line, `function '${fn.name}' is already declared`, fn.file);
+      }
       if (this.functions_.has(fn.name)) {
         throw this.err(fn.line, `duplicate declaration of function '${fn.name}'`, fn.file);
       }
@@ -2686,6 +2725,23 @@ export class TypeResolver {
       program.statements.push(f);
     }
     this.lambda_fns_ = [];
+    // Monomorphized generic instantiations are regular functions from here on:
+    // they were resolved during pass 2 and just need to join the program so
+    // codegen emits them.
+    for (const f of this.generic_instances_) {
+      program.statements.push(f);
+    }
+    this.generic_instances_ = [];
+    // Generic templates are compile-time only — every use was monomorphized
+    // above — so drop them before codegen. Their declarations are never
+    // registered in functions_/fn_decls_ and produce no code.
+    for (let i = program.statements.length - 1; i >= 0; i--) {
+      const s = program.statements[i];
+      if (s instanceof FunctionDecl && s.type_params.length > 0) {
+        program.statements.splice(i, 1);
+      }
+    }
+    this.generic_fns_.clear();
   }
 
   // ---- M16: type declarations (alias / struct / enum) ----
@@ -2831,11 +2887,15 @@ export class TypeResolver {
       }
       if (stmt.initializer) this.expandTypeRefsExpr(stmt.initializer);
     } else if (stmt instanceof FunctionDecl) {
-      this.current_line_ = stmt.line;
-      if (stmt.file.length > 0) this.current_file_ = stmt.file;
-      for (const p of stmt.params) this.syncParamDesc(p);
-      this.syncReturnDesc(stmt);
-      for (const s of stmt.body) this.expandTypeRefsStmt(s);
+      // M17: templates are not expanded; their instantiations are, after
+      // substitution. (Native nests this check inside the arm.)
+      if (stmt.type_params.length === 0) {
+        this.current_line_ = stmt.line;
+        if (stmt.file.length > 0) this.current_file_ = stmt.file;
+        for (const p of stmt.params) this.syncParamDesc(p);
+        this.syncReturnDesc(stmt);
+        for (const s of stmt.body) this.expandTypeRefsStmt(s);
+      }
     } else if (stmt instanceof IfStmt) {
       for (const s of stmt.then_body) this.expandTypeRefsStmt(s);
       for (const s of stmt.else_body) this.expandTypeRefsStmt(s);
@@ -2967,6 +3027,370 @@ export class TypeResolver {
     fn.return_type = e.type;
     fn.return_elem = e.type === TypeKind.Array ? elementOf(e) : mkType(TypeKind.Unknown);
     if (e.type === TypeKind.Tuple) fn.return_tuple_members = e.tuple_members;
+  }
+
+  // ---- M17 generics: monomorphization ----
+
+  /** Encode a concrete descriptor as an identifier-safe token for mangling. */
+  private mangleDesc(d: TypeDesc): string {
+    switch (d.type) {
+      case TypeKind.Int: return "int";
+      case TypeKind.Decimal: return "dec";
+      case TypeKind.Text: return "text";
+      case TypeKind.Bool: return "bool";
+      case TypeKind.Char: return "char";
+      case TypeKind.Byte: return "byte";
+      case TypeKind.Array: return "arr_" + this.mangleDesc(elementOf(d));
+      case TypeKind.Tuple: {
+        let s = "tup";
+        for (const m of d.tuple_members) s += "_" + this.mangleDesc(m);
+        return s;
+      }
+      case TypeKind.Function: {
+        let s = "fn";
+        if (d.fn_info) {
+          for (const p of d.fn_info.params) s += "_" + this.mangleDesc(p);
+          s += "_r_" + this.mangleDesc(d.fn_info.ret);
+        }
+        return s;
+      }
+      case TypeKind.Struct:
+      case TypeKind.Enum:
+        return "n_" + d.type_name;
+      case TypeKind.Unknown:
+        return d.type_name.length === 0 ? "unk" : "n_" + d.type_name;
+    }
+    return "unk";
+  }
+
+  private mangleGeneric(
+    fname: string,
+    typeParams: string[],
+    bind: Map<string, TypeDesc>
+  ): string {
+    let s = `__gen_${fname}`;
+    for (const tp of typeParams) {
+      s += "_";
+      const it = bind.get(tp);
+      s += it ? this.mangleDesc(it) : "unbound";
+    }
+    return s;
+  }
+
+  private substituteDesc(d: TypeDesc, bind: Map<string, TypeDesc>): TypeDesc {
+    if (d.type === TypeKind.Unknown && d.type_name.length > 0) {
+      const it = bind.get(d.type_name);
+      // Value-copy the binding so later in-place field edits cannot alias it.
+      if (it) return deepCloneAst(it);
+      return d;
+    }
+    if (d.type === TypeKind.Array) {
+      return arrayOf(this.substituteDesc(elementOf(d), bind));
+    }
+    if (d.type === TypeKind.Tuple) {
+      const out: TypeDesc = { ...d, tuple_members: d.tuple_members.map((m) => this.substituteDesc(m, bind)) };
+      return out;
+    }
+    if (d.type === TypeKind.Function && d.fn_info) {
+      return {
+        type: d.type,
+        elem: d.elem,
+        tuple_members: d.tuple_members,
+        fn_info: {
+          params: d.fn_info.params.map((p) => this.substituteDesc(p, bind)),
+          ret: this.substituteDesc(d.fn_info.ret, bind),
+        },
+        type_name: d.type_name,
+      };
+    }
+    return d;
+  }
+
+  private substituteStmt(stmt: Statement, bind: Map<string, TypeDesc>): void {
+    if (stmt instanceof VarDecl) {
+      stmt.annotation_desc = this.substituteDesc(stmt.annotation_desc, bind);
+      stmt.elem_desc = this.substituteDesc(stmt.elem_desc, bind);
+      stmt.tuple_members = stmt.tuple_members.map((m) => this.substituteDesc(m, bind));
+      if (stmt.initializer) this.substituteExpr(stmt.initializer, bind);
+    } else if (stmt instanceof FunctionDecl) {
+      for (const p of stmt.params) {
+        p.desc = this.substituteDesc(p.desc, bind);
+        p.elem_desc = this.substituteDesc(p.elem_desc, bind);
+        p.tuple_members = p.tuple_members.map((m) => this.substituteDesc(m, bind));
+        if (p.default_value) this.substituteExpr(p.default_value, bind);
+      }
+      stmt.return_desc = this.substituteDesc(stmt.return_desc, bind);
+      stmt.return_elem = this.substituteDesc(stmt.return_elem, bind);
+      stmt.return_tuple_members = stmt.return_tuple_members.map((m) => this.substituteDesc(m, bind));
+      for (const s of stmt.body) this.substituteStmt(s, bind);
+    } else if (stmt instanceof IfStmt) {
+      if (stmt.condition) this.substituteExpr(stmt.condition, bind);
+      for (const s of stmt.then_body) this.substituteStmt(s, bind);
+      for (const s of stmt.else_body) this.substituteStmt(s, bind);
+    } else if (stmt instanceof SwitchStmt) {
+      if (stmt.value) this.substituteExpr(stmt.value, bind);
+      for (const c of stmt.cases) {
+        if (c.value) this.substituteExpr(c.value, bind);
+        for (const s of c.body) this.substituteStmt(s, bind);
+      }
+    } else if (stmt instanceof LoopStmt) {
+      if (stmt.count) this.substituteExpr(stmt.count, bind);
+      for (const s of stmt.body) this.substituteStmt(s, bind);
+    } else if (stmt instanceof ForeachStmt) {
+      if (stmt.iterable) this.substituteExpr(stmt.iterable, bind);
+      for (const s of stmt.body) this.substituteStmt(s, bind);
+    } else if (stmt instanceof WhileStmt) {
+      if (stmt.condition) this.substituteExpr(stmt.condition, bind);
+      for (const s of stmt.body) this.substituteStmt(s, bind);
+    } else if (stmt instanceof ForStmt) {
+      if (stmt.init) this.substituteStmt(stmt.init, bind);
+      if (stmt.condition) this.substituteExpr(stmt.condition, bind);
+      if (stmt.update) this.substituteStmt(stmt.update, bind);
+      for (const s of stmt.body) this.substituteStmt(s, bind);
+    } else if (stmt instanceof DoWhileStmt) {
+      for (const s of stmt.body) this.substituteStmt(s, bind);
+      if (stmt.condition) this.substituteExpr(stmt.condition, bind);
+    } else if (stmt instanceof AssignStmt) {
+      if (stmt.rhs) this.substituteExpr(stmt.rhs, bind);
+    } else if (stmt instanceof MultiAssignStmt) {
+      if (stmt.rhs) this.substituteExpr(stmt.rhs, bind);
+    } else if (stmt instanceof DestructDecl) {
+      if (stmt.rhs) this.substituteExpr(stmt.rhs, bind);
+    } else if (stmt instanceof ArrayAssignStmt) {
+      if (stmt.index) this.substituteExpr(stmt.index, bind);
+      if (stmt.rhs) this.substituteExpr(stmt.rhs, bind);
+    } else if (stmt instanceof ElementAssignStmt) {
+      if (stmt.target) this.substituteExpr(stmt.target, bind);
+      if (stmt.rhs) this.substituteExpr(stmt.rhs, bind);
+    } else if (stmt instanceof MemberAssignStmt) {
+      if (stmt.base) this.substituteExpr(stmt.base, bind);
+      if (stmt.rhs) this.substituteExpr(stmt.rhs, bind);
+    } else if (stmt instanceof ReturnStmt) {
+      for (const v of stmt.values) this.substituteExpr(v, bind);
+    } else if (stmt instanceof PrintStmt) {
+      for (const a of stmt.args) this.substituteExpr(a, bind);
+    } else if (stmt instanceof ExprStmt) {
+      if (stmt.expr) this.substituteExpr(stmt.expr, bind);
+    }
+  }
+
+  private substituteExpr(expr: Expression, bind: Map<string, TypeDesc>): void {
+    if (expr instanceof LambdaExpr) {
+      for (const p of expr.params) {
+        p.desc = this.substituteDesc(p.desc, bind);
+        p.elem_desc = this.substituteDesc(p.elem_desc, bind);
+        p.tuple_members = p.tuple_members.map((m) => this.substituteDesc(m, bind));
+        if (p.default_value) this.substituteExpr(p.default_value, bind);
+      }
+      expr.return_desc = this.substituteDesc(expr.return_desc, bind);
+      expr.return_elem = this.substituteDesc(expr.return_elem, bind);
+      expr.return_tuple_members = expr.return_tuple_members.map((m) => this.substituteDesc(m, bind));
+      for (const s of expr.body) this.substituteStmt(s, bind);
+    } else if (expr instanceof BinaryExpr) {
+      this.substituteExpr(expr.left, bind);
+      this.substituteExpr(expr.right, bind);
+    } else if (expr instanceof NotExpr) {
+      this.substituteExpr(expr.operand, bind);
+    } else if (expr instanceof NegExpr) {
+      this.substituteExpr(expr.operand, bind);
+    } else if (expr instanceof ConditionalExpr) {
+      this.substituteExpr(expr.condition, bind);
+      this.substituteExpr(expr.then_expr, bind);
+      this.substituteExpr(expr.else_expr, bind);
+    } else if (expr instanceof CastExpr) {
+      this.substituteExpr(expr.operand, bind);
+    } else if (expr instanceof CallExpr) {
+      for (const a of expr.args) this.substituteExpr(a, bind);
+    } else if (expr instanceof ArrayLiteral) {
+      for (const e of expr.elements) this.substituteExpr(e, bind);
+    } else if (expr instanceof TupleLiteral) {
+      for (const v of expr.values) this.substituteExpr(v, bind);
+    } else if (expr instanceof ArrayIndexExpr) {
+      if (expr.base) this.substituteExpr(expr.base, bind);
+      this.substituteExpr(expr.index, bind);
+    } else if (expr instanceof MemberAccessExpr) {
+      this.substituteExpr(expr.base, bind);
+    }
+  }
+
+  private bodyHasNestedFn(body: Statement[]): boolean {
+    for (const st of body) {
+      if (st instanceof FunctionDecl) return true;
+      if (st instanceof IfStmt) {
+        if (this.bodyHasNestedFn(st.then_body) || this.bodyHasNestedFn(st.else_body)) return true;
+      } else if (st instanceof SwitchStmt) {
+        for (const c of st.cases) if (this.bodyHasNestedFn(c.body)) return true;
+      } else if (st instanceof LoopStmt) {
+        if (this.bodyHasNestedFn(st.body)) return true;
+      } else if (st instanceof ForeachStmt) {
+        if (this.bodyHasNestedFn(st.body)) return true;
+      } else if (st instanceof WhileStmt) {
+        if (this.bodyHasNestedFn(st.body)) return true;
+      } else if (st instanceof ForStmt) {
+        if (this.bodyHasNestedFn(st.body)) return true;
+      } else if (st instanceof DoWhileStmt) {
+        if (this.bodyHasNestedFn(st.body)) return true;
+      }
+    }
+    return false;
+  }
+
+  private registerGenericTemplate(fn: FunctionDecl): void {
+    if (this.generic_fns_.has(fn.name) || this.functions_.has(fn.name)) {
+      throw this.err(fn.line, `function '${fn.name}' is already declared`, fn.file);
+    }
+    if (this.type_decls_.has(fn.name)) {
+      throw this.err(
+        fn.line,
+        `cannot declare function '${fn.name}': a type with that name already exists`,
+        fn.file
+      );
+    }
+    const typeParams = new Set<string>();
+    for (const tp of fn.type_params) {
+      if (typeParams.has(tp)) {
+        throw this.err(fn.line, `duplicate type parameter '${tp}' in function '${fn.name}'`, fn.file);
+      }
+      typeParams.add(tp);
+    }
+    for (const p of fn.params) {
+      if (p.variadic) {
+        throw this.err(fn.line, `generic function '${fn.name}' cannot have a variadic parameter`, fn.file);
+      }
+      if (p.default_value != null) {
+        throw this.err(
+          fn.line,
+          `parameter '${p.name}' of generic function '${fn.name}' cannot have a default value`,
+          fn.file
+        );
+      }
+    }
+    if (this.bodyHasNestedFn(fn.body)) {
+      throw this.err(fn.line, `generic function '${fn.name}' cannot declare nested functions`, fn.file);
+    }
+    this.generic_fns_.set(fn.name, { decl: fn, type_params: typeParams });
+  }
+
+  private unifyTypeParams(
+    param: TypeDesc,
+    arg: TypeDesc,
+    typeParams: Set<string>,
+    bind: Map<string, TypeDesc>,
+    fname: string,
+    line: number
+  ): void {
+    if (!descFullyKnown(arg)) {
+      throw this.err(
+        line,
+        `cannot infer type parameter for generic function '${fname}' from an argument whose type is not fully known`
+      );
+    }
+    if (param.type === TypeKind.Unknown && param.type_name.length > 0 && typeParams.has(param.type_name)) {
+      const it = bind.get(param.type_name);
+      if (!it) {
+        bind.set(param.type_name, arg);
+      } else if (!typeDescEquals(it, arg)) {
+        throw this.err(
+          line,
+          `type mismatch: type parameter '${param.type_name}' of generic function '${fname}' inferred as both ${typeDescToString(it)} and ${typeDescToString(arg)}`
+        );
+      }
+      return;
+    }
+    if (param.type === TypeKind.Array) {
+      if (arg.type !== TypeKind.Array) {
+        throw this.err(
+          line,
+          `type mismatch: argument for generic function '${fname}' expects array of ${typeDescToString(elementOf(param))}, got ${typeDescToString(arg)}`
+        );
+      }
+      this.unifyTypeParams(elementOf(param), elementOf(arg), typeParams, bind, fname, line);
+      return;
+    }
+    if (param.type === TypeKind.Tuple) {
+      if (arg.type !== TypeKind.Tuple || arg.tuple_members.length !== param.tuple_members.length) {
+        throw this.err(
+          line,
+          `type mismatch: argument for generic function '${fname}' expects tuple ${tupleTypeToString(param.tuple_members)}, got ${typeDescToString(arg)}`
+        );
+      }
+      for (let i = 0; i < param.tuple_members.length; i++) {
+        this.unifyTypeParams(param.tuple_members[i], arg.tuple_members[i], typeParams, bind, fname, line);
+      }
+      return;
+    }
+    if (param.type === TypeKind.Function && param.fn_info) {
+      if (arg.type !== TypeKind.Function || !arg.fn_info || arg.fn_info.params.length !== param.fn_info.params.length) {
+        throw this.err(
+          line,
+          `type mismatch: argument for generic function '${fname}' expects ${typeDescToString(param)}, got ${typeDescToString(arg)}`
+        );
+      }
+      for (let i = 0; i < param.fn_info.params.length; i++) {
+        this.unifyTypeParams(param.fn_info.params[i], arg.fn_info!.params[i], typeParams, bind, fname, line);
+      }
+      this.unifyTypeParams(param.fn_info.ret, arg.fn_info.ret, typeParams, bind, fname, line);
+      return;
+    }
+    const resolved = this.expandDesc(param, true);
+    if (!typeDescEquals(resolved, arg)) {
+      throw this.err(
+        line,
+        `type mismatch: argument for generic function '${fname}' expects ${typeDescToString(resolved)}, got ${typeDescToString(arg)}`
+      );
+    }
+  }
+
+  private monomorphizeCall(call: CallExpr, tmpl: GenericTemplate): string {
+    const decl = tmpl.decl;
+    if (call.args.length !== decl.params.length) {
+      throw this.err(
+        this.line(),
+        `generic function '${decl.name}' expects ${decl.params.length} argument${decl.params.length === 1 ? "" : "s"}, got ${call.args.length}`
+      );
+    }
+    const bind = new Map<string, TypeDesc>();
+    for (let i = 0; i < call.args.length; i++) {
+      // Resolve the argument once to discover its type. The ordinary call path
+      // below re-resolves it, which is idempotent (lambda synthesis is guarded).
+      this.resolveExpr(call.args[i]);
+      const ad = this.exprDesc(call.args[i]);
+      this.unifyTypeParams(decl.params[i].desc, ad, tmpl.type_params, bind, decl.name, this.line());
+    }
+    for (const tp of decl.type_params) {
+      if (!bind.has(tp)) {
+        throw this.err(this.line(), `cannot infer type parameter '${tp}' for generic function '${decl.name}'`);
+      }
+    }
+    return this.instantiateGeneric(tmpl, bind);
+  }
+
+  private instantiateGeneric(tmpl: GenericTemplate, bind: Map<string, TypeDesc>): string {
+    const name = this.mangleGeneric(tmpl.decl.name, tmpl.decl.type_params, bind);
+    if (this.instantiated_.has(name)) return name;
+    const inst = deepCloneAst(tmpl.decl);
+    inst.name = name;
+    inst.type_params = [];
+    inst.is_lambda = false;
+    this.substituteStmt(inst, bind);
+    // No type variables remain, so the ordinary expansion can resolve named
+    // types and sync the param/return descriptors on the clone.
+    {
+      const savedLine = this.current_line_;
+      const savedFile = this.current_file_;
+      this.current_line_ = inst.line;
+      if (inst.file.length > 0) this.current_file_ = inst.file;
+      this.expandTypeRefsStmt(inst);
+      this.current_line_ = savedLine;
+      this.current_file_ = savedFile;
+    }
+    this.generic_instances_.push(inst);
+    // Register the signature before resolving the body so a recursive generic
+    // call resolves against the instantiation already in flight.
+    this.collectFunctionsStmt(inst);
+    this.instantiated_.add(name);
+    this.resolveFunctionDecl(inst);
+    return name;
   }
 
   // ---- error construction ----

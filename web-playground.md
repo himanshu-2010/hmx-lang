@@ -10,8 +10,8 @@ Hard constraints from the project:
 - **Vite + React + TypeScript, nothing else.** No backend server, no WASM, no
   CodeMirror/Monaco unless we decide the editor shell needs it (see "Editor").
 - The only source of truth for language behavior is the native compiler in
-  `src/`. The web compiler must pass **the same 452 test cases** (64 integration
-  fixtures, 245 negative, 143 stress) before it ships — parity is the contract.
+  `src/`. The web compiler must pass **the same 463 test cases** (65 integration
+  fixtures, 254 negative, 144 stress) before it ships — parity is the contract.
 - `.hmx` extension and the error-message strings (grep-able by the negative
   suite) must match the native compiler so the negative suite can run verbatim.
 
@@ -58,7 +58,7 @@ no user need here. So the web compiler replaces the backend, not the front half.
 Key decisions:
 
 1. **Parser: drive the real bison LALR table, don't hand-write a parser.**
-   The grammar has 6 deliberate shift/reduce conflicts whose resolution
+   The grammar has 9 deliberate shift/reduce conflicts whose resolution
    (shift, always) *is* part of the language. A hand-written recursive-descent
    parser would silently re-decide those ambiguities and drift. Instead:
    - Add a small build step (`tools/extract_parser_table.py` or a bison

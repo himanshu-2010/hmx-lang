@@ -1,14 +1,14 @@
 # HMX Transpiler — Test Execution Report
 
-**Date:** 2026-10-15  
+**Date:** 2026-10-19  
 **Target Project:** HMX Transpiler (the `hmx-lang/` directory in this repo)  
-**Status:** ALL TESTS PASSED — native 485 / 485 (64 integration + 245 negative + 143 stress + 33 CLI); web-playground vitest 466 / 466 (451 parity + 15 app); valgrind ownership matrix + all fixtures 69 / 69; UBSan control gate 3 / 3; front-end fuzzer clean over 200k inputs (5 seeds); packaging gate 160 / 160 (manifests carry the real digests of the published v0.10.0 release; the installer no longer hands an unconfirmed package name to an AUR helper; the winget manifest is a valid three-file tree; the AUR manifest has been through a real `makepkg` build; the site pages — install, license, 404 and story — are gated against the repo they describe)
+**Status:** ALL TESTS PASSED — native 496 / 496 (65 integration + 254 negative + 144 stress + 33 CLI); web-playground vitest 477 / 477 (462 parity + 15 app); valgrind ownership matrix + all fixtures 70 / 70; UBSan control gate 3 / 3; front-end fuzzer clean; packaging gate 160 / 160 (manifests carry the real digests of the published v0.10.0 release; the installer no longer hands an unconfirmed package name to an AUR helper; the winget manifest is a valid three-file tree; the AUR manifest has been through a real `makepkg` build; the site pages — install, license, 404 and story — are gated against the repo they describe)
 
 ---
 
 ## Executive Summary
 
-A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **function types, higher-order calls, closures, non-local exit, cross-file modules, and Unicode identifiers**:
+A comprehensive, rigorous re-test was conducted against the HMX transpiler pipeline (Lexer → Parser → Type Resolver → Codegen → GCC) after incorporation of **function types, higher-order calls, closures, non-local exit, cross-file modules, Unicode identifiers, and generic functions**:
 1. **`foreach`**: `foreach (x in coll)` and `foreach (i, x in coll)` over arrays and text, value-copy loop variables, with `break`/`continue` support.
 2. **`input()`**: reads a stdin line as `text` (empty string at end of input).
 3. **Conversions**: `tostr`, `parse_int`, `parse_decimal` (runtime error + exit code 1 on malformed input).
@@ -34,12 +34,13 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 23. **Reference-counted memory (M15)**: `text`, arrays and closure environments are refcounted; `substring`/`slice` return shared immutable views pinned by refcount; array mutation forks copy-on-write; locals own, params borrow, and every generated temporary is paired with an exact `retain`/`release`. All 424 native + 408 web + 66 valgrind cases run clean under AddressSanitizer + LeakSanitizer.
 24. **Structs / enums / type aliases (M16)**: `alias NAME = TYPE`, `struct NAME { field: TYPE }`, and `enum NAME { VARIANT }` are real top-level declarations resolved in a pre-pass (so a type may be used before it is declared) in one flat namespace with functions and variables. Structs are C value types with per-field refcounted heap slots, enums are int-backed nominal ordinals, and aliases are transparent. A shallow web copy was observably wrong for nested aggregates (`shift(v, 3)` mutated the caller's value), so the web backend reproduces the C by-value copy with generated `_sd_cp_*` helpers. 32 new `m16_*` negative cases lock the error surface (type/field/variant resolution, nominal identity, operator restrictions, duplicate type and variant declarations, nested type decls).
 25. **Struct-parameter ownership (M16 follow-up)**: writing through a borrowed `struct` parameter (`fn f(p: Point) { p.x = 9 }`) was releasing storage the callee never owned — a heap-use-after-free, found by the new valgrind ownership-matrix cases and reproduced under ASan. The member-write lvalue now promotes a borrowed struct parameter to an owned copy before overwriting a slot; an array index in the chain stops the search, because the array owns its elements.
-26. **Valgrind ownership gate (run locally)**: valgrind 3.25.1 over the full matrix plus every fixture is **69/69** clean. The first run found that M16's new `alias` keyword silently broke an M15 test that used `alias` as a variable name; that is fixed and now locked by three reserved-keyword negatives.
+26. **Valgrind ownership gate (run locally)**: valgrind 3.25.1 over the full matrix plus every fixture is **70/70** clean. The first run found that M16's new `alias` keyword silently broke an M15 test that used `alias` as a variable name; that is fixed and now locked by three reserved-keyword negatives.
+27. **Generic functions (M17.1)**: `fn identity[T](x: T) -> T` and multi-parameter forms are declared, inferred at the **call site**, and **monomorphized** — each distinct inferred type-argument set produces its own concrete specialization (`__gen_<name>_<types>`), cloned from the template and resolved independently, with no constraints (a body is checked once per instantiation). Templates emit nothing and are erased after resolution; instantiation is reentrant-safe for recursion and mutual recursion. Nine `generics_*` negatives lock the diagnostic surface (conflicting inference, uninferrable parameter, wrong arity, use-as-value, duplicate parameter, default value, nested `fn`, variadic parameter, instantiation-only undefined type), and the web playground mirrors the clone-and-instantiate pass byte-for-byte.
 
 > [!IMPORTANT]
 > **Summary Statistics:**
-> - **Total Test Cases Executed:** 468 (native) + 452 (web) = 920
-> - **Passed:** 920
+> - **Total Test Cases Executed:** 496 (native) + 477 (web) = 973
+> - **Passed:** 973
 > - **Failed:** 0
 > - **Pass Rate:** 100%
 
@@ -58,7 +59,7 @@ A comprehensive, rigorous re-test was conducted against the HMX transpiler pipel
 
 ## Test Results by Category
 
-### 1. Integration Fixtures (64/64 Passed)
+### 1. Integration Fixtures (65/65 Passed)
 
 These tests compile HMX (`.hmx`) source files into native C binaries via GCC and verify clean execution and output correctness.
 
@@ -115,10 +116,11 @@ These tests compile HMX (`.hmx`) source files into native C binaries via GCC and
 | `cow_and_alias.hmx` | **[NEW]** COW + Alias | `let b = a` alias share (mutations visible); `slice` views fork on mutation (COW); push on a view after its source is alive; int + text element arrays | **PASS** |
 | `m16_structs_enums.hmx` | **[NEW]** Structs / Enums / Aliases | `struct` construction + nested field assignment, `enum` variants in arrays/`switch`, aliases (transparent + alias-of-enum), closures over structs, `foreach` over a struct field, function-typed fields, value-copy semantics | **PASS** |
 | `mod_m16_types` | **[NEW]** Module Types | Entry `use`s a module declaring a `struct`, an `enum`, and functions over them | **PASS** |
+| `generics.hmx` | **[NEW]** Generic Functions | `[T]` type parameters on `fn`; call-site inference; monomorphization over int/text/decimal/bool, `[T]` arrays, tuples, two type parameters, nested `identity(identity(x))`, recursion, mutual recursion, a struct argument, and a function-typed parameter | **PASS** |
 
 ---
 
-### 2. Negative & Error Handling Suite (245/245 Passed)
+### 2. Negative & Error Handling Suite (254/254 Passed)
 
 These tests verify that invalid HMX constructs are caught at compile-time by the parser or type resolver, exiting with code `1` and producing accurate error diagnostics.
 
@@ -291,10 +293,19 @@ These tests verify that invalid HMX constructs are caught at compile-time by the
 | `destruct_array_immutable_target` | **[NEW]** Immutable Target | `(c, a) = [5, 6]` with `const c` | `cannot modify immutable variable 'c'` | **PASS** |
 | `destruct_text_multiassign_mismatch` | **[NEW]** Text Multi-Assign Mismatch | `(x, y) = "ab"` on int vars | `cannot assign char to int` | **PASS** |
 | `destruct_text_rest_target_mismatch` | **[NEW]** Text Rest Target Mismatch | `(a, ...r) = "hi there"` with `r: [int]` | `cannot assign text to array of int` | **PASS** |
+| `generics_conflicting_inference` | **[NEW]** M17 Conflicting Inference | `pick(true, 1, "x")` infers `T` as both | `type parameter 'T' of generic function 'choose' inferred as both int and text` | **PASS** |
+| `generics_unbound_type_param` | **[NEW]** M17 Uninferrable Parameter | `fn make[T]() -> T` called with no argument to bind `T` | `cannot infer type parameter 'T' for generic function 'make'` | **PASS** |
+| `generics_arity_mismatch` | **[NEW]** M17 Wrong Arity | `identity(1, 2)` on a one-parameter generic | `generic function 'identity' expects 1 argument, got 2` | **PASS** |
+| `generics_as_value` | **[NEW]** M17 Use as Value | `let f = identity` (type arguments ambiguous) | `generic function 'identity' cannot be used as a value` | **PASS** |
+| `generics_duplicate_type_param` | **[NEW]** M17 Duplicate Parameter | `fn f[T, T](x: T)` | `duplicate type parameter 'T' in function 'f'` | **PASS** |
+| `generics_default_param` | **[NEW]** M17 Default Value | `fn f[T](x: T, y: int = 3)` | `parameter 'y' of generic function 'f' cannot have a default value` | **PASS** |
+| `generics_nested_fn` | **[NEW]** M17 Nested `fn` | a `fn` declaration inside a generic template | `generic function 'f' cannot declare nested functions` | **PASS** |
+| `generics_name_collision` | **[NEW]** M17 Name Collision | generic `f` and a plain `f` in one program | `function 'f' is already declared` | **PASS** |
+| `generics_undefined_type` | **[NEW]** M17 Instantiation-Only Error | a template parameter typed `Missing`, resolved only at instantiation | `undefined type 'Missing'` | **PASS** |
 
 ---
 
-### 3. Stress, Output & Runtime Semantics Suite (143/143 Passed)
+### 3. Stress, Output & Runtime Semantics Suite (144/144 Passed)
 
 These tests verify exact runtime output matching and process exit code propagation under complex recursive algorithms, `while` loops, string concatenation chains, stdin-driven programs, conversions, and variadic output.
 
@@ -401,10 +412,11 @@ These tests verify exact runtime output matching and process exit code propagati
 | `curry_void_lambda_statement` | **[NEW]** Currying | void lambda called as a statement | `9` | **PASS** |
 | `curry_hof_partial` | **[NEW]** Currying | partial application passed as a HOF argument | `42` | **PASS** |
 | `curry_exit_chain` | **[NEW]** Currying | exit code via a chained partial `inc(41)` | Exit Code: `42` | **PASS** |
+| `m17_generic_functions` | **[NEW]** Generic Functions | `identity[T]` over int/text/bool, `pick[T]`, nested `twice(x)`, `first[T]` on `[T]`, decimal specialization — each call monomorphized to its own specialization | `5\nhmx\n1\n1\ny\n2.500000\n10 30\nbeta` | **PASS** |
 
 ---
 
-### 4. CLI Driver Suite (24 CLI tests via `tests/run_cli_tests.sh`)
+### 4. CLI Driver Suite (33 CLI tests via `tests/run_cli_tests.sh`)
 
 | Test | Command | Expected Result | Status |
 | :--- | :--- | :--- | :---: |
@@ -413,7 +425,7 @@ These tests verify exact runtime output matching and process exit code propagati
 | `-keep-c` Flag | `run <file.hmx> -keep-c` | Intermediate `build_temp.c` retained | **PASS** |
 | Exit-code passthrough | `hmx run exit42.hmx` | Program exit code = 42 | **PASS** |
 | Build + `-o` | `hmx build <f> -o hello` | Binary built, runs, output matches | **PASS** |
-| Version | `hmx --version` / `-v` | Prints `hmx 0.9.0` | **PASS** |
+| Version | `hmx --version` / `-v` | Prints `hmx 0.10.0` | **PASS** |
 | Help | `hmx --help` / `-h` | Prints usage incl. `run` | **PASS** |
 | Scaffold (M9) | `hmx new greet` | Creates `greet.hmx` | **PASS** |
 | No overwrite | `hmx new greet` (exists) | Exit 1 "already exists" | **PASS** |
@@ -1010,3 +1022,69 @@ stack overflow (now a `HMX_MAX_NESTING` = 200 guard in the resolver).
 - **Fuzzer:** `./tests/fuzz/run_fuzz.sh` — 200,000 inputs over five seeds, no
   crash; `--selftest` proves the harness reports a crashing input.
 - **Valgrind:** 69/69 (unchanged). **Packaging:** 160/160 (unchanged).
+
+## M17.1 generic functions re-run (2026-10-19)
+
+Full re-verification after the first half of the generics milestone (SYNTAX.md
+§20, `docs/adr/0002-generics-monomorphization.md`): generic **functions** went
+from design text to working, monomorphized declarations in both backends.
+
+- **Syntax and grammar.** A type parameter is declared in `[ ]` after the
+  declaration name (`fn identity[T](x: T) -> T`, `fn pair[A, B](…)`). The new
+  `opt_type_params` / `type_param_list` productions sit at the **end** of
+  `parser.y` so the existing rule numbers (0–179) stay stable; only the four
+  `fn_decl` RHSs changed, plus four new rules. Bison is still **9 shift/reduce
+  conflicts across 7 states** — no new conflicts. Web `tables.json` regenerated
+  (184 rules) and the `actions.ts` rule metadata + `A[125..183]` updated.
+- **A type parameter is a name, not a type.** The parser emits `T` as an
+  ordinary named-type reference (`TypeDesc{type=Unknown, type_name="T"}`); the
+  resolver knows which names are parameters. Every type position — annotation,
+  parameter, return, tuple member, array element, function type — therefore
+  works unchanged, and `T` shadows a real type of the same name.
+- **Templates are collected, never resolved.** Pass 1 registers generic
+  declarations in a separate table (not the function table), so a template has
+  no symbol and emits no code; `expand_type_refs_stmt` / `resolve_stmt` skip
+  them.
+- **Instantiation is clone → substitute → resolve, on demand.** A call performs
+  inference over the argument descriptors, mangles a key, and on the first sight
+  of that key deep-clones the template (`clone_stmt`/`clone_expr`), substitutes
+  the type parameters, expands type refs, collects the instantiated function,
+  and resolves it. The instantiation is registered **before** its body resolves,
+  so recursion and mutual recursion terminate. Specializations are appended to
+  `program.statements`; templates are erased at the end of `resolve()`. Codegen
+  needed one change — let the `__gen_<name>_<types>` mangled names through
+  `safe_name`.
+- **Web parity was the subtle half.** `deepCloneAst` in `ast.ts` is a
+  node-by-node port of the native clone. A blanket reflective deep copy failed
+  with a stack overflow: `analyzeNonlocalExits` had already set the `nl_owner`
+  back-pointer on the template's inner statements, forming a **cycle** the
+  reflective walk could not see. The native clone builds fresh nodes and never
+  copies that bookkeeping, so the web mirror now copies the semantic fields
+  explicitly (leaving bookkeeping at its default) instead of reflecting. All
+  error strings are shared verbatim between the two backends.
+- **Locked diagnostics (9 negatives, both backends):** conflicting inference
+  (`T` inferred as both `int` and `text`), an uninferrable parameter, wrong
+  arity on a generic call, using a generic function as a value, a duplicate
+  type parameter, a default value on a generic parameter, a nested `fn` inside a
+  template, a variadic generic parameter, and an undefined type that only
+  surfaces at instantiation.
+- **Tests:** fixture `generics.hmx` (int/text/decimal/bool specializations,
+  `[T]` arrays, tuples, two type parameters, nested `identity(identity(x))`,
+  recursion, mutual recursion, a struct argument, a function-typed parameter);
+  integration `generics.hmx`; stress `m17_generic_functions`; 9 negatives
+  `generics_*`.
+- **Native:** integration **65/65**, negative **254/254**, stress & output
+  **144/144**, CLI **33/33** — all green (**496/496**), re-run under
+  `HMX_ASAN=1` (AddressSanitizer + LeakSanitizer) clean on the integration and
+  stress suites.
+- **Web parity (1:1):** parity data regenerated via `gen-data.mts`:
+  `stress 144 = 0 failures; negative 250 = 0; integration 65 = 0` (the native
+  negative script also has 4 `test_error_file` cases the parity extractor does
+  not read, so it reports 250 of 254).
+- **Web:** vitest **477/477** (**462** parity + 15 app), `tsc` ✓, oxlint 0
+  errors (pre-existing UI warnings only).
+- **UBSan:** control gate **3/3** (unchanged); integration + stress green under
+  the hook. **Fuzzer:** `./tests/fuzz/run_fuzz.sh 30000` (seed 1) — no crash.
+- **Valgrind:** `./tests/run_valgrind_tests.sh --fixtures` — **70/70** clean
+  (14 ownership-matrix cases + all **56** fixtures; the new `generics.hmx`
+  fixture included). **Packaging:** 160/160 (unchanged).

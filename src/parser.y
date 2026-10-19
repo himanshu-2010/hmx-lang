@@ -70,6 +70,7 @@ Program* g_program = nullptr;
 %type <dpat> pattern_item
 %type <tdesc> param_type named_ref
 %type <tlist> fn_type_params
+%type <strlist> type_param_list opt_type_params
 %type <fields> struct_fields
 %type <strlist> enum_variants
 %type <program> program
@@ -1234,43 +1235,12 @@ param
     ;
 
 fn_decl
-    : FN IDENTIFIER '(' ')' '{' stmt_list '}'
+    : FN IDENTIFIER opt_type_params '(' ')' '{' stmt_list '}'
         {
             auto* f = new FunctionDecl();
             f->name = $2;
-            for (auto& s : *$6) {
-                f->body.push_back(std::move(s));
-            }
-            delete $6;
-            f->has_return_type = false;
-            f->line = yylineno;
-            free($2);
-            $$ = f;
-        }
-    | FN IDENTIFIER '(' ')' ARROW param_type '{' stmt_list '}'
-        {
-            auto* f = new FunctionDecl();
-            f->name = $2;
-            f->has_return_type = true;
-            f->return_type = $6->type;
-            f->return_elem = $6->elem ? *$6->elem : TypeDesc{};
-            f->return_desc = *$6;
-            if (f->return_type == TypeKind::Tuple) f->return_tuple_members = std::move($6->tuple_members);
-            delete $6;
-            for (auto& s : *$8) {
-                f->body.push_back(std::move(s));
-            }
-            delete $8;
-            f->line = yylineno;
-            free($2);
-            $$ = f;
-        }
-    | FN IDENTIFIER '(' param_list ')' '{' stmt_list '}'
-        {
-            auto* f = new FunctionDecl();
-            f->name = $2;
-            f->params = std::move(*$4);
-            delete $4;
+            f->type_params = std::move(*$3);
+            delete $3;
             for (auto& s : *$7) {
                 f->body.push_back(std::move(s));
             }
@@ -1280,12 +1250,12 @@ fn_decl
             free($2);
             $$ = f;
         }
-    | FN IDENTIFIER '(' param_list ')' ARROW param_type '{' stmt_list '}'
+    | FN IDENTIFIER opt_type_params '(' ')' ARROW param_type '{' stmt_list '}'
         {
             auto* f = new FunctionDecl();
             f->name = $2;
-            f->params = std::move(*$4);
-            delete $4;
+            f->type_params = std::move(*$3);
+            delete $3;
             f->has_return_type = true;
             f->return_type = $7->type;
             f->return_elem = $7->elem ? *$7->elem : TypeDesc{};
@@ -1296,6 +1266,45 @@ fn_decl
                 f->body.push_back(std::move(s));
             }
             delete $9;
+            f->line = yylineno;
+            free($2);
+            $$ = f;
+        }
+    | FN IDENTIFIER opt_type_params '(' param_list ')' '{' stmt_list '}'
+        {
+            auto* f = new FunctionDecl();
+            f->name = $2;
+            f->type_params = std::move(*$3);
+            delete $3;
+            f->params = std::move(*$5);
+            delete $5;
+            for (auto& s : *$8) {
+                f->body.push_back(std::move(s));
+            }
+            delete $8;
+            f->has_return_type = false;
+            f->line = yylineno;
+            free($2);
+            $$ = f;
+        }
+    | FN IDENTIFIER opt_type_params '(' param_list ')' ARROW param_type '{' stmt_list '}'
+        {
+            auto* f = new FunctionDecl();
+            f->name = $2;
+            f->type_params = std::move(*$3);
+            delete $3;
+            f->params = std::move(*$5);
+            delete $5;
+            f->has_return_type = true;
+            f->return_type = $8->type;
+            f->return_elem = $8->elem ? *$8->elem : TypeDesc{};
+            f->return_desc = *$8;
+            if (f->return_type == TypeKind::Tuple) f->return_tuple_members = std::move($8->tuple_members);
+            delete $8;
+            for (auto& s : *$10) {
+                f->body.push_back(std::move(s));
+            }
+            delete $10;
             f->line = yylineno;
             free($2);
             $$ = f;
@@ -1602,6 +1611,37 @@ args
         {
             auto* v = new std::vector<ExprPtr>();
             v->push_back(ExprPtr($1));
+            $$ = v;
+        }
+    ;
+
+// M17 generics: the `[T, U]` list of type parameters declared after a function
+// name. Absent for ordinary functions; a non-empty list marks the declaration
+// as a monomorphized template. Defined last so the productions above keep the
+// rule numbers the web `actions.ts` table was built against.
+opt_type_params
+    : /* empty */
+        {
+            $$ = new std::vector<std::string>();
+        }
+    | '[' type_param_list ']'
+        {
+            $$ = $2;
+        }
+    ;
+
+type_param_list
+    : type_param_list ',' IDENTIFIER
+        {
+            $1->push_back(std::string($3));
+            free($3);
+            $$ = $1;
+        }
+    | IDENTIFIER
+        {
+            auto* v = new std::vector<std::string>();
+            v->push_back(std::string($1));
+            free($1);
             $$ = v;
         }
     ;

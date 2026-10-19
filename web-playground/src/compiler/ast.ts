@@ -652,6 +652,9 @@ export class FunctionDecl implements Statement {
   nl_owner: FunctionDecl | null = null;
   file = "";
   is_lambda = false;
+  /** M17: `[T, U]` type-parameter list. Non-empty marks a monomorphized
+   * template (never resolved or emitted directly). */
+  type_params: string[] = [];
   params: Param[] = [];
   return_type: TypeKind = TypeKind.Unknown;
   return_elem: TypeDesc = mkType(TypeKind.Unknown);
@@ -912,4 +915,316 @@ export function astMaxDepth(program: Program): { depth: number; line: number } {
     }
   }
   return { depth: bestDepth, line: bestStmtLine };
+}
+
+/**
+ * M17: structural deep copy of an AST subtree, used to monomorphize generic
+ * templates. Templates are never resolved, so every resolver-synthesized field
+ * is already at its default and a blanket copy is equivalent to the native
+ * `clone_stmt` (which additionally resets that default bookkeeping). The
+ * prototype is preserved so `instanceof`/`kind` checks keep working.
+ */
+/**
+ * M17: structural copy of an AST subtree, used to monomorphize generic
+ * templates. Mirrors the native `clone_stmt`/`clone_expr` in src/ast.cpp: only
+ * semantic fields are copied — resolver-synthesized bookkeeping (and the
+ * `nl_owner` back-pointer, which would form a cycle) is left at its default.
+ * `line` is preserved so diagnostics on instantiated code cite the template.
+ */
+export function deepCloneAst<T>(node: T): T {
+  if (isStatement(node)) return cloneStmt(node as unknown as Statement) as unknown as T;
+  if (isExpression(node)) return cloneExpr(node as unknown as Expression) as unknown as T;
+  if (node && typeof node === "object" && typeof (node as unknown as TypeDesc).type === "number") {
+    return cloneTypeDesc(node as unknown as TypeDesc) as unknown as T;
+  }
+  return node;
+}
+
+function cloneTypeDesc(d: TypeDesc): TypeDesc {
+  return {
+    type: d.type,
+    elem: d.elem ? cloneTypeDesc(d.elem) : null,
+    tuple_members: d.tuple_members.map(cloneTypeDesc),
+    fn_info: d.fn_info
+      ? { params: d.fn_info.params.map(cloneTypeDesc), ret: cloneTypeDesc(d.fn_info.ret) }
+      : null,
+    type_name: d.type_name,
+  };
+}
+
+function cloneParam(p: Param): Param {
+  const q = mkParam(p.name);
+  q.type = p.type;
+  q.elem_desc = cloneTypeDesc(p.elem_desc);
+  q.tuple_members = p.tuple_members.map(cloneTypeDesc);
+  q.desc = cloneTypeDesc(p.desc);
+  q.default_value = p.default_value ? cloneExpr(p.default_value) : null;
+  q.variadic = p.variadic;
+  return q;
+}
+
+function clonePattern(p: DestructPattern): DestructPattern {
+  const q = mkPattern(p.name);
+  q.is_rest = p.is_rest;
+  q.nested = p.nested;
+  q.items = p.items.map(clonePattern);
+  return q;
+}
+
+function isExpression(node: unknown): node is Expression {
+  return (
+    node instanceof NumberLiteral ||
+    node instanceof DecimalLiteral ||
+    node instanceof StringLiteral ||
+    node instanceof CharLiteral ||
+    node instanceof BoolLiteral ||
+    node instanceof Identifier ||
+    node instanceof BinaryExpr ||
+    node instanceof NotExpr ||
+    node instanceof NegExpr ||
+    node instanceof ConditionalExpr ||
+    node instanceof CastExpr ||
+    node instanceof CallExpr ||
+    node instanceof ArrayLiteral ||
+    node instanceof TupleLiteral ||
+    node instanceof ArrayIndexExpr ||
+    node instanceof MemberAccessExpr ||
+    node instanceof LambdaExpr
+  );
+}
+
+function isStatement(node: unknown): node is Statement {
+  return (
+    node instanceof TypeDecl ||
+    node instanceof VarDecl ||
+    node instanceof AssignStmt ||
+    node instanceof MultiAssignStmt ||
+    node instanceof DestructDecl ||
+    node instanceof ArrayAssignStmt ||
+    node instanceof ElementAssignStmt ||
+    node instanceof MemberAssignStmt ||
+    node instanceof PrintStmt ||
+    node instanceof LoopStmt ||
+    node instanceof WhileStmt ||
+    node instanceof ForStmt ||
+    node instanceof DoWhileStmt ||
+    node instanceof ForeachStmt ||
+    node instanceof IfStmt ||
+    node instanceof SwitchStmt ||
+    node instanceof FunctionDecl ||
+    node instanceof ReturnStmt ||
+    node instanceof BreakStmt ||
+    node instanceof ContinueStmt ||
+    node instanceof ExprStmt
+  );
+}
+
+function cloneExpr<T extends Expression>(e: T): T {
+  if (e instanceof NumberLiteral) return new NumberLiteral(e.value) as unknown as T;
+  if (e instanceof DecimalLiteral) return new DecimalLiteral(e.value) as unknown as T;
+  if (e instanceof StringLiteral) return new StringLiteral(e.value) as unknown as T;
+  if (e instanceof CharLiteral) return new CharLiteral(e.value) as unknown as T;
+  if (e instanceof BoolLiteral) return new BoolLiteral(e.value) as unknown as T;
+  if (e instanceof Identifier) return new Identifier(e.name) as unknown as T;
+  if (e instanceof BinaryExpr) {
+    return new BinaryExpr(e.op, e.ekind, cloneExpr(e.left), cloneExpr(e.right)) as unknown as T;
+  }
+  if (e instanceof NotExpr) return new NotExpr(cloneExpr(e.operand)) as unknown as T;
+  if (e instanceof NegExpr) return new NegExpr(cloneExpr(e.operand)) as unknown as T;
+  if (e instanceof ConditionalExpr) {
+    return new ConditionalExpr(
+      cloneExpr(e.condition),
+      cloneExpr(e.then_expr),
+      cloneExpr(e.else_expr)
+    ) as unknown as T;
+  }
+  if (e instanceof CastExpr) return new CastExpr(e.target_type, cloneExpr(e.operand)) as unknown as T;
+  if (e instanceof CallExpr) {
+    return new CallExpr(
+      e.name,
+      e.args.map((a) => cloneExpr(a))
+    ) as unknown as T;
+  }
+  if (e instanceof ArrayLiteral) {
+    return new ArrayLiteral(e.elements.map(cloneExpr)) as unknown as T;
+  }
+  if (e instanceof TupleLiteral) {
+    return new TupleLiteral(e.values.map(cloneExpr)) as unknown as T;
+  }
+  if (e instanceof ArrayIndexExpr) {
+    const base = e.base ? cloneExpr(e.base) : null;
+    return new ArrayIndexExpr(e.name, cloneExpr(e.index), base) as unknown as T;
+  }
+  if (e instanceof MemberAccessExpr) {
+    return new MemberAccessExpr(cloneExpr(e.base), e.member) as unknown as T;
+  }
+  if (e instanceof LambdaExpr) {
+    const out = new LambdaExpr();
+    out.params = e.params.map(cloneParam);
+    out.has_return_type = e.has_return_type;
+    out.return_type = e.return_type;
+    out.return_elem = cloneTypeDesc(e.return_elem);
+    out.return_tuple_members = e.return_tuple_members.map(cloneTypeDesc);
+    out.return_desc = cloneTypeDesc(e.return_desc);
+    out.body = e.body.map(cloneStmt);
+    out.line = e.line;
+    return out as unknown as T;
+  }
+  throw new Error(`deepCloneAst: cannot clone expression ${(e as object).constructor.name}`);
+}
+
+function cloneStmt<T extends Statement>(s: T): T {
+  if (s instanceof VarDecl) {
+    const out = new VarDecl(s.name, cloneExpr(s.initializer));
+    out.file = s.file;
+    out.annotation = s.annotation;
+    out.elem_desc = cloneTypeDesc(s.elem_desc);
+    out.tuple_members = s.tuple_members.map(cloneTypeDesc);
+    out.annotation_desc = cloneTypeDesc(s.annotation_desc);
+    out.has_annotation = s.has_annotation;
+    out.is_mutable = s.is_mutable;
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof AssignStmt) {
+    const out = new AssignStmt(s.name, s.op, s.rhs ? cloneExpr(s.rhs) : null);
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof MultiAssignStmt) {
+    const out = new MultiAssignStmt(s.patterns.map(clonePattern), cloneExpr(s.rhs));
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof DestructDecl) {
+    const out = new DestructDecl(s.patterns.map(clonePattern), cloneExpr(s.rhs));
+    out.is_mutable = s.is_mutable;
+    out.file = s.file;
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof ArrayAssignStmt) {
+    const out = new ArrayAssignStmt(s.name, cloneExpr(s.index), cloneExpr(s.rhs));
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof ElementAssignStmt) {
+    const out = new ElementAssignStmt(cloneExpr(s.target) as ArrayIndexExpr, cloneExpr(s.rhs));
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof MemberAssignStmt) {
+    const out = new MemberAssignStmt(
+      cloneExpr(s.base),
+      s.member,
+      s.op,
+      s.rhs ? cloneExpr(s.rhs) : null
+    );
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof PrintStmt) {
+    const out = new PrintStmt(s.args.map(cloneExpr));
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof LoopStmt) {
+    const out = new LoopStmt(cloneExpr(s.count), s.body.map(cloneStmt));
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof WhileStmt) {
+    const out = new WhileStmt(cloneExpr(s.condition), s.body.map(cloneStmt));
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof ForStmt) {
+    const out = new ForStmt(
+      cloneStmt(s.init),
+      cloneExpr(s.condition),
+      cloneStmt(s.update),
+      s.body.map(cloneStmt)
+    );
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof DoWhileStmt) {
+    const out = new DoWhileStmt(s.body.map(cloneStmt), cloneExpr(s.condition));
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof ForeachStmt) {
+    const out = new ForeachStmt(
+      s.value_name,
+      s.index_name,
+      cloneExpr(s.iterable),
+      s.body.map(cloneStmt)
+    );
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof IfStmt) {
+    const out = new IfStmt(cloneExpr(s.condition), s.then_body.map(cloneStmt), s.else_body.map(cloneStmt));
+    out.has_else = s.has_else;
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof SwitchStmt) {
+    const out = new SwitchStmt(
+      cloneExpr(s.value),
+      s.cases.map((c) => ({
+        value: c.value ? cloneExpr(c.value) : null,
+        body: c.body.map(cloneStmt),
+        is_default: c.is_default,
+      }))
+    );
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof FunctionDecl) {
+    const out = new FunctionDecl(s.name);
+    out.file = s.file;
+    out.type_params = s.type_params.slice();
+    out.is_lambda = s.is_lambda;
+    out.params = s.params.map(cloneParam);
+    out.return_type = s.return_type;
+    out.return_elem = cloneTypeDesc(s.return_elem);
+    out.return_tuple_members = s.return_tuple_members.map(cloneTypeDesc);
+    out.return_desc = cloneTypeDesc(s.return_desc);
+    out.has_return_type = s.has_return_type;
+    out.body = s.body.map(cloneStmt);
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof ReturnStmt) {
+    const out = new ReturnStmt(s.values.map(cloneExpr));
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof BreakStmt) {
+    const out = new BreakStmt();
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof ContinueStmt) {
+    const out = new ContinueStmt();
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof ExprStmt) {
+    const out = new ExprStmt(cloneExpr(s.expr));
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof TypeDecl) {
+    const out = new TypeDecl(s.name);
+    out.tdecl_kind = s.tdecl_kind;
+    out.file = s.file;
+    out.alias_target = cloneTypeDesc(s.alias_target);
+    out.fields = s.fields.map((f) => ({ name: f.name, desc: cloneTypeDesc(f.desc) }));
+    out.variants = s.variants.slice();
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  throw new Error(`deepCloneAst: cannot clone statement ${(s as object).constructor.name}`);
 }

@@ -42,6 +42,15 @@ struct Symbol {
     TypeDesc desc = {};                         // full descriptor (Function etc.)
 };
 
+// M17: a generic function template (`fn f[T](x: T) -> T`). The declaration is
+// never resolved or emitted directly; each call site infers concrete type
+// arguments, clones the template with the parameters substituted, and resolves
+// and emits the resulting monomorphic instantiation.
+struct GenericTemplate {
+    FunctionDecl* decl = nullptr;
+    std::set<std::string> type_params;
+};
+
 class TypeResolver {
 public:
     void resolve(Program& program);
@@ -53,6 +62,12 @@ private:
     std::vector<std::unordered_map<std::string, Symbol>> scopes_;
     std::unordered_map<std::string, FunctionSig> functions_;
     std::unordered_map<std::string, FunctionDecl*> fn_decls_;
+    // M17 generics. Templates live in their own table (they never enter
+    // functions_/fn_decls_); instantiated clones are owned here and spliced
+    // into the program at the end of resolve().
+    std::unordered_map<std::string, GenericTemplate> generic_fns_;
+    std::unordered_map<std::string, FunctionDecl*> instantiated_;  // mangled name -> clone
+    std::vector<std::unique_ptr<FunctionDecl>> generic_instances_; // ownership of clones
     std::vector<std::vector<std::unordered_map<std::string, Symbol>>> outer_scope_stack_;
     // Parallel to outer_scope_stack_ (aligned 1:1): the function owning each
     // entry's scope group (nullptr for the top-level/main group). M13 uses it
@@ -139,6 +154,28 @@ private:
     bool is_loop_stmt(const Statement* stmt) const;
     void require_nonlocal_call(const std::string& fname, const FunctionDecl* cdecl, int line);
     TypeKind infer_from_literal(Expression* expr);
+
+    // --- M17 generics: monomorphization -------------------------------------
+    void register_generic_template(FunctionDecl* fn);
+    bool body_has_nested_fn(const std::vector<StmtPtr>& body) const;
+    std::string monomorphize_call(CallExpr* call, GenericTemplate& tmpl);
+    std::string instantiate_generic(GenericTemplate& tmpl,
+                                    const std::unordered_map<std::string, TypeDesc>& bind,
+                                    int line_no);
+    void unify_type_params(const TypeDesc& param, const TypeDesc& arg,
+                           const std::set<std::string>& type_params,
+                           std::unordered_map<std::string, TypeDesc>& bind,
+                           const std::string& fname, int line_no);
+    TypeDesc substitute_desc(const TypeDesc& d,
+                             const std::unordered_map<std::string, TypeDesc>& bind);
+    void substitute_stmt(Statement* stmt,
+                         const std::unordered_map<std::string, TypeDesc>& bind);
+    void substitute_expr(Expression* expr,
+                         const std::unordered_map<std::string, TypeDesc>& bind);
+    std::string mangle_generic(const std::string& fname,
+                               const std::vector<std::string>& type_params,
+                               const std::unordered_map<std::string, TypeDesc>& bind) const;
+    static std::string mangle_desc(const TypeDesc& d);
 
     CompileError err(int line, const std::string& msg);                    // tags current_file_ (entry-aware)
     CompileError err(int line, const std::string& msg, const std::string& file); // explicit file (entry-aware)

@@ -389,6 +389,12 @@ struct CapturedVar {
 struct FunctionDecl : Statement {
     std::string name;
     std::string file;                            // source .hmx file (filled by module loader)
+    // M17 generics: the `[T, U]` type-parameter list declared after the name.
+    // Non-empty marks this declaration as a *template*: it is never resolved
+    // or emitted directly; each call site infers concrete type arguments,
+    // clones the template with `T` substituted, and resolves/emits the
+    // resulting monomorphic instantiation. Empty for ordinary functions.
+    std::vector<std::string> type_params;
     bool is_lambda = false;                      // synthesized from a lambda expression (resolver)
     struct Param {
         std::string name;
@@ -466,6 +472,17 @@ struct Program : ASTNode {
     // long left-recursive expression chain) does not overflow the C stack.
     ~Program() override;
 };
+
+// Deep copies used by M17 generic monomorphization: each instantiation needs
+// its own mutable copy of the template body, because resolution rewrites the
+// tree in place (resolved_type, elem descriptors, hoisted-lambda links...).
+// The clone copies structure and type descriptors but deliberately resets
+// resolver-synthesized bookkeeping (resolved types, loop/non-local ids,
+// consecutive ASTNode state) so the copy resolves from a pristine state.
+// Recursion is bounded because callers run it only after the HMX_MAX_NESTING
+// guard has accepted the program. Returns null for a null input.
+StmtPtr clone_stmt(const Statement* s);
+ExprPtr clone_expr(const Expression* e);
 
 // Iterative free helpers for the bison semantic-value containers whose
 // destructors would otherwise recurse through their elements.

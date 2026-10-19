@@ -2167,6 +2167,83 @@ test_error "runtime_parse_decimal_invalid" \
     }' \
     "parse_decimal: invalid decimal 'abc'"
 
+# --- M17 generic functions -------------------------------------------------
+# Every call must pin down each type parameter from concrete argument types.
+
+test_error "generics_conflicting_inference" \
+    'fn choose[T](flag: bool, a: T, b: T) -> T {
+        return a
+    }
+    fn main() {
+        print(choose(true, 1, "x"))
+    }' \
+    "type parameter 'T' of generic function 'choose' inferred as both"
+
+test_error "generics_unbound_type_param" \
+    'fn make[T]() -> T {
+        return 1
+    }
+    fn main() {
+        let x = make()
+    }' \
+    "cannot infer type parameter 'T' for generic function 'make'"
+
+test_error "generics_arity_mismatch" \
+    'fn identity[T](x: T) -> T {
+        return x
+    }
+    fn main() {
+        print(identity(1, 2))
+    }' \
+    "generic function 'identity' expects 1 argument, got 2"
+
+test_error "generics_as_value" \
+    'fn identity[T](x: T) -> T {
+        return x
+    }
+    fn main() {
+        let f = identity
+        print(f(1))
+    }' \
+    "generic function 'identity' cannot be used as a value"
+
+test_error "generics_duplicate_type_param" \
+    'fn f[T, T](x: T) -> T {
+        return x
+    }
+    fn main() { print(1) }' \
+    "duplicate type parameter 'T' in function 'f'"
+
+test_error "generics_default_param" \
+    'fn f[T](x: T, y: int = 3) -> T {
+        return x
+    }
+    fn main() { print(1) }' \
+    "cannot have a default value"
+
+test_error "generics_nested_fn" \
+    'fn f[T](x: T) -> T {
+        fn inner(z: int) -> int { return z }
+        return x
+    }
+    fn main() { print(1) }' \
+    "generic function 'f' cannot declare nested functions"
+
+test_error "generics_name_collision" \
+    'fn f[T](x: T) -> T { return x }
+    fn f(x: int) -> int { return x }
+    fn main() { print(1) }' \
+    "function 'f' is already declared"
+
+test_error "generics_undefined_type" \
+    'fn f[T](x: Missing) -> T {
+        return 1
+    }
+    fn main() {
+        print(f(1))
+    }' \
+    "undefined type 'Missing'"
+
 # Deep nesting: the guard at the top of TypeResolver::resolve rejects any program
 # whose AST is deeper than HMX_MAX_NESTING (200) *before* a recursive walk runs,
 # so an arbitrarily deep program is a clean diagnostic, never a C-stack overflow

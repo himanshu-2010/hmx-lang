@@ -34,7 +34,7 @@ standard C reference documentation, but uses HMX's own syntax, types, and conven
 17. [Type Aliases](#17-type-aliases-spec)
 18. [Structs](#18-structs-spec)
 19. [Enums](#19-enums-spec)
-20. [Generics](#20-generics-spec)
+20. [Generics](#20-generics-implemented)
 
 ---
 
@@ -2085,7 +2085,13 @@ Rules:
 
 ---
 
-## 20. Generics **[Spec]**
+## 20. Generics **[Implemented]**
+
+> **Implementation status.** Generic **functions** are implemented end-to-end
+> (M17.1): declaration, call-site inference, monomorphization, and the full
+> diagnostic surface. The generic **struct** forms (`struct Box[T] { … }`) and
+> instantiation in type position (`Box[int]`) are specified below but land in
+> **M17.3**; until then only the function forms compile.
 
 Generics let a function or type be written once and used with many different
 types. A **type parameter** is declared in `[ ]` right after the declaration's

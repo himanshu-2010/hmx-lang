@@ -297,3 +297,37 @@ prior fixtures, and lands one complete feature.
   `m16_*`. Grammar: 9 shift/reduce conflicts (up from 6 — `factor: IDENTIFIER`
   split into `postfix_index` + a call factor, so the indexing/call ambiguity
   is now counted per postfix state); 179 rules, 471 states, 46 nonterminals.
+- **M17.1 generic functions (SYNTAX.md §20, ADR 0002):** `fn f[T](x: T) -> T` and
+  multi-parameter forms are declared, inferred purely at the call site, and
+  **monomorphized** — each distinct inferred type-argument list is cloned and
+  resolved independently into a concrete function with a mangled name
+  (`__gen_<fname>_<type>`), then appended to the program; the template itself
+  emits no code. Design decisions:
+  - **Parser.** `[T]` after the declaration name reuses the existing type-bracket
+    syntax (`opt_type_params` / `type_param_list` at the end of the grammar, so
+    the 179 pre-existing rule numbers stay stable); a type parameter parses as a
+    named-type reference (`TypeKind::Unknown`, `type_name = "T"`) that the
+    resolver substitutes. Still 9 shift/reduce conflicts over 7 states.
+  - **Two-pass resolution.** Templates are skipped by `expand_type_refs` and
+    registered in a separate `generic_fns_` map (never in `functions_`/
+    `fn_decls_`, so they do not collide or emit prototypes). A call to a generic
+    name infers each type parameter from its argument descriptors, refuses a
+    conflict (`inferred as both int and text`) or an unknown type, then clones the
+    template (`clone_stmt`/`clone_expr` in `ast.cpp`), substitutes the type
+    descriptors, expands type refs, collects functions, and resolves the clone —
+    re-entrantly, so a recursive or mutually-recursive generic terminates on the
+    memoized instantiation key. Instantiations are appended to
+    `program.statements` and templates are erased at the end of `resolve()`.
+  - **Restrictions** (mirror on the web): no default or variadic parameters and
+    no nested `fn` inside a template; a generic is called by name (a bare value
+    use is an error); a call must pass exactly `params.size()` arguments.
+  - **Web mirror:** `deepCloneAst` in `ast.ts` is a faithful node-by-node port of
+    the native clone (it deliberately does *not* copy resolver bookkeeping, so
+    the `nl_owner` back-pointer cannot form a clone cycle); `resolver.ts` carries
+    the same template registry, inference, monomorphization, and diagnostics.
+    `tables.json` regenerated (184 rules).
+  - Native **496/496** (65 integration / 254 negative / 144 stress / 33 CLI);
+    web vitest **477/477** (462 parity + 15 app), `gen-data.mts` parity 0
+    failures; valgrind **70/70**; ASan+LSan and UBSan clean; fuzzer clean;
+    fixture `generics.hmx` + stress `m17_generic_functions` + 9 negatives
+    `generics_*`.

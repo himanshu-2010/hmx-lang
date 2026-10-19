@@ -3397,6 +3397,132 @@
       }
     },
     {
+      "name": "generics_conflicting_inference",
+      "kind": "negative",
+      "source": "fn choose[T](flag: bool, a: T, b: T) -> T {\n        return a\n    }\n    fn main() {\n        print(choose(true, 1, \"x\"))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type parameter 'T' of generic function 'choose' inferred as both",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: type mismatch: type parameter 'T' of generic function 'choose' inferred as both int and text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "generics_unbound_type_param",
+      "kind": "negative",
+      "source": "fn make[T]() -> T {\n        return 1\n    }\n    fn main() {\n        let x = make()\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot infer type parameter 'T' for generic function 'make'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: cannot infer type parameter 'T' for generic function 'make'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "generics_arity_mismatch",
+      "kind": "negative",
+      "source": "fn identity[T](x: T) -> T {\n        return x\n    }\n    fn main() {\n        print(identity(1, 2))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "generic function 'identity' expects 1 argument, got 2",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: generic function 'identity' expects 1 argument, got 2\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "generics_as_value",
+      "kind": "negative",
+      "source": "fn identity[T](x: T) -> T {\n        return x\n    }\n    fn main() {\n        let f = identity\n        print(f(1))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "generic function 'identity' cannot be used as a value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 6]: generic function 'identity' cannot be used as a value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "generics_duplicate_type_param",
+      "kind": "negative",
+      "source": "fn f[T, T](x: T) -> T {\n        return x\n    }\n    fn main() { print(1) }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "duplicate type parameter 'T' in function 'f'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: duplicate type parameter 'T' in function 'f'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "generics_default_param",
+      "kind": "negative",
+      "source": "fn f[T](x: T, y: int = 3) -> T {\n        return x\n    }\n    fn main() { print(1) }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot have a default value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: parameter 'y' of generic function 'f' cannot have a default value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "generics_nested_fn",
+      "kind": "negative",
+      "source": "fn f[T](x: T) -> T {\n        fn inner(z: int) -> int { return z }\n        return x\n    }\n    fn main() { print(1) }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "generic function 'f' cannot declare nested functions",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: generic function 'f' cannot declare nested functions\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "generics_name_collision",
+      "kind": "negative",
+      "source": "fn f[T](x: T) -> T { return x }\n    fn f(x: int) -> int { return x }\n    fn main() { print(1) }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "function 'f' is already declared",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: function 'f' is already declared\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "generics_undefined_type",
+      "kind": "negative",
+      "source": "fn f[T](x: Missing) -> T {\n        return 1\n    }\n    fn main() {\n        print(f(1))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "undefined type 'Missing'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 5]: undefined type 'Missing'\n",
+        "exit": 1
+      }
+    },
+    {
       "name": "resolver_nesting_limit_not",
       "kind": "negative",
       "source": "fn main() {\n        let x = !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!true\n        print(0)\n        print(1)\n    }",

@@ -58,6 +58,10 @@ The current compiler supports:
 - `enum` declarations: `int`-backed nominal ordinals, usable in `switch`, arrays, and structs
   - `Color.Red` variants, `==` / `!=` between values of the same enum, and an implicit ordinal where an `int` is expected (`print`, array index, one arithmetic/relational operand)
 - `alias` type declarations: transparent names for any type, including structs and enums
+- Generic **functions** with type parameters (`fn identity[T](x: T) -> T`), inferred
+  and monomorphized per call site (`identity(5)` → an `int` specialization); no
+  constraints, so a body is checked once per instantiation (see SYNTAX.md §20 and
+  `docs/adr/0002-generics-monomorphization.md`)
 - Compile-time type checking with line-numbered diagnostics
 - Duplicate declaration detection and definite-return checking
 - Native executables and propagated `main` exit codes
@@ -73,12 +77,12 @@ production compiler. See [SYNTAX.md](SYNTAX.md) for the authoritative reference 
 `npm install && npm run dev` opens the playground editor locally. The web
 compiler is a TypeScript port of the front half (lexer → LALR parser tables →
 resolver) plus a JavaScript backend, and its gate is byte-for-byte parity with
-the native compiler across 451 parity cases:
+the native compiler across 462 parity cases:
 
 ```bash
 npm install
 npm run dev        # local dev server
-npm test           # vitest — 451 parity cases + app tests
+npm test           # vitest — 462 parity cases + app tests
 npm run build      # type-check + production build → dist/
 npm start          # serve the production build (Antideploy's Procfile command)
 npm run lint       # oxlint
@@ -608,17 +612,17 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals, structs/enums/aliases, refcounted text views & copy-on-write | 64/64 passed |
-| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions), reserved-keyword misuse, deep-nesting limit | 245/245 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics, borrowed-param field writes | 143/143 passed |
+| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals, structs/enums/aliases, refcounted text views & copy-on-write, generic-function monomorphization | 65/65 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions), generic-inference & template restrictions, reserved-keyword misuse, deep-nesting limit | 254/254 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics, borrowed-param field writes, generic-function specializations | 144/144 passed |
 | CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes, generated-C portability and warning-cleanliness, unwritable-cwd and unreadable-source diagnostics, `#line` path escaping | 33/33 passed |
 | Packaging | Release version consistency across all ten version-bearing manifests, no placeholder digests, manifest URLs vs. the names the release workflow actually produces, declared runtime vs. build deps, installer checksum verification, container build/tag/push and smoke-test wiring, release asset completeness, installer package-manager safety, winget three-file manifest schema, AUR manifest buildability (`makepkg`-verified), scoop bucket layout, installer success reporting, installers refusing unverified downloads, brew formula build form, every version-bearing manifest, installers probing for a runtime C compiler, winget submission layout derived from `PackageIdentifier`, accepted winget schema version, the pacman signing fingerprint defined once, commit signing configured and verified with `git verify-commit`, the site pages (install/license/404/story) matching the repo they describe | 160/160 passed |
-| Total | 638 test cases | 638/638 passed |
+| Total | 656 test cases | 656/656 passed |
 
 Two further gates need extra tools and are not part of that count:
 
 ```bash
-./tests/run_valgrind_tests.sh --fixtures   # 69 memory checks (14 matrix + 55 fixtures)
+./tests/run_valgrind_tests.sh --fixtures   # 70 memory checks (14 matrix + 56 fixtures)
 HMX_ASAN=1 ./tests/run_integration.sh      # same suites under ASan + LeakSanitizer
 ```
 

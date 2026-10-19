@@ -1,6 +1,6 @@
 # HMX Compiler — Progress Log
 
-Last updated: 2026-09-27
+Last updated: 2026-10-19
 ## Objective
 Implement the HMX transpiler's 8-phase plan (from `PLAN.md`) so users can write full hello-world-capable programs. Multi-stage pipeline: lexer → parser → type resolution → codegen → gcc.
 
@@ -23,6 +23,11 @@ Implement the HMX transpiler's 8-phase plan (from `PLAN.md`) so users can write 
 - Error format: `Error [line N]: ...` / `Parse error [line N]: ... near '...'`.
 - Comments: `//` and `/* */` (non-nesting).
 - Extension: `.hmx`.
+- Generics (M17, `docs/adr/0002`): type parameters are declared in `[T]` right
+  after the declaration name (`fn identity[T](x: T) -> T`); **no constraints**
+  (a body is checked per instantiation, C++-template style); inference is at the
+  **call site** only (no `identity[int](5)`); a generic function cannot be used
+  as a value; generic **structs** and instantiation in type position are M17.3.
 
 ## Progress
 
@@ -1594,7 +1599,80 @@ README; both were added.
   prove each gate fails on the bug it covers, including the catch-all control
   that had never fired before.
 
+## Generic functions (M17.1) — monomorphization, no constraints
+
+Generics are the first feature that makes the language *write-once, use-many*:
+`fn identity[T](x: T) -> T { return x }` is called as `identity(5)` and
+`identity("hi")`, and each call produces its own concrete specialization. The
+design was accepted in M17.0 (`SYNTAX.md` §20,
+`docs/adr/0002-generics-monomorphization.md`); M17.1 lands the **function** half.
+
+- **Syntax reuses type brackets.** A type parameter is declared in `[ ]` right
+  after the declaration name — `fn identity[T](x: T) -> T`, `fn pair[A, B](…)`.
+  The parser gained `opt_type_params` / `type_param_list`, deliberately placed at
+  the **end** of the grammar so the existing rule numbers (0–179) stay stable;
+  only the four `fn_decl` productions changed RHS length, plus four new rules
+  (180–183, now 184 with the augmented start). Bison is still **9 shift/reduce
+  conflicts over 7 states** — no new ones.
+- **A type parameter is not a type.** The parser emits each `T` as an ordinary
+  named-type reference (`TypeDesc{type=Unknown, type_name="T"}`); the resolver,
+  not the grammar, knows which names are parameters. This keeps `T` shadowing a
+  real type of the same name, and keeps every existing type-position path
+  (annotation, parameter, return, tuple, array element, function type) working
+  unchanged.
+- **Templates are collected, never resolved.** Pass 1 registers generic
+  declarations in a separate `generic_fns_` table — not in `functions_` /
+  `fn_decls_` — so a template has no symbol, is never resolved in isolation, and
+  emits no code. `expand_type_refs_stmt` and `resolve_stmt` skip them entirely.
+- **Instantiation is clone → substitute → resolve, on demand.** A call to a
+  generic name runs inference over the argument descriptors, mangles a key from
+  the substitution, and — on first sight of that key — deep-clones the template
+  (`clone_stmt` / `clone_expr` in `ast.cpp`), substitutes the type parameters,
+  expands type refs, collects the instantiated function, marks it non-template,
+  and resolves it. Recursion is **reentrant-safe** because the instantiation is
+  registered before its body is resolved, so `count_down[T]` calling itself
+  finds the in-progress specialization instead of recursing forever. The
+  instantiations are appended to `program.statements`; templates are erased at
+  the end of `resolve()`.
+- **Naming and codegen.** A specialization is named
+  `__gen_<fname>_<mangle_desc>` (e.g. `__gen_identity_int`), extending the
+  existing partial-application mangling. Codegen needed exactly one change — let
+  `__gen_` names through `safe_name`; the declaration itself is skipped because
+  templates never enter the function table.
+- **Inference is call-site only and total.** No explicit instantiation
+  (`identity[int](5)` is `[` in expression position, i.e. indexing) and no use as
+  a bare value; a call must pass exactly the declared arity. The diagnostics are
+  locked verbatim on both backends: conflicting inference (`T` inferred as both
+  `int` and `text`), uninferrable parameter, wrong arity, use-as-value, duplicate
+  parameter name, default value on a parameter, nested `fn` in a template, a
+  variadic template parameter, and an undefined type that only surfaces at
+  instantiation.
+- **Web parity was the hard half.** `web-playground/src/compiler/ast.ts` gained
+  `deepCloneAst`, a faithful node-by-node port of the native clone. The first
+  attempt was a blanket reflective deep copy, which blew the stack on the
+  `nl_owner` back-pointer that `analyzeNonlocalExits` had already set on the
+  template's inner statements — a *cycle* the reflective walk could not see.
+  The native clone never copies that bookkeeping (it builds fresh nodes), so the
+  web now mirrors it field-by-field instead of reflecting. `resolver.ts` carries
+  the same template table, inference, monomorphization, and error strings;
+  `actions.ts` + `tables.json` were regenerated for the four new rules.
+- **Tests:** fixture `generics.hmx` (scalars, text, decimal, bool, arrays of
+  `T`, tuples, two type parameters, nested `identity(identity(x))`, recursion,
+  mutual recursion, a struct argument, a function-typed parameter); stress
+  `m17_generic_functions`; nine `generics_*` negatives.
+- **Hygiene:** native **496/496** (65 integration / 254 negative / 144 stress /
+  33 CLI), ASan+LSan-clean on integration and stress, UBSan control **3/3**,
+  fuzzer clean; web vitest **477/477** (462 parity + 15 app), `gen-data.mts`
+  parity **0 failures** (stress 144 / negative 250 / integration 65 all
+  byte-identical to native), oxlint 0 errors; valgrind **70/70** (14 matrix + 56
+  fixtures).
+
 ## Known issues / deferred
+- Generic **structs** (`struct Box[T] { value: T }`) and instantiation in type
+  position (`Box[int]`) are specified (`SYNTAX.md` §20) but not yet wired in;
+  they are **M17.3**. Only generic **functions** are accepted today, and a
+  generic function cannot be used as a value (its type arguments would be
+  ambiguous) — call it by name.
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.
 - bison emits nine harmless shift/reduce conflicts across 7 states, all resolved by shift:

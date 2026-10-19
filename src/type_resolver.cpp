@@ -628,6 +628,12 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
     else if (dynamic_cast<CharLiteral*>(expr))
         result = TypeKind::Char;
     else if (auto* lam = dynamic_cast<LambdaExpr*>(expr)) {
+        if (lam->resolved) {
+            // Re-resolving an already-synthesized lambda (e.g. a generic call
+            // re-checks its arguments after inferring type parameters) must not
+            // mint a second hoisted function: the body was already moved out.
+            result = TypeKind::Function;
+        } else {
         auto synth = std::make_unique<FunctionDecl>();
         synth->name = "__lam_" + std::to_string(lambda_counter_++);
         while (functions_.count(synth->name) || fn_decls_.count(synth->name)) {
@@ -654,6 +660,7 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         lam->lambda_type = ftd;
         lambda_fns_.push_back(std::move(synth));
         result = TypeKind::Function;
+        }
     }
     else if (auto* id = dynamic_cast<Identifier*>(expr)) {
         const Symbol* sym = find_symbol(id->name);
@@ -673,6 +680,9 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                 } else if (fit != functions_.end()) {
                     throw err(line(),
                         "cannot use function 'main' as a value");
+                } else if (generic_fns_.count(id->name)) {
+                    throw err(line(),
+                        "generic function '" + id->name + "' cannot be used as a value");
                 } else {
                     throw err(line(), "undefined variable '" + id->name + "'");
                 }
@@ -938,6 +948,10 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             }
             expr->resolved_type = result;
             return result;
+        }
+        auto git = generic_fns_.find(call->name);
+        if (git != generic_fns_.end()) {
+            call->name = monomorphize_call(call, git->second);
         }
         const FunctionSig* sig = get_function(call->name);
         if (!sig) {
@@ -2251,7 +2265,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
             }
         }
     } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
-        resolve_function_decl(fn);
+        if (fn->type_params.empty()) resolve_function_decl(fn);
         always_returns = false;
     }
     if (dynamic_cast<ReturnStmt*>(stmt)) always_returns = true;
@@ -2496,12 +2510,14 @@ void TypeResolver::expand_type_refs_stmt(Statement* stmt) {
         }
         if (var->initializer) expand_type_refs_expr(var->initializer.get());
     } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
-        current_line_ = fn->line;
-        if (!fn->file.empty()) current_file_ = fn->file;
-        for (auto& p : fn->params) sync_param_desc(p);
-        sync_return_desc(fn->has_return_type, fn->return_type, fn->return_desc,
-                         fn->return_elem, fn->return_tuple_members);
-        for (auto& s : fn->body) expand_type_refs_stmt(s.get());
+        if (fn->type_params.empty()) {
+            current_line_ = fn->line;
+            if (!fn->file.empty()) current_file_ = fn->file;
+            for (auto& p : fn->params) sync_param_desc(p);
+            sync_return_desc(fn->has_return_type, fn->return_type, fn->return_desc,
+                             fn->return_elem, fn->return_tuple_members);
+            for (auto& s : fn->body) expand_type_refs_stmt(s.get());
+        }
     } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
         for (auto& s : ifs->then_body) expand_type_refs_stmt(s.get());
         for (auto& s : ifs->else_body) expand_type_refs_stmt(s.get());
@@ -2630,6 +2646,14 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
         for (auto& s : list) collect_functions_stmt(s.get());
     };
     if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
+        if (!fn->type_params.empty()) {
+            register_generic_template(fn);
+            return;
+        }
+        if (generic_fns_.count(fn->name)) {
+            throw err(fn->line,
+                "function '" + fn->name + "' is already declared", fn->file);
+        }
         if (functions_.count(fn->name)) {
             throw err(fn->line,
                 "duplicate declaration of function '" + fn->name + "'", fn->file);
@@ -2790,12 +2814,388 @@ void TypeResolver::resolve(Program& program) {
         program.statements.push_back(std::move(f));
     }
     lambda_fns_.clear();
+    // Monomorphized generic instantiations are regular functions from here on:
+    // they were resolved during pass 2 and just need to join the program so
+    // codegen emits them.
+    for (auto& f : generic_instances_) {
+        program.statements.push_back(std::move(f));
+    }
+    generic_instances_.clear();
+    // Generic templates are compile-time only — every use was monomorphized
+    // above — so drop them before codegen. Their declarations are never
+    // registered in functions_/fn_decls_ and produce no code.
+    program.statements.erase(
+        std::remove_if(program.statements.begin(), program.statements.end(),
+                       [](const StmtPtr& s) {
+                           auto* fn = dynamic_cast<FunctionDecl*>(s.get());
+                           return fn && !fn->type_params.empty();
+                       }),
+        program.statements.end());
+    generic_fns_.clear();
+}
+
+// --- M17 generics: monomorphization -----------------------------------------
+
+// Encode a concrete type descriptor as a C-identifier-safe token so each
+// instantiation gets a deterministic, collision-free name.
+std::string TypeResolver::mangle_desc(const TypeDesc& d) {
+    switch (d.type) {
+        case TypeKind::Int: return "int";
+        case TypeKind::Decimal: return "dec";
+        case TypeKind::Text: return "text";
+        case TypeKind::Bool: return "bool";
+        case TypeKind::Char: return "char";
+        case TypeKind::Byte: return "byte";
+        case TypeKind::Array: return "arr_" + mangle_desc(d.element());
+        case TypeKind::Tuple: {
+            std::string s = "tup";
+            for (auto& m : d.tuple_members) s += "_" + mangle_desc(m);
+            return s;
+        }
+        case TypeKind::Function: {
+            std::string s = "fn";
+            if (d.fn_info) {
+                for (auto& p : d.fn_info->params) s += "_" + mangle_desc(p);
+                s += "_r_" + mangle_desc(d.fn_info->ret);
+            }
+            return s;
+        }
+        case TypeKind::Struct:
+        case TypeKind::Enum:
+            return "n_" + d.type_name;
+        case TypeKind::Unknown:
+            return d.type_name.empty() ? "unk" : ("n_" + d.type_name);
+    }
+    return "unk";
+}
+
+std::string TypeResolver::mangle_generic(const std::string& fname,
+        const std::vector<std::string>& type_params,
+        const std::unordered_map<std::string, TypeDesc>& bind) const {
+    std::string s = "__gen_" + fname;
+    for (auto& tp : type_params) {
+        s += "_";
+        auto it = bind.find(tp);
+        s += (it != bind.end()) ? mangle_desc(it->second) : "unbound";
+    }
+    return s;
+}
+
+TypeDesc TypeResolver::substitute_desc(const TypeDesc& d,
+        const std::unordered_map<std::string, TypeDesc>& bind) {
+    if (d.type == TypeKind::Unknown && !d.type_name.empty()) {
+        auto it = bind.find(d.type_name);
+        if (it != bind.end()) return it->second;
+        return d;
+    }
+    if (d.type == TypeKind::Array)
+        return TypeDesc::array_of(substitute_desc(d.element(), bind));
+    if (d.type == TypeKind::Tuple) {
+        TypeDesc out = d;
+        for (auto& m : out.tuple_members) m = substitute_desc(m, bind);
+        return out;
+    }
+    if (d.type == TypeKind::Function && d.fn_info) {
+        TypeDesc out = d;
+        auto info = std::make_shared<FunctionTypeInfo>();
+        for (auto& p : d.fn_info->params) info->params.push_back(substitute_desc(p, bind));
+        info->ret = substitute_desc(d.fn_info->ret, bind);
+        out.fn_info = info;
+        return out;
+    }
+    return d;
+}
+
+void TypeResolver::substitute_stmt(Statement* stmt,
+        const std::unordered_map<std::string, TypeDesc>& bind) {
+    if (auto* v = dynamic_cast<VarDecl*>(stmt)) {
+        v->annotation_desc = substitute_desc(v->annotation_desc, bind);
+        v->elem_desc = substitute_desc(v->elem_desc, bind);
+        for (auto& m : v->tuple_members) m = substitute_desc(m, bind);
+        if (v->initializer) substitute_expr(v->initializer.get(), bind);
+    } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
+        for (auto& p : fn->params) {
+            p.desc = substitute_desc(p.desc, bind);
+            p.elem_desc = substitute_desc(p.elem_desc, bind);
+            for (auto& m : p.tuple_members) m = substitute_desc(m, bind);
+            if (p.default_value) substitute_expr(p.default_value.get(), bind);
+        }
+        fn->return_desc = substitute_desc(fn->return_desc, bind);
+        fn->return_elem = substitute_desc(fn->return_elem, bind);
+        for (auto& m : fn->return_tuple_members) m = substitute_desc(m, bind);
+        for (auto& s : fn->body) substitute_stmt(s.get(), bind);
+    } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
+        if (ifs->condition) substitute_expr(ifs->condition.get(), bind);
+        for (auto& s : ifs->then_body) substitute_stmt(s.get(), bind);
+        for (auto& s : ifs->else_body) substitute_stmt(s.get(), bind);
+    } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
+        if (sw->value) substitute_expr(sw->value.get(), bind);
+        for (auto& c : sw->cases) {
+            if (c.value) substitute_expr(c.value.get(), bind);
+            for (auto& s : c.body) substitute_stmt(s.get(), bind);
+        }
+    } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
+        if (loop->count) substitute_expr(loop->count.get(), bind);
+        for (auto& s : loop->body) substitute_stmt(s.get(), bind);
+    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
+        if (fe->iterable) substitute_expr(fe->iterable.get(), bind);
+        for (auto& s : fe->body) substitute_stmt(s.get(), bind);
+    } else if (auto* w = dynamic_cast<WhileStmt*>(stmt)) {
+        if (w->condition) substitute_expr(w->condition.get(), bind);
+        for (auto& s : w->body) substitute_stmt(s.get(), bind);
+    } else if (auto* f = dynamic_cast<ForStmt*>(stmt)) {
+        if (f->init) substitute_stmt(f->init.get(), bind);
+        if (f->condition) substitute_expr(f->condition.get(), bind);
+        if (f->update) substitute_stmt(f->update.get(), bind);
+        for (auto& s : f->body) substitute_stmt(s.get(), bind);
+    } else if (auto* dw = dynamic_cast<DoWhileStmt*>(stmt)) {
+        for (auto& s : dw->body) substitute_stmt(s.get(), bind);
+        if (dw->condition) substitute_expr(dw->condition.get(), bind);
+    } else if (auto* as = dynamic_cast<AssignStmt*>(stmt)) {
+        if (as->rhs) substitute_expr(as->rhs.get(), bind);
+    } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
+        if (ma->rhs) substitute_expr(ma->rhs.get(), bind);
+    } else if (auto* dd = dynamic_cast<DestructDecl*>(stmt)) {
+        if (dd->rhs) substitute_expr(dd->rhs.get(), bind);
+    } else if (auto* aa = dynamic_cast<ArrayAssignStmt*>(stmt)) {
+        if (aa->index) substitute_expr(aa->index.get(), bind);
+        if (aa->rhs) substitute_expr(aa->rhs.get(), bind);
+    } else if (auto* ea = dynamic_cast<ElementAssignStmt*>(stmt)) {
+        if (ea->target) substitute_expr(ea->target.get(), bind);
+        if (ea->rhs) substitute_expr(ea->rhs.get(), bind);
+    } else if (auto* massign = dynamic_cast<MemberAssignStmt*>(stmt)) {
+        if (massign->base) substitute_expr(massign->base.get(), bind);
+        if (massign->rhs) substitute_expr(massign->rhs.get(), bind);
+    } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
+        for (auto& v : ret->values) substitute_expr(v.get(), bind);
+    } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
+        for (auto& a : print->args) substitute_expr(a.get(), bind);
+    } else if (auto* es = dynamic_cast<ExprStmt*>(stmt)) {
+        if (es->expr) substitute_expr(es->expr.get(), bind);
+    }
+}
+
+void TypeResolver::substitute_expr(Expression* expr,
+        const std::unordered_map<std::string, TypeDesc>& bind) {
+    if (!expr) return;
+    if (auto* lam = dynamic_cast<LambdaExpr*>(expr)) {
+        for (auto& p : lam->params) {
+            p.desc = substitute_desc(p.desc, bind);
+            p.elem_desc = substitute_desc(p.elem_desc, bind);
+            for (auto& m : p.tuple_members) m = substitute_desc(m, bind);
+            if (p.default_value) substitute_expr(p.default_value.get(), bind);
+        }
+        lam->return_desc = substitute_desc(lam->return_desc, bind);
+        lam->return_elem = substitute_desc(lam->return_elem, bind);
+        for (auto& m : lam->return_tuple_members) m = substitute_desc(m, bind);
+        for (auto& s : lam->body) substitute_stmt(s.get(), bind);
+    } else if (auto* bin = dynamic_cast<BinaryExpr*>(expr)) {
+        substitute_expr(bin->left.get(), bind);
+        substitute_expr(bin->right.get(), bind);
+    } else if (auto* n = dynamic_cast<NotExpr*>(expr)) {
+        substitute_expr(n->operand.get(), bind);
+    } else if (auto* n = dynamic_cast<NegExpr*>(expr)) {
+        substitute_expr(n->operand.get(), bind);
+    } else if (auto* c = dynamic_cast<ConditionalExpr*>(expr)) {
+        substitute_expr(c->condition.get(), bind);
+        substitute_expr(c->then_expr.get(), bind);
+        substitute_expr(c->else_expr.get(), bind);
+    } else if (auto* c = dynamic_cast<CastExpr*>(expr)) {
+        substitute_expr(c->operand.get(), bind);
+    } else if (auto* c = dynamic_cast<CallExpr*>(expr)) {
+        for (auto& a : c->args) substitute_expr(a.get(), bind);
+    } else if (auto* a = dynamic_cast<ArrayLiteral*>(expr)) {
+        for (auto& e : a->elements) substitute_expr(e.get(), bind);
+    } else if (auto* t = dynamic_cast<TupleLiteral*>(expr)) {
+        for (auto& v : t->values) substitute_expr(v.get(), bind);
+    } else if (auto* i = dynamic_cast<ArrayIndexExpr*>(expr)) {
+        if (i->base) substitute_expr(i->base.get(), bind);
+        substitute_expr(i->index.get(), bind);
+    } else if (auto* m = dynamic_cast<MemberAccessExpr*>(expr)) {
+        substitute_expr(m->base.get(), bind);
+    }
+}
+
+bool TypeResolver::body_has_nested_fn(const std::vector<StmtPtr>& body) const {
+    for (auto& s : body) {
+        Statement* st = s.get();
+        if (dynamic_cast<FunctionDecl*>(st)) return true;
+        if (auto* ifs = dynamic_cast<IfStmt*>(st)) {
+            if (body_has_nested_fn(ifs->then_body) || body_has_nested_fn(ifs->else_body))
+                return true;
+        } else if (auto* sw = dynamic_cast<SwitchStmt*>(st)) {
+            for (auto& c : sw->cases)
+                if (body_has_nested_fn(c.body)) return true;
+        } else if (auto* loop = dynamic_cast<LoopStmt*>(st)) {
+            if (body_has_nested_fn(loop->body)) return true;
+        } else if (auto* fe = dynamic_cast<ForeachStmt*>(st)) {
+            if (body_has_nested_fn(fe->body)) return true;
+        } else if (auto* w = dynamic_cast<WhileStmt*>(st)) {
+            if (body_has_nested_fn(w->body)) return true;
+        } else if (auto* f = dynamic_cast<ForStmt*>(st)) {
+            if (body_has_nested_fn(f->body)) return true;
+        } else if (auto* dw = dynamic_cast<DoWhileStmt*>(st)) {
+            if (body_has_nested_fn(dw->body)) return true;
+        }
+    }
+    return false;
+}
+
+void TypeResolver::register_generic_template(FunctionDecl* fn) {
+    if (generic_fns_.count(fn->name) || functions_.count(fn->name)) {
+        throw err(fn->line, "function '" + fn->name + "' is already declared", fn->file);
+    }
+    if (type_decls_.count(fn->name)) {
+        throw err(fn->line, "cannot declare function '" + fn->name +
+            "': a type with that name already exists", fn->file);
+    }
+    GenericTemplate tmpl;
+    tmpl.decl = fn;
+    for (auto& tp : fn->type_params) {
+        if (!tmpl.type_params.insert(tp).second) {
+            throw err(fn->line, "duplicate type parameter '" + tp +
+                "' in function '" + fn->name + "'", fn->file);
+        }
+    }
+    for (auto& p : fn->params) {
+        if (p.variadic) {
+            throw err(fn->line, "generic function '" + fn->name +
+                "' cannot have a variadic parameter", fn->file);
+        }
+        if (p.default_value) {
+            throw err(fn->line, "parameter '" + p.name + "' of generic function '" +
+                fn->name + "' cannot have a default value", fn->file);
+        }
+    }
+    if (body_has_nested_fn(fn->body)) {
+        throw err(fn->line, "generic function '" + fn->name +
+            "' cannot declare nested functions", fn->file);
+    }
+    generic_fns_[fn->name] = std::move(tmpl);
+}
+
+void TypeResolver::unify_type_params(const TypeDesc& param, const TypeDesc& arg,
+        const std::set<std::string>& type_params,
+        std::unordered_map<std::string, TypeDesc>& bind,
+        const std::string& fname, int line_no) {
+    if (!desc_fully_known(arg)) {
+        throw err(line_no, "cannot infer type parameter for generic function '" +
+            fname + "' from an argument whose type is not fully known");
+    }
+    if (param.type == TypeKind::Unknown && !param.type_name.empty() &&
+        type_params.count(param.type_name)) {
+        auto it = bind.find(param.type_name);
+        if (it == bind.end()) {
+            bind[param.type_name] = arg;
+        } else if (!(it->second == arg)) {
+            throw err(line_no, "type mismatch: type parameter '" + param.type_name +
+                "' of generic function '" + fname + "' inferred as both " +
+                type_desc_to_string(it->second) + " and " + type_desc_to_string(arg));
+        }
+        return;
+    }
+    if (param.type == TypeKind::Array) {
+        if (arg.type != TypeKind::Array) {
+            throw err(line_no, "type mismatch: argument for generic function '" + fname +
+                "' expects array of " + type_desc_to_string(param.element()) + ", got " +
+                type_desc_to_string(arg));
+        }
+        unify_type_params(param.element(), arg.element(), type_params, bind, fname, line_no);
+        return;
+    }
+    if (param.type == TypeKind::Tuple) {
+        if (arg.type != TypeKind::Tuple ||
+            arg.tuple_members.size() != param.tuple_members.size()) {
+            throw err(line_no, "type mismatch: argument for generic function '" + fname +
+                "' expects tuple " + tuple_type_to_string(param.tuple_members) + ", got " +
+                type_desc_to_string(arg));
+        }
+        for (size_t i = 0; i < param.tuple_members.size(); i++)
+            unify_type_params(param.tuple_members[i], arg.tuple_members[i],
+                              type_params, bind, fname, line_no);
+        return;
+    }
+    if (param.type == TypeKind::Function && param.fn_info) {
+        if (arg.type != TypeKind::Function || !arg.fn_info ||
+            arg.fn_info->params.size() != param.fn_info->params.size()) {
+            throw err(line_no, "type mismatch: argument for generic function '" + fname +
+                "' expects " + type_desc_to_string(param) + ", got " + type_desc_to_string(arg));
+        }
+        for (size_t i = 0; i < param.fn_info->params.size(); i++)
+            unify_type_params(param.fn_info->params[i], arg.fn_info->params[i],
+                              type_params, bind, fname, line_no);
+        unify_type_params(param.fn_info->ret, arg.fn_info->ret,
+                          type_params, bind, fname, line_no);
+        return;
+    }
+    TypeDesc resolved = expand_desc(param, /*by_value=*/true);
+    if (resolved != arg) {
+        throw err(line_no, "type mismatch: argument for generic function '" + fname +
+            "' expects " + type_desc_to_string(resolved) + ", got " + type_desc_to_string(arg));
+    }
+}
+
+std::string TypeResolver::monomorphize_call(CallExpr* call, GenericTemplate& tmpl) {
+    FunctionDecl* decl = tmpl.decl;
+    if (call->args.size() != decl->params.size()) {
+        throw err(line(), "generic function '" + decl->name + "' expects " +
+            std::to_string(decl->params.size()) + " argument" +
+            (decl->params.size() == 1 ? "" : "s") + ", got " +
+            std::to_string(call->args.size()));
+    }
+    std::unordered_map<std::string, TypeDesc> bind;
+    for (size_t i = 0; i < call->args.size(); i++) {
+        // Resolve the argument once to discover its type. The ordinary call
+        // path below re-resolves it, which is idempotent for every expression
+        // node (lambda synthesis is guarded).
+        resolve_expr(call->args[i].get());
+        TypeDesc ad = expr_desc(call->args[i].get());
+        unify_type_params(decl->params[i].desc, ad, tmpl.type_params, bind,
+                          decl->name, line());
+    }
+    for (auto& tp : decl->type_params) {
+        if (!bind.count(tp)) {
+            throw err(line(), "cannot infer type parameter '" + tp +
+                "' for generic function '" + decl->name + "'");
+        }
+    }
+    return instantiate_generic(tmpl, bind, line());
+}
+
+std::string TypeResolver::instantiate_generic(GenericTemplate& tmpl,
+        const std::unordered_map<std::string, TypeDesc>& bind, int /*line_no*/) {
+    std::string name = mangle_generic(tmpl.decl->name, tmpl.decl->type_params, bind);
+    if (instantiated_.count(name)) return name;
+    auto owned = std::unique_ptr<FunctionDecl>(
+        static_cast<FunctionDecl*>(clone_stmt(tmpl.decl).release()));
+    FunctionDecl* inst = owned.get();
+    inst->name = name;
+    inst->type_params.clear();
+    inst->is_lambda = false;
+    substitute_stmt(inst, bind);
+    // No type variables remain, so the ordinary expansion can resolve named
+    // types and sync the param/return descriptors on the clone.
+    {
+        int saved_line = current_line_;
+        std::string saved_file = current_file_;
+        current_line_ = inst->line;
+        if (!inst->file.empty()) current_file_ = inst->file;
+        expand_type_refs_stmt(inst);
+        current_line_ = saved_line;
+        current_file_ = saved_file;
+    }
+    generic_instances_.push_back(std::move(owned));
+    // Register the signature before resolving the body so a recursive generic
+    // call resolves against the instantiation already in flight.
+    collect_functions_stmt(inst);
+    instantiated_[name] = inst;
+    resolve_function_decl(inst);
+    return name;
 }
 
 CompileError TypeResolver::err(int line, const std::string& msg) {
     return err(line, msg, current_file_);
 }
-
 CompileError TypeResolver::err(int line, const std::string& msg, const std::string& file) {
     if (file.empty() || file == entry_file_) return CompileError(line, msg);
     return CompileError(line, msg, file);

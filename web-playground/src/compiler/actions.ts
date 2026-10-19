@@ -197,10 +197,10 @@ const ruleSigs: RuleSig[] = [
   ["param", 3], // 122
   ["param", 5], // 123
   ["param", 4], // 124
-  ["fn_decl", 7], // 125
-  ["fn_decl", 9], // 126
-  ["fn_decl", 8], // 127
-  ["fn_decl", 10], // 128
+  ["fn_decl", 8], // 125
+  ["fn_decl", 10], // 126
+  ["fn_decl", 9], // 127
+  ["fn_decl", 11], // 128
   ["expression", 1], // 129
   ["conditional", 5], // 130
   ["conditional", 1], // 131
@@ -252,6 +252,10 @@ const ruleSigs: RuleSig[] = [
   ["postfix_index", 3], // 177
   ["args", 3], // 178
   ["args", 1], // 179
+  ["opt_type_params", 0], // 180
+  ["opt_type_params", 3], // 181
+  ["type_param_list", 3], // 182
+  ["type_param_list", 1], // 183
 ];
 
 // Verify SIG against the extracted tables (lhs name + RHS length per rule).
@@ -784,6 +788,7 @@ function makeParam(name: string, td: any, defaultValue: any) {
 
 function makeFnDecl(
   name: string,
+  typeParams: string[],
   params: unknown[],
   hasReturnType: boolean,
   returnType: TypeKind,
@@ -792,6 +797,7 @@ function makeFnDecl(
   ctx: LRContext
 ) {
   const f = new FunctionDecl(name);
+  f.type_params = typeParams;
   f.params = params as any;
   f.body = body as any;
   f.has_return_type = hasReturnType;
@@ -808,14 +814,14 @@ function makeFnDecl(
   return f;
 }
 
-// r125: FN IDENTIFIER '(' ')' '{' stmt_list '}'
-A[125] = (rhs, ctx) => makeFnDecl(rhs[1] as string, [], false, TypeKind.Unknown, mkType(TypeKind.Unknown), rhs[5] as unknown[], ctx);
-// r126: FN IDENTIFIER '(' ')' ARROW param_type '{' stmt_list '}'
-A[126] = (rhs, ctx) => makeFnDecl(rhs[1] as string, [], true, (rhs[5] as any).type, rhs[5] as any, rhs[7] as unknown[], ctx);
-// r127: FN IDENTIFIER '(' param_list ')' '{' stmt_list '}'
-A[127] = (rhs, ctx) => makeFnDecl(rhs[1] as string, rhs[3] as unknown[], false, TypeKind.Unknown, mkType(TypeKind.Unknown), rhs[6] as unknown[], ctx);
-// r128: FN IDENTIFIER '(' param_list ')' ARROW param_type '{' stmt_list '}'
-A[128] = (rhs, ctx) => makeFnDecl(rhs[1] as string, rhs[3] as unknown[], true, (rhs[6] as any).type, rhs[6] as any, rhs[8] as unknown[], ctx);
+// r125: FN IDENTIFIER opt_type_params '(' ')' '{' stmt_list '}'
+A[125] = (rhs, ctx) => makeFnDecl(rhs[1] as string, rhs[2] as string[], [], false, TypeKind.Unknown, mkType(TypeKind.Unknown), rhs[6] as unknown[], ctx);
+// r126: FN IDENTIFIER opt_type_params '(' ')' ARROW param_type '{' stmt_list '}'
+A[126] = (rhs, ctx) => makeFnDecl(rhs[1] as string, rhs[2] as string[], [], true, (rhs[6] as any).type, rhs[6] as any, rhs[8] as unknown[], ctx);
+// r127: FN IDENTIFIER opt_type_params '(' param_list ')' '{' stmt_list '}'
+A[127] = (rhs, ctx) => makeFnDecl(rhs[1] as string, rhs[2] as string[], rhs[4] as unknown[], false, TypeKind.Unknown, mkType(TypeKind.Unknown), rhs[7] as unknown[], ctx);
+// r128: FN IDENTIFIER opt_type_params '(' param_list ')' ARROW param_type '{' stmt_list '}'
+A[128] = (rhs, ctx) => makeFnDecl(rhs[1] as string, rhs[2] as string[], rhs[4] as unknown[], true, (rhs[7] as any).type, rhs[7] as any, rhs[9] as unknown[], ctx);
 
 // rule 129: expression -> conditional
 A[129] = (rhs) => rhs[0];
@@ -935,6 +941,20 @@ A[178] = (rhs) => {
 };
 // r179: args expression
 A[179] = (rhs) => [rhs[0]];
+
+// -- M17 generic type-parameter list (rules 180-183) --
+// r180: opt_type_params: /* empty */
+A[180] = () => [];
+// r181: opt_type_params: '[' type_param_list ']'
+A[181] = (rhs) => rhs[1] as string[];
+// r182: type_param_list: type_param_list ',' IDENTIFIER
+A[182] = (rhs) => {
+  const list = rhs[0] as string[];
+  list.push(rhs[2] as string);
+  return list;
+};
+// r183: type_param_list: IDENTIFIER
+A[183] = (rhs) => [rhs[0] as string];
 
 // ---------------------------------------------------------------------------
 // Entry point: the verified action table.

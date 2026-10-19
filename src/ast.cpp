@@ -205,6 +205,312 @@ void destroy_param(FunctionDecl::Param* p) {
     delete p;
 }
 
+// --- M17 deep clone ---------------------------------------------------------
+// A faithful structural copy of a statement/expression subtree. Only the
+// parser-populated fields are carried over (names, operator kinds, type
+// descriptors, source lines); resolver-synthesized state (resolved_type, the
+// various `is_*` flags, tuple/element descriptors computed during resolution,
+// non-local-exit bookkeeping) is left at its default so the clone resolves
+// from a clean slate. The clone is used to monomorphize generic templates and
+// runs only after the HMX_MAX_NESTING guard, so the recursion is bounded.
+
+namespace {
+
+ExprPtr clone_expr_impl(const Expression* e);
+StmtPtr clone_stmt_impl(const Statement* s);
+
+std::vector<ExprPtr> clone_expr_list(const std::vector<ExprPtr>& v) {
+    std::vector<ExprPtr> out;
+    out.reserve(v.size());
+    for (auto& e : v) out.push_back(clone_expr_impl(e.get()));
+    return out;
+}
+
+std::vector<StmtPtr> clone_stmt_list(const std::vector<StmtPtr>& v) {
+    std::vector<StmtPtr> out;
+    out.reserve(v.size());
+    for (auto& s : v) out.push_back(clone_stmt_impl(s.get()));
+    return out;
+}
+
+std::vector<FunctionDecl::Param> clone_params(const std::vector<FunctionDecl::Param>& v) {
+    std::vector<FunctionDecl::Param> out;
+    out.reserve(v.size());
+    for (auto& p : v) {
+        FunctionDecl::Param q;
+        q.name = p.name;
+        q.type = p.type;
+        q.elem_desc = p.elem_desc;
+        q.tuple_members = p.tuple_members;
+        q.desc = p.desc;
+        q.default_value = clone_expr_impl(p.default_value.get());
+        q.variadic = p.variadic;
+        out.push_back(std::move(q));
+    }
+    return out;
+}
+
+DestructPattern clone_pattern(const DestructPattern& p) {
+    DestructPattern q;
+    q.name = p.name;
+    q.is_rest = p.is_rest;
+    q.nested = p.nested;
+    q.items.reserve(p.items.size());
+    for (auto& it : p.items) q.items.push_back(clone_pattern(it));
+    return q;
+}
+
+std::vector<DestructPattern> clone_patterns(const std::vector<DestructPattern>& v) {
+    std::vector<DestructPattern> out;
+    out.reserve(v.size());
+    for (auto& p : v) out.push_back(clone_pattern(p));
+    return out;
+}
+
+ExprPtr clone_expr_impl(const Expression* e) {
+    if (!e) return nullptr;
+    if (auto* n = dynamic_cast<const NumberLiteral*>(e))
+        return std::make_unique<NumberLiteral>(n->value);
+    if (auto* d = dynamic_cast<const DecimalLiteral*>(e))
+        return std::make_unique<DecimalLiteral>(d->value);
+    if (auto* s = dynamic_cast<const StringLiteral*>(e))
+        return std::make_unique<StringLiteral>(s->value);
+    if (auto* c = dynamic_cast<const CharLiteral*>(e))
+        return std::make_unique<CharLiteral>(c->value);
+    if (auto* b = dynamic_cast<const BoolLiteral*>(e))
+        return std::make_unique<BoolLiteral>(b->value);
+    if (auto* id = dynamic_cast<const Identifier*>(e))
+        return std::make_unique<Identifier>(id->name);
+    if (auto* b = dynamic_cast<const BinaryExpr*>(e))
+        return std::make_unique<BinaryExpr>(b->op, b->kind,
+                                            clone_expr_impl(b->left.get()),
+                                            clone_expr_impl(b->right.get()));
+    if (auto* n = dynamic_cast<const NotExpr*>(e))
+        return std::make_unique<NotExpr>(clone_expr_impl(n->operand.get()));
+    if (auto* n = dynamic_cast<const NegExpr*>(e))
+        return std::make_unique<NegExpr>(clone_expr_impl(n->operand.get()));
+    if (auto* c = dynamic_cast<const ConditionalExpr*>(e))
+        return std::make_unique<ConditionalExpr>(clone_expr_impl(c->condition.get()),
+                                                 clone_expr_impl(c->then_expr.get()),
+                                                 clone_expr_impl(c->else_expr.get()));
+    if (auto* c = dynamic_cast<const CastExpr*>(e))
+        return std::make_unique<CastExpr>(c->target_type, clone_expr_impl(c->operand.get()));
+    if (auto* c = dynamic_cast<const CallExpr*>(e))
+        return std::make_unique<CallExpr>(c->name, clone_expr_list(c->args));
+    if (auto* a = dynamic_cast<const ArrayLiteral*>(e))
+        return std::make_unique<ArrayLiteral>(clone_expr_list(a->elements));
+    if (auto* t = dynamic_cast<const TupleLiteral*>(e))
+        return std::make_unique<TupleLiteral>(clone_expr_list(t->values));
+    if (auto* i = dynamic_cast<const ArrayIndexExpr*>(e)) {
+        if (i->base)
+            return std::make_unique<ArrayIndexExpr>(clone_expr_impl(i->base.get()),
+                                                    clone_expr_impl(i->index.get()));
+        return std::make_unique<ArrayIndexExpr>(i->name, clone_expr_impl(i->index.get()));
+    }
+    if (auto* m = dynamic_cast<const MemberAccessExpr*>(e))
+        return std::make_unique<MemberAccessExpr>(clone_expr_impl(m->base.get()), m->member);
+    if (auto* l = dynamic_cast<const LambdaExpr*>(e)) {
+        auto out = std::make_unique<LambdaExpr>();
+        out->params = clone_params(l->params);
+        out->has_return_type = l->has_return_type;
+        out->return_type = l->return_type;
+        out->return_elem = l->return_elem;
+        out->return_tuple_members = l->return_tuple_members;
+        out->return_desc = l->return_desc;
+        out->body = clone_stmt_list(l->body);
+        out->line = l->line;
+        return out;
+    }
+    return nullptr;
+}
+
+StmtPtr clone_stmt_impl(const Statement* s) {
+    if (!s) return nullptr;
+    if (auto* v = dynamic_cast<const VarDecl*>(s)) {
+        auto out = std::make_unique<VarDecl>();
+        out->name = v->name;
+        out->file = v->file;
+        out->annotation = v->annotation;
+        out->elem_desc = v->elem_desc;
+        out->tuple_members = v->tuple_members;
+        out->annotation_desc = v->annotation_desc;
+        out->has_annotation = v->has_annotation;
+        out->is_mutable = v->is_mutable;
+        out->initializer = clone_expr_impl(v->initializer.get());
+        out->line = v->line;
+        return out;
+    }
+    if (auto* a = dynamic_cast<const AssignStmt*>(s)) {
+        auto out = std::make_unique<AssignStmt>();
+        out->name = a->name;
+        out->op = a->op;
+        out->rhs = clone_expr_impl(a->rhs.get());
+        out->line = a->line;
+        return out;
+    }
+    if (auto* m = dynamic_cast<const MultiAssignStmt*>(s)) {
+        auto out = std::make_unique<MultiAssignStmt>();
+        out->patterns = clone_patterns(m->patterns);
+        out->rhs = clone_expr_impl(m->rhs.get());
+        out->line = m->line;
+        return out;
+    }
+    if (auto* d = dynamic_cast<const DestructDecl*>(s)) {
+        auto out = std::make_unique<DestructDecl>();
+        out->patterns = clone_patterns(d->patterns);
+        out->rhs = clone_expr_impl(d->rhs.get());
+        out->is_mutable = d->is_mutable;
+        out->file = d->file;
+        out->line = d->line;
+        return out;
+    }
+    if (auto* a = dynamic_cast<const ArrayAssignStmt*>(s)) {
+        auto out = std::make_unique<ArrayAssignStmt>();
+        out->name = a->name;
+        out->index = clone_expr_impl(a->index.get());
+        out->rhs = clone_expr_impl(a->rhs.get());
+        out->line = a->line;
+        return out;
+    }
+    if (auto* e = dynamic_cast<const ElementAssignStmt*>(s)) {
+        auto out = std::make_unique<ElementAssignStmt>();
+        out->target = clone_expr_impl(e->target.get());
+        out->rhs = clone_expr_impl(e->rhs.get());
+        out->line = e->line;
+        return out;
+    }
+    if (auto* m = dynamic_cast<const MemberAssignStmt*>(s)) {
+        auto out = std::make_unique<MemberAssignStmt>();
+        out->base = clone_expr_impl(m->base.get());
+        out->member = m->member;
+        out->op = m->op;
+        out->rhs = clone_expr_impl(m->rhs.get());
+        out->line = m->line;
+        return out;
+    }
+    if (auto* p = dynamic_cast<const PrintStmt*>(s)) {
+        auto out = std::make_unique<PrintStmt>();
+        out->args = clone_expr_list(p->args);
+        out->line = p->line;
+        return out;
+    }
+    if (auto* l = dynamic_cast<const LoopStmt*>(s)) {
+        auto out = std::make_unique<LoopStmt>();
+        out->count = clone_expr_impl(l->count.get());
+        out->body = clone_stmt_list(l->body);
+        out->line = l->line;
+        return out;
+    }
+    if (auto* w = dynamic_cast<const WhileStmt*>(s)) {
+        auto out = std::make_unique<WhileStmt>();
+        out->condition = clone_expr_impl(w->condition.get());
+        out->body = clone_stmt_list(w->body);
+        out->line = w->line;
+        return out;
+    }
+    if (auto* f = dynamic_cast<const ForStmt*>(s)) {
+        auto out = std::make_unique<ForStmt>();
+        out->init = clone_stmt_impl(f->init.get());
+        out->condition = clone_expr_impl(f->condition.get());
+        out->update = clone_stmt_impl(f->update.get());
+        out->body = clone_stmt_list(f->body);
+        out->line = f->line;
+        return out;
+    }
+    if (auto* d = dynamic_cast<const DoWhileStmt*>(s)) {
+        auto out = std::make_unique<DoWhileStmt>();
+        out->body = clone_stmt_list(d->body);
+        out->condition = clone_expr_impl(d->condition.get());
+        out->line = d->line;
+        return out;
+    }
+    if (auto* f = dynamic_cast<const ForeachStmt*>(s)) {
+        auto out = std::make_unique<ForeachStmt>();
+        out->value_name = f->value_name;
+        out->index_name = f->index_name;
+        out->iterable = clone_expr_impl(f->iterable.get());
+        out->body = clone_stmt_list(f->body);
+        out->line = f->line;
+        return out;
+    }
+    if (auto* i = dynamic_cast<const IfStmt*>(s)) {
+        auto out = std::make_unique<IfStmt>();
+        out->condition = clone_expr_impl(i->condition.get());
+        out->then_body = clone_stmt_list(i->then_body);
+        out->else_body = clone_stmt_list(i->else_body);
+        out->has_else = i->has_else;
+        out->line = i->line;
+        return out;
+    }
+    if (auto* sw = dynamic_cast<const SwitchStmt*>(s)) {
+        auto out = std::make_unique<SwitchStmt>();
+        out->value = clone_expr_impl(sw->value.get());
+        for (auto& c : sw->cases) {
+            SwitchCase nc;
+            nc.value = clone_expr_impl(c.value.get());
+            nc.body = clone_stmt_list(c.body);
+            out->cases.push_back(std::move(nc));
+        }
+        out->line = sw->line;
+        return out;
+    }
+    if (auto* fn = dynamic_cast<const FunctionDecl*>(s)) {
+        auto out = std::make_unique<FunctionDecl>();
+        out->name = fn->name;
+        out->file = fn->file;
+        out->type_params = fn->type_params;
+        out->is_lambda = fn->is_lambda;
+        out->params = clone_params(fn->params);
+        out->return_type = fn->return_type;
+        out->return_elem = fn->return_elem;
+        out->return_tuple_members = fn->return_tuple_members;
+        out->return_desc = fn->return_desc;
+        out->has_return_type = fn->has_return_type;
+        out->body = clone_stmt_list(fn->body);
+        out->line = fn->line;
+        return out;
+    }
+    if (auto* r = dynamic_cast<const ReturnStmt*>(s)) {
+        auto out = std::make_unique<ReturnStmt>();
+        out->values = clone_expr_list(r->values);
+        out->line = r->line;
+        return out;
+    }
+    if (auto* b = dynamic_cast<const BreakStmt*>(s)) {
+        auto out = std::make_unique<BreakStmt>();
+        out->line = b->line;
+        return out;
+    }
+    if (auto* c = dynamic_cast<const ContinueStmt*>(s)) {
+        auto out = std::make_unique<ContinueStmt>();
+        out->line = c->line;
+        return out;
+    }
+    if (auto* e = dynamic_cast<const ExprStmt*>(s)) {
+        auto out = std::make_unique<ExprStmt>();
+        out->expr = clone_expr_impl(e->expr.get());
+        out->line = e->line;
+        return out;
+    }
+    if (auto* t = dynamic_cast<const TypeDecl*>(s)) {
+        auto out = std::make_unique<TypeDecl>();
+        out->kind = t->kind;
+        out->name = t->name;
+        out->file = t->file;
+        out->alias_target = t->alias_target;
+        out->fields = t->fields;
+        out->variants = t->variants;
+        out->line = t->line;
+        return out;
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+StmtPtr clone_stmt(const Statement* s) { return clone_stmt_impl(s); }
+ExprPtr clone_expr(const Expression* e) { return clone_expr_impl(e); }
+
 bool TypeDesc::operator==(const TypeDesc& other) const {
     if (type != other.type) return false;
     if (elem != other.elem) {

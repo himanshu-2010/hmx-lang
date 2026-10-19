@@ -903,6 +903,7 @@ void CodeGen::emit_env_heap_arg(const FunctionDecl* callee) {
 std::string CodeGen::safe_name(const std::string& name) const {
     if (name == "main") return name;
     if (name.rfind("__lam_", 0) == 0) return name;  // resolver-synthesized lambdas
+    if (name.rfind("__gen_", 0) == 0) return name;  // M17 generic instantiations
     return "hmx_" + name;
 }
 

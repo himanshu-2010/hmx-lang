@@ -408,6 +408,20 @@
       }
     },
     {
+      "name": "generics",
+      "kind": "fixture",
+      "source": "// M17 generic functions: monomorphized per call site, no constraints.\n// Each call infers its type arguments from the argument types.\n\nfn identity[T](x: T) -> T {\n    return x\n}\n\nfn first[T](a: [T], i: int) -> T {\n    return a[i]\n}\n\nfn pick[T](flag: bool, a: T, b: T) -> T {\n    if (flag) { return a }\n    return b\n}\n\nfn repeat[T](x: T, n: int) -> [T] {\n    let out: [T] = []\n    let i = 0\n    while (i < n) {\n        push(out, x)\n        i = i + 1\n    }\n    return out\n}\n\n// A generic that calls another generic; both are instantiated.\nfn twice_identity[T](x: T) -> T {\n    return identity(identity(x))\n}\n\nfn count_down[T](n: int, tag: T) -> int {\n    if (n == 0) { return 0 }\n    return 1 + count_down(n - 1, tag)\n}\n\nstruct Box {\n    value: int\n}\n\nfn unwrap(b: Box) -> int {\n    return b.value\n}\n\nfn apply_to[T](f: fn(T) -> int, x: T) -> int {\n    return f(x)\n}\n\nfn size_of(x: int) -> int {\n    return x\n}\n\nfn main() {\n    print(identity(7))\n    print(identity(\"hmx\"))\n    print(identity(2.5))\n\n    let nums = [10, 20, 30]\n    print(first(nums, 2))\n    let words = [\"a\", \"b\"]\n    print(first(words, 1))\n\n    print(pick(true, 1, 2), pick(false, \"x\", \"y\"))\n\n    let r = repeat(9, 3)\n    print(r[0], r[1], r[2])\n\n    print(identity(identity(5)))\n\n    let box = Box(41)\n    print(box.value)\n}\n\nfn main2() {\n    print(pick(1 < 2, \"one\", \"two\"))\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "7\nhmx\n2.500000\n30\nb\n1 y\n9 9 9\n5\n41\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "ifelse",
       "kind": "fixture",
       "source": "fn main() {\n    let score = 75\n    if (score >= 60) {\n        print(\"passed\")\n    } else {\n        print(\"failed\")\n    }\n\n    let flag = false\n    if (flag) {\n        print(\"yes\")\n    } else {\n        print(\"no\")\n    }\n\n    if (flag) {\n        print(\"never\")\n    }\n}\n",

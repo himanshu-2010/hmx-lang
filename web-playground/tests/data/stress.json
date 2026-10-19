@@ -2026,6 +2026,20 @@
         "stderr": "",
         "exit": 0
       }
+    },
+    {
+      "name": "m17_generic_functions",
+      "kind": "output",
+      "source": "fn identity[T](x: T) -> T {\n        return x\n    }\n    fn pick[T](flag: bool, a: T, b: T) -> T {\n        if (flag) { return a }\n        return b\n    }\n    fn first[T](a: [T], i: int) -> T {\n        return a[i]\n    }\n    fn twice[T](x: T) -> T {\n        return identity(identity(x))\n    }\n    fn main() {\n        print(identity(5))\n        print(identity(\"hmx\"))\n        print(identity(true))\n        print(pick(true, 1, 2))\n        print(pick(false, \"x\", \"y\"))\n        print(twice(2.5))\n        let nums = [10, 20, 30]\n        print(first(nums, 0), first(nums, 2))\n        let words = [\"alpha\", \"beta\"]\n        print(first(words, 1))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "5\nhmx\n1\n1\ny\n2.500000\n10 30\nbeta\n",
+        "stderr": "",
+        "exit": 0
+      }
     }
   ]
 }

@@ -1,0 +1,76 @@
+// M17 generic functions: monomorphized per call site, no constraints.
+// Each call infers its type arguments from the argument types.
+
+fn identity[T](x: T) -> T {
+    return x
+}
+
+fn first[T](a: [T], i: int) -> T {
+    return a[i]
+}
+
+fn pick[T](flag: bool, a: T, b: T) -> T {
+    if (flag) { return a }
+    return b
+}
+
+fn repeat[T](x: T, n: int) -> [T] {
+    let out: [T] = []
+    let i = 0
+    while (i < n) {
+        push(out, x)
+        i = i + 1
+    }
+    return out
+}
+
+// A generic that calls another generic; both are instantiated.
+fn twice_identity[T](x: T) -> T {
+    return identity(identity(x))
+}
+
+fn count_down[T](n: int, tag: T) -> int {
+    if (n == 0) { return 0 }
+    return 1 + count_down(n - 1, tag)
+}
+
+struct Box {
+    value: int
+}
+
+fn unwrap(b: Box) -> int {
+    return b.value
+}
+
+fn apply_to[T](f: fn(T) -> int, x: T) -> int {
+    return f(x)
+}
+
+fn size_of(x: int) -> int {
+    return x
+}
+
+fn main() {
+    print(identity(7))
+    print(identity("hmx"))
+    print(identity(2.5))
+
+    let nums = [10, 20, 30]
+    print(first(nums, 2))
+    let words = ["a", "b"]
+    print(first(words, 1))
+
+    print(pick(true, 1, 2), pick(false, "x", "y"))
+
+    let r = repeat(9, 3)
+    print(r[0], r[1], r[2])
+
+    print(identity(identity(5)))
+
+    let box = Box(41)
+    print(box.value)
+}
+
+fn main2() {
+    print(pick(1 < 2, "one", "two"))
+}

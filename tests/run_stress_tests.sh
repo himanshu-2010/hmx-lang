@@ -2120,6 +2120,37 @@ test_output "m16_struct_fn_field" \
     }' \
     "$(printf 'double\n8\n20\n5\nneg -2')"
 
+# M17: generic functions are monomorphized per inferred instantiation; scalar,
+# text, bool, decimal, array-element and nested-generic-call cases must all
+# produce the same output as hand-written specializations.
+test_output "m17_generic_functions" \
+    'fn identity[T](x: T) -> T {
+        return x
+    }
+    fn pick[T](flag: bool, a: T, b: T) -> T {
+        if (flag) { return a }
+        return b
+    }
+    fn first[T](a: [T], i: int) -> T {
+        return a[i]
+    }
+    fn twice[T](x: T) -> T {
+        return identity(identity(x))
+    }
+    fn main() {
+        print(identity(5))
+        print(identity("hmx"))
+        print(identity(true))
+        print(pick(true, 1, 2))
+        print(pick(false, "x", "y"))
+        print(twice(2.5))
+        let nums = [10, 20, 30]
+        print(first(nums, 0), first(nums, 2))
+        let words = ["alpha", "beta"]
+        print(first(words, 1))
+    }' \
+    "$(printf '5\nhmx\n1\n1\ny\n2.500000\n10 30\nbeta')"
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"
