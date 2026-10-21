@@ -470,23 +470,29 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "static void sd_rel_fn(void* p) { sd_closure* c = (sd_closure*)p; sd_release_closure(c); }\n";
     out_ << "static void sd_ret_fn(void* p) { sd_closure* c = (sd_closure*)p; sd_retain_closure(*c); }\n\n";
 
-    for (auto& stmt : program.statements) collect_tuple_types(stmt.get());
+    // P1: the entire resolved program is lowered to IR once; every walker
+    // (tuple types, function decls, lambdas/setjmp) and the emitter consume
+    // the tree.
+    auto program_ir = ir::build(program.statements);
+    for (auto& node : program_ir) collect_tuple_types_ir(*node);
 
-    std::vector<Statement*> top_level;
+    std::vector<ir::Node*> top_level_ir;   // non-function nodes, in emission order
+    std::vector<Statement*> top_level;     // AST mirror for push_scope_for
 
-    for (auto& stmt : program.statements) {
-        if (auto* fn = dynamic_cast<FunctionDecl*>(stmt.get())) {
-            all_functions_.push_back(fn);
-            for (auto& body_stmt : fn->body) collect_function_decls(body_stmt.get());
+    for (auto& node : program_ir) {
+        if (node->kind != ir::SKind::FuncDecl) {
+            top_level_ir.push_back(node.get());
+            top_level.push_back(node->ast);
         } else {
-            top_level.push_back(stmt.get());
+            all_functions_.push_back(static_cast<FunctionDecl*>(node->ast));
+            for (auto& c : node->body) collect_function_decls_ir(*c);
         }
     }
 
-    for (auto* s : top_level) collect_lambdas_stmt(s);
+    for (auto* n : top_level_ir) collect_lambdas_stmt_ir(*n);
     for (size_t fi = 0; fi < all_functions_.size(); fi++) {
         cur_fn_setjmp_ = false;
-        collect_lambdas_stmt(all_functions_[fi]);
+        collect_lambdas_fn_ir(all_functions_[fi]);
         fn_setjmp_[all_functions_[fi]] = cur_fn_setjmp_;
     }
     // Lambdas live inside expressions, so they were collected a second time
@@ -540,8 +546,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
         functions_by_name_[fn->name] = fn;
     }
 
-    std::vector<std::unique_ptr<ir::Node>> top_ir = ir::build(top_level);
-    for (auto& node : top_ir) {
+    for (auto* node : top_level_ir) {
         // Module top-level statements carry their own file for #line accuracy.
         line_file_ = statement_file(node->ast);
         emit_ir(*node);
@@ -617,107 +622,171 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     return out_.str();
 }
 
-void CodeGen::collect_function_decls(Statement* stmt) {
-    auto recurse = [this](const std::vector<StmtPtr>& list) {
-        for (auto& s : list) collect_function_decls(s.get());
+// P1b: the pre-pass walkers dispatch on the IR tree (single rule book with
+// the emitter). Semantics are carved to match the legacy AST walkers exactly,
+// including the for-init/update asymmetry:
+//   collect_function_decls: For recurses body only (init/update cannot hold
+//   function declarations); everything else follows the child lists.
+void CodeGen::collect_function_decls_ir(const ir::Node& n) {
+    auto recurse = [this](const std::vector<std::unique_ptr<ir::Node>>& list) {
+        for (auto& c : list) collect_function_decls_ir(*c);
     };
-    if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
-        all_functions_.push_back(fn);
-        recurse(fn->body);
-    } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
-        recurse(d->body);
-    } else if (auto* t = dynamic_cast<TryStmt*>(stmt)) {
-        recurse(t->body);
-        recurse(t->handler);
-    } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
-        recurse(ifs->then_body);
-        recurse(ifs->else_body);
-    } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
-        for (auto& c : sw->cases) recurse(c.body);
-    } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
-        recurse(loop->body);
-    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
-        recurse(fe->body);
-    } else if (auto* w = dynamic_cast<WhileStmt*>(stmt)) {
-        recurse(w->body);
-    } else if (auto* f = dynamic_cast<ForStmt*>(stmt)) {
-        recurse(f->body);
-    } else if (auto* dw = dynamic_cast<DoWhileStmt*>(stmt)) {
-        recurse(dw->body);
+    switch (n.kind) {
+        case ir::SKind::FuncDecl: {
+            all_functions_.push_back(static_cast<FunctionDecl*>(n.ast));
+            recurse(n.body);
+            break;
+        }
+        case ir::SKind::Defer: recurse(n.body); break;
+        case ir::SKind::Try: recurse(n.body); recurse(n.handler); break;
+        case ir::SKind::If: recurse(n.body); recurse(n.else_body); break;
+        case ir::SKind::Switch:
+            for (auto& c : n.cases) recurse(c.body);
+            break;
+        case ir::SKind::Loop: recurse(n.body); break;
+        case ir::SKind::Foreach: recurse(n.body); break;
+        case ir::SKind::While: recurse(n.body); break;
+        case ir::SKind::For: recurse(n.body); break;   // init/update: no fn decls possible
+        case ir::SKind::DoWhile: recurse(n.body); break;
+        default: break;
     }
 }
 
-void CodeGen::collect_lambdas_stmt(Statement* stmt) {
+// P1b: lambda walker / setjmp probe over the IR. The legacy `nl_target` hook
+// fires on every statement (compound statements and functions alike), so the
+// IR version checks the wrapped AST node on entry, exactly like before.
+void CodeGen::collect_lambdas_stmt_ir(const ir::Node& n) {
     // A loop with a non-local-exit target is the one construct that makes this
     // function emit a setjmp, and therefore the one that makes its locals
     // indeterminate after a longjmp (see the setjmp clobber note in codegen.hpp).
     // Piggybacking on the existing walker keeps the two traversals from drifting:
     // anything nested enough to hide a lambda is walked here too.
-    if (stmt->nl_target) cur_fn_setjmp_ = true;
-    auto recurse = [this](const std::vector<StmtPtr>& list) {
-        for (auto& s : list) collect_lambdas_stmt(s.get());
+    if (n.ast->nl_target) cur_fn_setjmp_ = true;
+    auto walk_children = [this](const std::vector<std::unique_ptr<ir::Node>>& list) {
+        for (auto& c : list) collect_lambdas_stmt_ir(*c);
     };
-    if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
-        recurse(fn->body);
-    } else if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
-        if (var->initializer) collect_lambdas_expr(var->initializer.get());
-    } else if (auto* assign = dynamic_cast<AssignStmt*>(stmt)) {
-        if (assign->rhs) collect_lambdas_expr(assign->rhs.get());
-    } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
-        if (ma->rhs) collect_lambdas_expr(ma->rhs.get());
-    } else if (auto* dd = dynamic_cast<DestructDecl*>(stmt)) {
-        if (dd->rhs) collect_lambdas_expr(dd->rhs.get());
-    } else if (auto* aa = dynamic_cast<ArrayAssignStmt*>(stmt)) {
-        if (aa->index) collect_lambdas_expr(aa->index.get());
-        if (aa->rhs) collect_lambdas_expr(aa->rhs.get());
-    } else if (auto* ea = dynamic_cast<ElementAssignStmt*>(stmt)) {
-        if (ea->target) collect_lambdas_expr(ea->target.get());
-        if (ea->rhs) collect_lambdas_expr(ea->rhs.get());
-    } else if (auto* massign = dynamic_cast<MemberAssignStmt*>(stmt)) {
-        if (massign->base) collect_lambdas_expr(massign->base.get());
-        if (massign->rhs) collect_lambdas_expr(massign->rhs.get());
-    } else if (auto* es = dynamic_cast<ExprStmt*>(stmt)) {
-        collect_lambdas_expr(es->expr.get());
-    } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
-        recurse(d->body);
-    } else if (auto* t = dynamic_cast<TryStmt*>(stmt)) {
-        // A try installs a setjmp frame, so locals modified between setjmp and
-        // a caught longjmp must be volatile.
-        cur_fn_setjmp_ = true;
-        recurse(t->body);
-        recurse(t->handler);
-    } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
-        for (auto& v : ret->values) collect_lambdas_expr(v.get());
-    } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
-        for (auto& a : print->args) collect_lambdas_expr(a.get());
-    } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
-        collect_lambdas_expr(ifs->condition.get());
-        recurse(ifs->then_body);
-        recurse(ifs->else_body);
-    } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
-        collect_lambdas_expr(sw->value.get());
-        for (auto& c : sw->cases) {
-            if (c.value) collect_lambdas_expr(c.value.get());
-            recurse(c.body);
+    switch (n.kind) {
+        case ir::SKind::FuncDecl: walk_children(n.body); break;
+        case ir::SKind::VarDecl: {
+            auto* s = static_cast<VarDecl*>(n.ast);
+            if (s->initializer) collect_lambdas_expr(s->initializer.get());
+            break;
         }
-    } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
-        collect_lambdas_expr(loop->count.get());
-        recurse(loop->body);
-    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
-        collect_lambdas_expr(fe->iterable.get());
-        recurse(fe->body);
-    } else if (auto* w = dynamic_cast<WhileStmt*>(stmt)) {
-        collect_lambdas_expr(w->condition.get());
-        recurse(w->body);
-    } else if (auto* f = dynamic_cast<ForStmt*>(stmt)) {
-        if (f->init) collect_lambdas_stmt(f->init.get());
-        if (f->condition) collect_lambdas_expr(f->condition.get());
-        if (f->update) collect_lambdas_stmt(f->update.get());
-        recurse(f->body);
-    } else if (auto* dw = dynamic_cast<DoWhileStmt*>(stmt)) {
-        recurse(dw->body);
-        collect_lambdas_expr(dw->condition.get());
+        case ir::SKind::Assign: {
+            auto* s = static_cast<AssignStmt*>(n.ast);
+            if (s->rhs) collect_lambdas_expr(s->rhs.get());
+            break;
+        }
+        case ir::SKind::MultiAssign: {
+            auto* s = static_cast<MultiAssignStmt*>(n.ast);
+            if (s->rhs) collect_lambdas_expr(s->rhs.get());
+            break;
+        }
+        case ir::SKind::DestructDecl: {
+            auto* s = static_cast<DestructDecl*>(n.ast);
+            if (s->rhs) collect_lambdas_expr(s->rhs.get());
+            break;
+        }
+        case ir::SKind::ArrayAssign: {
+            auto* s = static_cast<ArrayAssignStmt*>(n.ast);
+            if (s->index) collect_lambdas_expr(s->index.get());
+            if (s->rhs) collect_lambdas_expr(s->rhs.get());
+            break;
+        }
+        case ir::SKind::ElementAssign: {
+            auto* s = static_cast<ElementAssignStmt*>(n.ast);
+            if (s->target) collect_lambdas_expr(s->target.get());
+            if (s->rhs) collect_lambdas_expr(s->rhs.get());
+            break;
+        }
+        case ir::SKind::MemberAssign: {
+            auto* s = static_cast<MemberAssignStmt*>(n.ast);
+            if (s->base) collect_lambdas_expr(s->base.get());
+            if (s->rhs) collect_lambdas_expr(s->rhs.get());
+            break;
+        }
+        case ir::SKind::ExprStmt: {
+            auto* s = static_cast<ExprStmt*>(n.ast);
+            collect_lambdas_expr(s->expr.get());
+            break;
+        }
+        case ir::SKind::Defer: walk_children(n.body); break;
+        case ir::SKind::Try: {
+            // A try installs a setjmp frame, so locals modified between setjmp and
+            // a caught longjmp must be volatile.
+            cur_fn_setjmp_ = true;
+            walk_children(n.body);
+            walk_children(n.handler);
+            break;
+        }
+        case ir::SKind::Return: {
+            auto* s = static_cast<ReturnStmt*>(n.ast);
+            for (auto& v : s->values) collect_lambdas_expr(v.get());
+            break;
+        }
+        case ir::SKind::Print: {
+            auto* s = static_cast<PrintStmt*>(n.ast);
+            for (auto& a : s->args) collect_lambdas_expr(a.get());
+            break;
+        }
+        case ir::SKind::If: {
+            auto* s = static_cast<IfStmt*>(n.ast);
+            collect_lambdas_expr(s->condition.get());
+            walk_children(n.body);
+            walk_children(n.else_body);
+            break;
+        }
+        case ir::SKind::Switch: {
+            auto* s = static_cast<SwitchStmt*>(n.ast);
+            collect_lambdas_expr(s->value.get());
+            for (auto& c : n.cases) {
+                if (c.ast->value) collect_lambdas_expr(c.ast->value.get());
+                walk_children(c.body);
+            }
+            break;
+        }
+        case ir::SKind::Loop: {
+            auto* s = static_cast<LoopStmt*>(n.ast);
+            collect_lambdas_expr(s->count.get());
+            walk_children(n.body);
+            break;
+        }
+        case ir::SKind::Foreach: {
+            auto* s = static_cast<ForeachStmt*>(n.ast);
+            collect_lambdas_expr(s->iterable.get());
+            walk_children(n.body);
+            break;
+        }
+        case ir::SKind::While: {
+            auto* s = static_cast<WhileStmt*>(n.ast);
+            collect_lambdas_expr(s->condition.get());
+            walk_children(n.body);
+            break;
+        }
+        case ir::SKind::For: {
+            auto* s = static_cast<ForStmt*>(n.ast);
+            if (n.init) collect_lambdas_stmt_ir(*n.init);
+            collect_lambdas_expr(s->condition.get());
+            if (n.update) collect_lambdas_stmt_ir(*n.update);
+            walk_children(n.body);
+            break;
+        }
+        case ir::SKind::DoWhile: {
+            auto* s = static_cast<DoWhileStmt*>(n.ast);
+            walk_children(n.body);
+            collect_lambdas_expr(s->condition.get());
+            break;
+        }
+        default: break;
     }
+}
+
+// Walk a hoisted FunctionDecl (top-level or lambda-resolved): the legacy code
+// funnelled these through collect_lambdas_stmt's FuncDecl case.
+void CodeGen::collect_lambdas_fn_ir(const FunctionDecl* fn) {
+    if (fn->nl_target) cur_fn_setjmp_ = true;
+    auto body_ir = ir::build(fn->body);
+    for (auto& c : body_ir) collect_lambdas_stmt_ir(*c);
 }
 
 void CodeGen::collect_lambdas_expr(Expression* expr) {
@@ -726,7 +795,7 @@ void CodeGen::collect_lambdas_expr(Expression* expr) {
             throw std::runtime_error("internal error: unresolved lambda expression");
         }
         if (walked_lambdas_.insert(lam->resolved).second) {
-            collect_lambdas_stmt(lam->resolved);   // body may hold nested lambdas / declarations
+            collect_lambdas_fn_ir(lam->resolved);  // body may hold nested lambdas / declarations
             all_functions_.push_back(lam->resolved);
         }
         return;
@@ -1095,67 +1164,88 @@ void CodeGen::emit_pending_named_types() {
     }
 }
 
-void CodeGen::collect_tuple_types(Statement* stmt) {
-    if (auto* td = dynamic_cast<TypeDecl*>(stmt)) {
-        // Nominal type declarations: register the struct (and everything its
-        // fields need) and alias targets so C typedefs exist before use.
-        if (td->kind == TypeDeclKind::Struct) {
-            register_struct_deep(td->name);
-        } else if (td->kind == TypeDeclKind::Alias) {
-            register_tuple_types_deep(td->alias_target);
+void CodeGen::collect_tuple_types_ir(const ir::Node& n) {
+    switch (n.kind) {
+        case ir::SKind::TypeDecl: {
+            // Nominal type declarations: register the struct (and everything its
+            // fields need) and alias targets so C typedefs exist before use.
+            auto* td = static_cast<TypeDecl*>(n.ast);
+            if (td->kind == TypeDeclKind::Struct) {
+                register_struct_deep(td->name);
+            } else if (td->kind == TypeDeclKind::Alias) {
+                register_tuple_types_deep(td->alias_target);
+            }
+            break;
         }
-    } else if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
-        if (var->annotation == TypeKind::Tuple && !var->tuple_members.empty()) {
-            TypeDesc d{TypeKind::Tuple, {}, var->tuple_members, {}};
-            register_tuple_types_deep(d);
-        } else if (var->annotation == TypeKind::Struct) {
-            register_tuple_types_deep(var->annotation_desc);
-        } else if (var->annotation == TypeKind::Array) {
-            register_tuple_types_deep(var->elem_desc);
+        case ir::SKind::VarDecl: {
+            auto* var = static_cast<VarDecl*>(n.ast);
+            if (var->annotation == TypeKind::Tuple && !var->tuple_members.empty()) {
+                TypeDesc d{TypeKind::Tuple, {}, var->tuple_members, {}};
+                register_tuple_types_deep(d);
+            } else if (var->annotation == TypeKind::Struct) {
+                register_tuple_types_deep(var->annotation_desc);
+            } else if (var->annotation == TypeKind::Array) {
+                register_tuple_types_deep(var->elem_desc);
+            }
+            break;
         }
-    } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
-        for (auto& p : td->patterns) register_tuple_types_deep(p.vdesc);
-    } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
-        for (auto& p : ma->patterns) register_tuple_types_deep(p.vdesc);
-    } else if (auto* fn = dynamic_cast<FunctionDecl*>(stmt)) {
-        for (auto& p : fn->params) {
-            if (p.type == TypeKind::Tuple && !p.tuple_members.empty()) {
-                TypeDesc d{TypeKind::Tuple, {}, p.tuple_members, {}};
+        case ir::SKind::DestructDecl: {
+            auto* td = static_cast<DestructDecl*>(n.ast);
+            for (auto& p : td->patterns) register_tuple_types_deep(p.vdesc);
+            break;
+        }
+        case ir::SKind::MultiAssign: {
+            auto* ma = static_cast<MultiAssignStmt*>(n.ast);
+            for (auto& p : ma->patterns) register_tuple_types_deep(p.vdesc);
+            break;
+        }
+        case ir::SKind::FuncDecl: {
+            auto* fn = static_cast<FunctionDecl*>(n.ast);
+            for (auto& p : fn->params) {
+                if (p.type == TypeKind::Tuple && !p.tuple_members.empty()) {
+                    TypeDesc d{TypeKind::Tuple, {}, p.tuple_members, {}};
+                    register_tuple_types_deep(d);
+                }
+            }
+            if (fn->return_type == TypeKind::Tuple && !fn->return_tuple_members.empty()) {
+                TypeDesc d{TypeKind::Tuple, {}, fn->return_tuple_members, {}};
                 register_tuple_types_deep(d);
             }
+            for (auto& c : n.body) collect_tuple_types_ir(*c);
+            break;
         }
-        if (fn->return_type == TypeKind::Tuple && !fn->return_tuple_members.empty()) {
-            TypeDesc d{TypeKind::Tuple, {}, fn->return_tuple_members, {}};
-            register_tuple_types_deep(d);
+        case ir::SKind::Loop: case ir::SKind::Foreach: case ir::SKind::While:
+        case ir::SKind::DoWhile: case ir::SKind::Defer:
+            for (auto& c : n.body) collect_tuple_types_ir(*c);
+            break;
+        case ir::SKind::For: {
+            if (n.init) collect_tuple_types_ir(*n.init);
+            if (n.update) collect_tuple_types_ir(*n.update);
+            for (auto& c : n.body) collect_tuple_types_ir(*c);
+            break;
         }
-        for (auto& s : fn->body) collect_tuple_types(s.get());
-    } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
-        for (auto& s : loop->body) collect_tuple_types(s.get());
-    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
-        for (auto& s : fe->body) collect_tuple_types(s.get());
-    } else if (auto* w = dynamic_cast<WhileStmt*>(stmt)) {
-        for (auto& s : w->body) collect_tuple_types(s.get());
-    } else if (auto* f = dynamic_cast<ForStmt*>(stmt)) {
-        collect_tuple_types(f->init.get());
-        collect_tuple_types(f->update.get());
-        for (auto& s : f->body) collect_tuple_types(s.get());
-    } else if (auto* dw = dynamic_cast<DoWhileStmt*>(stmt)) {
-        for (auto& s : dw->body) collect_tuple_types(s.get());
-    } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
-        for (auto& s : d->body) collect_tuple_types(s.get());
-    } else if (auto* t = dynamic_cast<TryStmt*>(stmt)) {
-        for (auto& s : t->body) collect_tuple_types(s.get());
-        for (auto& s : t->handler) collect_tuple_types(s.get());
-    } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
-        for (auto& s : ifs->then_body) collect_tuple_types(s.get());
-        for (auto& s : ifs->else_body) collect_tuple_types(s.get());
-    } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
-        for (auto& c : sw->cases) for (auto& s : c.body) collect_tuple_types(s.get());
-    } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
-        if (ret->values.size() > 1 && !ret->return_tuple_members.empty()) {
-            TypeDesc d{TypeKind::Tuple, {}, ret->return_tuple_members, {}};
-            register_tuple_types_deep(d);
+        case ir::SKind::Try:
+            for (auto& c : n.body) collect_tuple_types_ir(*c);
+            for (auto& c : n.handler) collect_tuple_types_ir(*c);
+            break;
+        case ir::SKind::If:
+            for (auto& c : n.body) collect_tuple_types_ir(*c);
+            for (auto& c : n.else_body) collect_tuple_types_ir(*c);
+            break;
+        case ir::SKind::Switch:
+            for (auto& c : n.cases) {
+                for (auto& b : c.body) collect_tuple_types_ir(*b);
+            }
+            break;
+        case ir::SKind::Return: {
+            auto* ret = static_cast<ReturnStmt*>(n.ast);
+            if (ret->values.size() > 1 && !ret->return_tuple_members.empty()) {
+                TypeDesc d{TypeKind::Tuple, {}, ret->return_tuple_members, {}};
+                register_tuple_types_deep(d);
+            }
+            break;
         }
+        default: break;
     }
 }
 

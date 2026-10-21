@@ -73,6 +73,10 @@ private:
     std::string c_type_for_desc(const TypeDesc& d);
     void register_desc_types(const TypeDesc& d);
     void register_tuple_types_deep(const TypeDesc& d);
+    // P1b: pre-pass walkers consume the ir::Node tree (single rule book with
+    // the emitter). collect_lambdas_stmt_ir doubles as the setjmp probe.
+    void collect_tuple_types_ir(const ir::Node& n);
+    void collect_function_decls_ir(const ir::Node& n);
     bool is_capture(const FunctionDecl* fn, const std::string& name) const;
     // M12 identifier safety: every user identifier is prefixed with `hmx_` so
     // it can never collide with a C keyword, `_`-prefixed reserved name, or the
@@ -88,7 +92,8 @@ private:
     void emit_binding(const DestructPattern& slot, const std::string& rhs,
                       const TypeDesc& vd, bool declare);
     void emit_pending_tuple_types();
-    void collect_lambdas_stmt(Statement* stmt);
+    void collect_lambdas_stmt_ir(const ir::Node& n);
+    void collect_lambdas_fn_ir(const FunctionDecl* fn);
     void collect_lambdas_expr(Expression* expr);
     void emit_papp_helpers();
     static std::string papp_mangle_type(const TypeDesc& d);
