@@ -319,6 +319,7 @@ export enum NodeKind {
   MemberAccessExpr,
   MemberAssignStmt,
   TypeDecl,
+  DeferStmt,
 }
 
 export interface Expression {
@@ -800,6 +801,19 @@ export class ExprStmt implements Statement {
   constructor(public expr: Expression) {}
 }
 
+/** M18 `defer { ... }` / `defer expr`: runs when the enclosing block exits,
+ * newest first. `id` is assigned by codegen for the runtime guard flag. */
+export class DeferStmt implements Statement {
+  kind = NodeKind.DeferStmt;
+  line = 0;
+  resolved_type = TypeKind.Unknown;
+  nl_id = -1;
+  nl_target = false;
+  nl_owner: FunctionDecl | null = null;
+  id = -1;
+  constructor(public body: Statement[]) {}
+}
+
 // ---- M16 type declarations (alias / struct / enum) ----
 
 export enum TypeDeclKind {
@@ -946,6 +960,8 @@ function gatherChildren(node: AstNode, out: AstNode[]): void {
     pushList(node.values);
   } else if (node instanceof ExprStmt) {
     push(node.expr);
+  } else if (node instanceof DeferStmt) {
+    pushList(node.body);
   }
   // NumberLiteral / DecimalLiteral / StringLiteral / CharLiteral /
   // BoolLiteral / Identifier / BreakStmt / ContinueStmt / TypeDecl:
@@ -1094,7 +1110,8 @@ function isStatement(node: unknown): node is Statement {
     node instanceof ReturnStmt ||
     node instanceof BreakStmt ||
     node instanceof ContinueStmt ||
-    node instanceof ExprStmt
+    node instanceof ExprStmt ||
+    node instanceof DeferStmt
   );
 }
 
@@ -1292,6 +1309,11 @@ function cloneStmt<T extends Statement>(s: T): T {
   }
   if (s instanceof ExprStmt) {
     const out = new ExprStmt(cloneExpr(s.expr));
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof DeferStmt) {
+    const out = new DeferStmt(s.body.map(cloneStmt));
     out.line = s.line;
     return out as unknown as T;
   }

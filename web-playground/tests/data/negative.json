@@ -3719,6 +3719,48 @@
       }
     },
     {
+      "name": "defer_return_forbidden",
+      "kind": "negative",
+      "source": "fn main() {\n        defer { return }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "return is not allowed inside a defer block",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 2]: return is not allowed inside a defer block\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "defer_break_forbidden",
+      "kind": "negative",
+      "source": "fn main() {\n        loop (2) {\n            defer { break }\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "break is not allowed inside a defer block",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: break is not allowed inside a defer block\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "defer_in_nonlocal_loop",
+      "kind": "negative",
+      "source": "fn main() {\n        loop (2) {\n            fn bail() { break }\n            defer { print(\"cleanup\") }\n            bail()\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "defer is not supported inside a loop that a nested function exits non-locally",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: defer is not supported inside a loop that a nested function exits non-locally\n",
+        "exit": 1
+      }
+    },
+    {
       "name": "resolver_nesting_limit_not",
       "kind": "negative",
       "source": "fn main() {\n        let x = !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!true\n        print(0)\n        print(1)\n    }",

@@ -11,7 +11,7 @@
 ## Framing
 
 HMX today is a **solid small language with an unusually mature packaging story**:
- 496 native + 160 packaging + 493 vitest tests, ASan/UBSan/valgrind/fuzz-gated
+ 517 native + 160 packaging + 498 vitest tests, ASan/UBSan/valgrind/fuzz-gated
 reference counting, signed releases, working installers for
 Linux/macOS/Windows, and a byte-identical browser compiler.
 
@@ -131,7 +131,7 @@ governance files.
 | 7.1 | **No benchmark suite / perf-regression gate.** Compile-time scaling on large programs is unknown. `[new]` |
 | 7.2 | No property/differential testing beyond web↔native parity and the libFuzzer front-end harness; no coverage metric. `[new]` |
 | 7.3 | No TSan matrix, no 32-bit/big-endian checks (UBSan + the `HMX_MAX_NESTING` resolver guard now land in CI). `[new]` |
-| 7.4 | Error-message surface is covered by 268 negatives, but there is no golden-diagnostics snapshot for message drift. `[new]` |
+| 7.4 | Error-message surface is covered by 271 negatives, but there is no golden-diagnostics snapshot for message drift. `[new]` |
 
 ---
 

@@ -1,6 +1,6 @@
 # HMX Compiler — Progress Log
 
-Last updated: 2026-10-19
+Last updated: 2026-10-21
 ## Objective
 Implement the HMX transpiler's 8-phase plan (from `PLAN.md`) so users can write full hello-world-capable programs. Multi-stage pipeline: lexer → parser → type resolution → codegen → gcc.
 
@@ -438,7 +438,7 @@ booleans, if/else, loops, assignment, functions with typed params + returns + ca
   plus runtime-error exit-code cases `array_pop_empty` and `array_slice_oob`.
 - Docs: SYNTAX.md §5.3 (growable + reference semantics), §13.3 Array Built-ins
   (renumbered `input`→13.4, conversions→13.5); this entry.
-- Full regression: 46/46 integration, 151/151 negative, 72/72 stress/output = **269**.
+- Full regression: 46/46 integration, 151/151 negative, 73/73 stress/output = **269**.
 
 ### 0.A3 — Byte-level text operations: `text[i]`, `ord`, `chr`, `split` — DONE
 - `text[i]` read-indexing: `ArrayIndexExpr` gained an `is_text` flag; the
@@ -1717,6 +1717,50 @@ each distinct type-argument list becomes its own concrete struct.
   web vitest **491/491** (476 parity + 15 app), `gen-data.mts` parity **0
   failures** (stress 145 / negative 262 / integration 66 all byte-identical to
   native), oxlint 0 errors; valgrind **71/71** (14 matrix + 57 fixtures).
+
+## M18.1 — `defer` (landed)
+
+- **Syntax:** `defer { statement+ }` and `defer expression`. The deferred work
+  runs when the enclosing scope exits, newest first (LIFO). It runs on normal
+  fall-through, `return`, `break` and `continue`, and only if control actually
+  reached the defer (a defer after an early `return` never runs).
+- **Grammar:** `statement` is re-opened at the very end of `parser.y` for the two
+  defer productions, so every pre-existing rule number (and the web
+  `actions.ts` table) stays stable. Tokens `defer`/`try`/`catch` land now;
+  `try`/`catch` stay unused until M18.2. Tables: **189 rules / 493 states /
+  78 tokens**; still nine shift/reduce conflicts, all resolved by shift.
+- **AST:** `DeferStmt` (body list + codegen guard id) with `gather_children`,
+  `clone_stmt` and the web `deepCloneAst` mirror.
+- **Resolver:** resolves the deferred block in its own scope; rejects
+  `return`/`break`/`continue` inside a defer block (a deferred `return` would
+  re-enter teardown and recurse). It also rejects a defer inside a loop that a
+  nested function exits non-locally, because that `longjmp` bypasses the target
+  function's loop-body teardown — error rather than silently skipped cleanup.
+  Defers inside the nested breaker function itself are allowed and run before
+  its jump.
+- **Codegen:** each scope owns a defer list and one `volatile int _sd_dfrN`
+  guard per direct defer, initialised at scope entry. The defer statement itself
+  sets its guard, so registration stays dynamic. Teardown emits guarded bodies
+  in reverse, before the scope's reference-counted locals are released, and is
+  invoked from fall-through, `return`, `break`, `continue`, and before a
+  non-local `longjmp`. `emit_all_defers` also runs on the (future) `?`
+  early-return path. When any defer is active, returning an owned local
+  retains it first instead of transferring, so a deferred assignment to that
+  local cannot free the value the caller receives. Web `codegen_js.ts` mirrors
+  the guard/teardown ordering.
+- **Tests:** fixture `defer.hmx` (heap payloads, LIFO, early return, loop
+  break/continue, if-scope, foreach); stress `m18_defer`; negatives
+  `defer_return_forbidden`, `defer_break_forbidden`,
+  `defer_in_nonlocal_loop`. While wiring scope teardown, a pre-existing double
+  release of heap-typed `switch`-case locals surfaced (the case emitted
+  `emit_releases_at_current_scope()` and then `pop_scope()` released the same
+  entries again); removed the redundant call and added valgrind matrix case
+  `switch_case_heap_locals` (nested switch, text + array locals).
+- **Hygiene:** native **517/517** (67 integration / 271 negative / 146 stress /
+  33 CLI); ASan+LSan-clean integration+stress; UBSan control **3/3** and
+  sanitizer suites clean; web vitest **498/498** (483 parity + 15 app),
+  `gen-data.mts` parity **0 failures**; valgrind **73/73** (15 matrix + 58
+  fixtures); oxlint clean.
 
 ## Known issues / deferred
 - Type parameters on **`alias`** and **`enum`** declarations, variadic generic

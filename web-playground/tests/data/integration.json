@@ -254,6 +254,20 @@
       }
     },
     {
+      "name": "defer",
+      "kind": "fixture",
+      "source": "// M18: `defer` runs its block when the enclosing scope exits, newest first.\n// It runs on normal fall-through, `return`, `break` and `continue`, and only if\n// control actually reached the defer statement.\nfn make(n: int) -> text {\n    defer { print(\"release\", n) }\n    return \"value-\" + tostr(n)\n}\n\nfn early(x: int) -> int {\n    defer { print(\"outer\") }\n    if (x > 0) {\n        defer { print(\"taken\") }\n        return 1\n    }\n    defer { print(\"not-taken\") }\n    return 2\n}\n\nfn stable() -> text {\n    let s = \"original\"\n    defer { s = \"changed\" }      // must not affect the returned reference\n    return s\n}\n\nfn main() {\n    defer { print(\"main-last\") }\n    defer { print(\"main-first\") }\n    let a = make(1)\n    print(a)\n    print(early(1))\n    print(early(0))\n    for (let i = 0; i < 3; i++) {\n        defer { print(\"iter\", i) }\n        if (i == 0) { continue }\n        if (i == 2) { break }\n        print(\"body\", i)\n    }\n    if (true) {\n        defer { print(\"if-done\") }\n        print(\"if-body\")\n    }\n    let items = [\"a\", \"b\"]\n    foreach (it in items) {\n        defer { print(\"item\", it) }\n        print(\"visit\", it)\n    }\n    foreach (c in \"xy\") {\n        defer { print(\"char\", c) }\n    }\n    if (true) {\n        defer { print(\"outer-if\") }\n        if (true) {\n            defer { print(\"inner-if\") }\n            print(\"nested\")\n        }\n    }\n    print(stable())\n    print(\"end\")\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "release 1\nvalue-1\ntaken\nouter\n1\nnot-taken\nouter\n2\niter 0\nbody 1\niter 1\niter 2\nif-body\nif-done\nvisit a\nitem a\nvisit b\nitem b\nchar x\nchar y\nnested\ninner-if\nouter-if\noriginal\nend\nmain-first\nmain-last\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "destructure_nested",
       "kind": "fixture",
       "source": "fn mk_pair(x: int) -> (int, int) {\n    return x, x * 10\n}\nfn mk_nested() -> ((int, int), int) {\n    return mk_pair(1), 2\n}\nfn mk_deep() -> (((int, int), int), int) {\n    return mk_nested(), 4\n}\nfn main() {\n    // deep nested tuple pattern\n    let (((a, b), c), d) = mk_deep()\n    print(a, b, c, d)\n    // array of tuples: nested group plus rest\n    let pairs: [(int, int)] = [mk_pair(1), mk_pair(2), mk_pair(3)]\n    let ((p, q), r, ...tail) = pairs\n    print(p, q)\n    print(r[0], r[1])\n    print(length(tail), tail[0][0], tail[0][1])\n    // nested arrays: rest inside a group\n    let grid: [[int]] = [[1, 2, 3], [4, 5]]\n    let ((x, y, ...zs), row1) = grid\n    print(x, y)\n    print(length(zs), zs[0])\n    print(length(row1), row1[0], row1[1])\n    // text elements bound by nested patterns\n    let words: [text] = [\"hi\", \"ok\"]\n    let (w0, (c1, c2)) = words\n    print(w0)\n    print(c1, c2)\n    // nested multi-assign\n    let one = 0\n    let two = 0\n    let three = 0\n    ((one, two), three) = mk_nested()\n    print(one, two, three)\n}",

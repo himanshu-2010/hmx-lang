@@ -129,6 +129,11 @@
   Generic **structs** + instantiation in type position are **M17.3 (landed)**.
 - **M18** `Option[T]` / `Result[T,E]` + `try`/`?`/`defer` on existing setjmp
   machinery; hard faults stay print+exit(1) by default, recoverable via `catch`.
+  **M18.1 landed (`defer`):** `defer { ... }` / `defer expr`, LIFO on
+  fall-through/`return`/`break`/`continue`, dynamic registration, guard flags,
+  and cleanup before a non-local `longjmp` from the same function. `try`/`catch`
+  and `Option`/`Result` remain. Native **67** integration / **271** negative /
+  **146** stress, web parity 0 failures, valgrind **73/73**.
 - **M19** int64 / u32 / u64 / float32 + checked-arithmetic flag; BigInt stretch.
 
 ## 6. Batch D — Standard library

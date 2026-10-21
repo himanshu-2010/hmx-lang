@@ -121,6 +121,8 @@ void gather_children(ASTNode* node, std::vector<ASTNode*>& out) {
         push_expr_list<Release>(out, r->values);
     } else if (auto* x = dynamic_cast<ExprStmt*>(node)) {
         push_child<Release>(out, x->expr);
+    } else if (auto* d = dynamic_cast<DeferStmt*>(node)) {
+        push_stmt_list<Release>(out, d->body);
     }
     // NumberLiteral / DecimalLiteral / StringLiteral / CharLiteral /
     // BoolLiteral / Identifier / BreakStmt / ContinueStmt / TypeDecl:
@@ -490,6 +492,12 @@ StmtPtr clone_stmt_impl(const Statement* s) {
         auto out = std::make_unique<ExprStmt>();
         out->expr = clone_expr_impl(e->expr.get());
         out->line = e->line;
+        return out;
+    }
+    if (auto* d = dynamic_cast<const DeferStmt*>(s)) {
+        auto out = std::make_unique<DeferStmt>();
+        out->body = clone_stmt_list(d->body);
+        out->line = d->line;
         return out;
     }
     if (auto* t = dynamic_cast<const TypeDecl*>(s)) {

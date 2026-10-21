@@ -55,6 +55,9 @@
 "struct"          { return STRUCT; }
 "enum"            { return ENUM; }
 "alias"           { return ALIAS; }
+"defer"           { return DEFER; }
+"try"             { return TRY; }
+"catch"           { return CATCH; }
 
 "int"             { return TYPE_INT; }
 "decimal"         { return TYPE_DECIMAL; }

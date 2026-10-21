@@ -54,6 +54,7 @@ Program* g_program = nullptr;
 %token AS
 %token USE
 %token STRUCT ENUM ALIAS DOT
+%token DEFER TRY CATCH
 
 %type <ival> NUMBER
 %type <fval> DECIMAL
@@ -1694,6 +1695,31 @@ named_ref
             delete $3;
             free($1);
             $$ = td;
+        }
+    ;
+
+// M18: `defer` re-opens `statement` at the very end of the grammar so every
+// pre-existing rule number (and therefore the web `actions.ts` table) stays
+// stable. `defer { ... }` schedules a block; `defer expr` schedules a single
+// expression (typically a cleanup call).
+statement
+    : DEFER '{' stmt_list '}'
+        {
+            auto* d = new DeferStmt();
+            for (auto& s : *$3) d->body.push_back(std::move(s));
+            delete $3;
+            d->line = yylineno;
+            $$ = d;
+        }
+    | DEFER expression
+        {
+            auto* d = new DeferStmt();
+            auto* e = new ExprStmt();
+            e->expr = ExprPtr($2);
+            e->line = yylineno;
+            d->body.push_back(StmtPtr(e));
+            d->line = yylineno;
+            $$ = d;
         }
     ;
 

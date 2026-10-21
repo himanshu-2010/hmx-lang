@@ -196,6 +196,71 @@ void TypeResolver::analyze_nonlocal_exits(Program& program) {
     analyze_nonlocal_stmts(program.statements, nullptr, lex_stack, 0, switch_depths);
 }
 
+// First control-transfer statement (return/break/continue) reachable in a
+// defer body without crossing a nested function. A `return` would re-enter the
+// defer run and recurse; `break`/`continue` would escape the teardown block
+// instead of finishing the block exit. All three are rejected by the resolver.
+static Statement* find_defer_exit(const std::vector<StmtPtr>& stmts) {
+    for (auto& sp : stmts) {
+        Statement* s = sp.get();
+        if (dynamic_cast<ReturnStmt*>(s) || dynamic_cast<BreakStmt*>(s) ||
+            dynamic_cast<ContinueStmt*>(s)) return s;
+        if (auto* d = dynamic_cast<DeferStmt*>(s)) {
+            if (auto* x = find_defer_exit(d->body)) return x;
+        } else if (auto* i = dynamic_cast<IfStmt*>(s)) {
+            if (auto* x = find_defer_exit(i->then_body)) return x;
+            if (auto* x = find_defer_exit(i->else_body)) return x;
+        } else if (auto* sw = dynamic_cast<SwitchStmt*>(s)) {
+            for (auto& c : sw->cases) {
+                if (auto* x = find_defer_exit(c.body)) return x;
+            }
+        } else if (auto* l = dynamic_cast<LoopStmt*>(s)) {
+            if (auto* x = find_defer_exit(l->body)) return x;
+        } else if (auto* f = dynamic_cast<ForeachStmt*>(s)) {
+            if (auto* x = find_defer_exit(f->body)) return x;
+        } else if (auto* w = dynamic_cast<WhileStmt*>(s)) {
+            if (auto* x = find_defer_exit(w->body)) return x;
+        } else if (auto* f = dynamic_cast<ForStmt*>(s)) {
+            if (auto* x = find_defer_exit(f->body)) return x;
+        } else if (auto* dw = dynamic_cast<DoWhileStmt*>(s)) {
+            if (auto* x = find_defer_exit(dw->body)) return x;
+        }
+    }
+    return nullptr;
+}
+
+// First `defer` reachable in this statement list without crossing a nested
+// function boundary. A nested function's own defers run before ITS longjmp, so
+// they are safe; only defers that belong to the loop-owning function are
+// skipped when a nested function exits the loop non-locally.
+static DeferStmt* find_defer_stmt(const std::vector<StmtPtr>& stmts) {
+    for (auto& sp : stmts) {
+        Statement* s = sp.get();
+        if (auto* d = dynamic_cast<DeferStmt*>(s)) return d;
+        if (auto* i = dynamic_cast<IfStmt*>(s)) {
+            if (auto* d = find_defer_stmt(i->then_body)) return d;
+            if (auto* d = find_defer_stmt(i->else_body)) return d;
+        } else if (auto* sw = dynamic_cast<SwitchStmt*>(s)) {
+            for (auto& c : sw->cases) {
+                if (auto* d = find_defer_stmt(c.body)) return d;
+            }
+        } else if (auto* l = dynamic_cast<LoopStmt*>(s)) {
+            if (auto* d = find_defer_stmt(l->body)) return d;
+        } else if (auto* f = dynamic_cast<ForeachStmt*>(s)) {
+            if (auto* d = find_defer_stmt(f->body)) return d;
+        } else if (auto* w = dynamic_cast<WhileStmt*>(s)) {
+            if (auto* d = find_defer_stmt(w->body)) return d;
+        } else if (auto* f = dynamic_cast<ForStmt*>(s)) {
+            if (auto* d = find_defer_stmt(f->body)) return d;
+        } else if (auto* dw = dynamic_cast<DoWhileStmt*>(s)) {
+            if (auto* d = find_defer_stmt(dw->body)) return d;
+        }
+        // FunctionDecl (and a lambda's hoisted FunctionDecl) opens a new
+        // function: its defers are its own responsibility.
+    }
+    return nullptr;
+}
+
 void TypeResolver::analyze_nonlocal_stmts(const std::vector<StmtPtr>& stmts, FunctionDecl* enclosing,
                                           std::vector<Statement*>& lex_stack, int local_depth,
                                           std::vector<int>& switch_depths) {
@@ -239,6 +304,22 @@ void TypeResolver::analyze_nonlocal_stmts(const std::vector<StmtPtr>& stmts, Fun
                 analyze_nonlocal_stmts(dw->body, enclosing, lex_stack, local_depth + 1, switch_depths);
             }
             lex_stack.pop_back();
+            if (stmt->nl_target) {
+                std::vector<StmtPtr>* body = nullptr;
+                if (auto* l = dynamic_cast<LoopStmt*>(stmt)) body = &l->body;
+                else if (auto* f = dynamic_cast<ForeachStmt*>(stmt)) body = &f->body;
+                else if (auto* w = dynamic_cast<WhileStmt*>(stmt)) body = &w->body;
+                else if (auto* f = dynamic_cast<ForStmt*>(stmt)) body = &f->body;
+                else if (auto* d = dynamic_cast<DoWhileStmt*>(stmt)) body = &d->body;
+                DeferStmt* bad = body ? find_defer_stmt(*body) : nullptr;
+                if (bad) {
+                    throw err(bad->line,
+                        "defer is not supported inside a loop that a nested function exits non-locally",
+                        enclosing ? enclosing->file : "");
+                }
+            }
+        } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
+            analyze_nonlocal_stmts(d->body, enclosing, lex_stack, local_depth, switch_depths);
         } else if (auto* brk = dynamic_cast<BreakStmt*>(stmt)) {
             if (lex_stack.empty()) {
                 throw err(stmt->line, "break outside of a loop", enclosing ? enclosing->file : "");
@@ -1996,6 +2077,17 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         allow_void_call_ = true;
         resolve_expr(expr_stmt->expr.get());
         allow_void_call_ = saved;
+    } else if (auto* defer_stmt = dynamic_cast<DeferStmt*>(stmt)) {
+        // The deferred block is type-checked in a scope of its own, exactly
+        // like the C block codegen wraps around it at scope teardown.
+        if (Statement* bad = find_defer_exit(defer_stmt->body)) {
+            std::string what = dynamic_cast<ReturnStmt*>(bad) ? "return"
+                             : dynamic_cast<BreakStmt*>(bad) ? "break" : "continue";
+            throw err(bad->line, what + " is not allowed inside a defer block");
+        }
+        push_scope();
+        for (auto& s : defer_stmt->body) resolve_stmt(s.get());
+        pop_scope();
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
         resolve_destruct_decl(td);
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
@@ -2696,6 +2788,8 @@ void TypeResolver::expand_type_refs_stmt(Statement* stmt) {
         for (auto& s : dw->body) expand_type_refs_stmt(s.get());
     } else if (auto* es = dynamic_cast<ExprStmt*>(stmt)) {
         if (es->expr) expand_type_refs_expr(es->expr.get());
+    } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
+        for (auto& s : d->body) expand_type_refs_stmt(s.get());
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
         if (td->rhs) expand_type_refs_expr(td->rhs.get());
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
@@ -3122,6 +3216,8 @@ void TypeResolver::substitute_stmt(Statement* stmt,
         for (auto& a : print->args) substitute_expr(a.get(), bind);
     } else if (auto* es = dynamic_cast<ExprStmt*>(stmt)) {
         if (es->expr) substitute_expr(es->expr.get(), bind);
+    } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
+        for (auto& s : d->body) substitute_stmt(s.get(), bind);
     }
 }
 

@@ -2190,6 +2190,50 @@ test_output "m17_3_generic_structs" \
     }' \
     "$(printf '42\nhi\n42\n7\n1 one\none 1\n9\n3')"
 
+# M18: `defer` unwinds LIFO at every structured exit (fall-through, return,
+# break, continue) and only runs defers control actually reached. The early
+# return in `early(1)` must not run the later `not-taken` defer.
+test_output "m18_defer" \
+    'fn make(n: int) -> text {
+        defer { print("release", n) }
+        return "value-" + tostr(n)
+    }
+    fn early(x: int) -> int {
+        defer { print("outer") }
+        if (x > 0) {
+            defer { print("taken") }
+            return 1
+        }
+        defer { print("not-taken") }
+        return 2
+    }
+    fn stable() -> text {
+        let s = "original"
+        defer { s = "changed" }
+        return s
+    }
+    fn main() {
+        defer { print("main-last") }
+        defer { print("main-first") }
+        let a = make(1)
+        print(a)
+        print(early(1))
+        print(early(0))
+        for (let i = 0; i < 3; i++) {
+            defer { print("iter", i) }
+            if (i == 0) { continue }
+            if (i == 2) { break }
+            print("body", i)
+        }
+        if (true) {
+            defer { print("if-done") }
+            print("if-body")
+        }
+        print(stable())
+        print("end")
+    }' \
+    "$(printf 'release 1\nvalue-1\ntaken\nouter\n1\nnot-taken\nouter\n2\niter 0\nbody 1\niter 1\niter 2\nif-body\nif-done\noriginal\nend\nmain-first\nmain-last')"
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

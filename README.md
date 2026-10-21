@@ -77,12 +77,12 @@ production compiler. See [SYNTAX.md](SYNTAX.md) for the authoritative reference 
 `npm install && npm run dev` opens the playground editor locally. The web
 compiler is a TypeScript port of the front half (lexer → LALR parser tables →
 resolver) plus a JavaScript backend, and its gate is byte-for-byte parity with
-the native compiler across 476 parity cases:
+the native compiler across 483 parity cases:
 
 ```bash
 npm install
 npm run dev        # local dev server
-npm test           # vitest — 476 parity cases + app tests
+npm test           # vitest — 483 parity cases + app tests
 npm run build      # type-check + production build → dist/
 npm start          # serve the production build (Antideploy's Procfile command)
 npm run lint       # oxlint
@@ -612,17 +612,17 @@ The current regression suite contains:
 
 | Suite | Coverage | Result |
 | --- | --- | --- |
-| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals, structs/enums/aliases, refcounted text views & copy-on-write, generic-function monomorphization, generic-struct monomorphization | 66/66 passed |
-| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions), generic-inference & template restrictions, reserved-keyword misuse, deep-nesting limit | 268/268 passed |
-| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics, borrowed-param field writes, generic-function specializations, generic-struct specializations | 145/145 passed |
+| Integration | `.hmx` fixtures incl. tuples, closures, growable + nested arrays, chained indexing, non-local exit, unicode identifiers, modules, text ops, `...rest` & nested destructuring, dynamic tuple indexing, currying, tuple literals, structs/enums/aliases, refcounted text views & copy-on-write, generic-function monomorphization, generic-struct monomorphization, deferred cleanup (`defer`) | 67/67 passed |
+| Negative | Type, syntax, and resolver errors incl. module/`use` failures, array/text builtin misuse & destructuring misuse, curry/lambda misuse, tuple-literal errors, type-system errors (unknown type, alias cycles, nominal identity, enum operator restrictions), generic-inference & template restrictions, reserved-keyword misuse, deep-nesting limit, `defer` control-transfer and non-local-loop restrictions | 271/271 passed |
+| Stress/output | Output/exit-code cases incl. foreach, input, conversions, variadic print, nested fns, closures & non-local exit, defaults & variadic params, modules, unicode, array/text built-ins & destructuring, dynamic tuple indexing, currying, tuple literals, grouping precedence, refcount lifecycle & view semantics, struct/enum value-copy semantics, borrowed-param field writes, generic-function specializations, generic-struct specializations, deferred cleanup on every exit path | 146/146 passed |
 | CLI | `run`/`build`, default-run, `-keep-c`, `new`, help/version, output paths, exit codes, generated-C portability and warning-cleanliness, unwritable-cwd and unreadable-source diagnostics, `#line` path escaping | 33/33 passed |
 | Packaging | Release version consistency across all ten version-bearing manifests, no placeholder digests, manifest URLs vs. the names the release workflow actually produces, declared runtime vs. build deps, installer checksum verification, container build/tag/push and smoke-test wiring, release asset completeness, installer package-manager safety, winget three-file manifest schema, AUR manifest buildability (`makepkg`-verified), scoop bucket layout, installer success reporting, installers refusing unverified downloads, brew formula build form, every version-bearing manifest, installers probing for a runtime C compiler, winget submission layout derived from `PackageIdentifier`, accepted winget schema version, the pacman signing fingerprint defined once, commit signing configured and verified with `git verify-commit`, the site pages (install/license/404/story) matching the repo they describe | 160/160 passed |
-| Total | 682 test cases | 682/682 passed |
+| Total | 677 test cases | 677/677 passed |
 
 Two further gates need extra tools and are not part of that count:
 
 ```bash
-./tests/run_valgrind_tests.sh --fixtures   # 71 memory checks (14 matrix + 57 fixtures)
+./tests/run_valgrind_tests.sh --fixtures   # 73 memory checks (15 matrix + 58 fixtures)
 HMX_ASAN=1 ./tests/run_integration.sh      # same suites under ASan + LeakSanitizer
 ```
 

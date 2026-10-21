@@ -33,6 +33,7 @@ const T: Record<string, number> = {
   STAR_EQ: 300, SLASH_EQ: 301, MOD_EQ: 302, INCR: 303, DECR: 304,
   ARROW: 305, LAMBDA: 306, ELLIPSIS: 307, AS: 308, USE: 309,
   STRUCT: 310, ENUM: 311, ALIAS: 312, DOT: 313,
+  DEFER: 314, TRY: 315, CATCH: 316,
 };
 
 const KEYWORDS: Record<string, number> = {
@@ -45,6 +46,7 @@ const KEYWORDS: Record<string, number> = {
   struct: T.STRUCT, enum: T.ENUM, alias: T.ALIAS,
   int: T.TYPE_INT, decimal: T.TYPE_DECIMAL, text: T.TYPE_TEXT,
   bool: T.TYPE_BOOL, char: T.TYPE_CHAR, byte: T.TYPE_BYTE,
+  defer: T.DEFER, try: T.TRY, catch: T.CATCH,
 };
 
 // Multi-char operators, longest first (flex longest-match; ties resolve by

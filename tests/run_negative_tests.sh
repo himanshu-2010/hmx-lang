@@ -2354,6 +2354,37 @@ test_error "gstructs_ctor_field_shape" \
     }' \
     "type mismatch: argument for generic type 'Wrap' expects array of T, got int"
 
+# M18: deferred blocks may not transfer control themselves. A `return` would
+# re-enter the defer teardown and recurse; `break`/`continue` would escape the
+# generated teardown block. Both are compile errors in native and web.
+test_error "defer_return_forbidden" \
+    'fn main() {
+        defer { return }
+    }' \
+    "return is not allowed inside a defer block"
+
+test_error "defer_break_forbidden" \
+    'fn main() {
+        loop (2) {
+            defer { break }
+        }
+    }' \
+    "break is not allowed inside a defer block"
+
+# A nested function can `break` out of an enclosing loop with longjmp, which
+# bypasses the target loop's generated teardown. Rather than silently skipping
+# those defers, the resolver rejects the combination; defers in the nested
+# breaker function itself are fine (they run before its longjmp).
+test_error "defer_in_nonlocal_loop" \
+    'fn main() {
+        loop (2) {
+            fn bail() { break }
+            defer { print("cleanup") }
+            bail()
+        }
+    }' \
+    "defer is not supported inside a loop that a nested function exits non-locally"
+
 # Deep nesting: the guard at the top of TypeResolver::resolve rejects any program
 # whose AST is deeper than HMX_MAX_NESTING (200) *before* a recursive walk runs,
 # so an arbitrarily deep program is a clean diagnostic, never a C-stack overflow

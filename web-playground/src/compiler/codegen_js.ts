@@ -30,6 +30,7 @@ import {
   BreakStmt,
   ContinueStmt,
   ExprStmt,
+  DeferStmt,
   NumberLiteral,
   DecimalLiteral,
   StringLiteral,
@@ -270,12 +271,18 @@ export class CodeGenJs {
 
     this.ol("function _sd_entry() {");
     this.ind++;
-    this.pushScope();
+    this.pushScopeFor(topLevel);
     for (const s of topLevel) this.emitStmt(s);
     const mainFn = this.fnsByName.get("main") ?? null;
     if (mainFn) {
       this.currentFn = mainFn;
+      this.ol("{");
+      this.ind++;
+      this.pushScopeFor(mainFn.body);
       for (const s of mainFn.body) this.emitStmt(s);
+      this.popScope();
+      this.ind--;
+      this.ol("}");
       this.currentFn = null;
     }
     this.popScope();
@@ -306,6 +313,8 @@ export class CodeGenJs {
     } else if (stmt instanceof ForStmt) {
       for (const s of stmt.body) cb(s);
     } else if (stmt instanceof DoWhileStmt) {
+      for (const s of stmt.body) cb(s);
+    } else if (stmt instanceof DeferStmt) {
       for (const s of stmt.body) cb(s);
     }
   }
@@ -372,6 +381,8 @@ export class CodeGenJs {
     } else if (stmt instanceof DoWhileStmt) {
       for (const s of stmt.body) this.collectLambdasStmt(s);
       this.collectLambdasExpr(stmt.condition);
+    } else if (stmt instanceof DeferStmt) {
+      for (const s of stmt.body) this.collectLambdasStmt(s);
     }
   }
 
@@ -535,13 +546,56 @@ export class CodeGenJs {
   // ------------------------------------------------- descriptors & scopes
 
   private varDescs: Map<string, TypeDesc>[] = [];
+  private deferScopes: DeferStmt[][] = [];
+  private loopScopes: number[] = [];
+  private breakTargets: number[] = [];
 
   private pushScope(): void {
     this.varDescs.push(new Map());
+    this.deferScopes.push([]);
+  }
+
+  private pushScopeFor(body: Statement[]): void {
+    this.pushScope();
+    for (const s of body) {
+      if (s instanceof DeferStmt) {
+        s.id = this.tempCounter++;
+        this.deferScopes[this.deferScopes.length - 1].push(s);
+        this.ol(`var _sd_dfr${s.id} = 0;`);
+      }
+    }
   }
 
   private popScope(): void {
+    if (this.varDescs.length === 0) return;
+    const pending = this.deferScopes[this.deferScopes.length - 1];
+    this.emitDeferredList(pending);
     this.varDescs.pop();
+    this.deferScopes.pop();
+  }
+
+  private emitDeferredList(list: DeferStmt[]): void {
+    const pending = list.slice();
+    for (let i = pending.length - 1; i >= 0; i--) {
+      const d = pending[i];
+      this.ol(`if (_sd_dfr${d.id}) {`);
+      this.ind++;
+      this.pushScopeFor(d.body);
+      for (const s of d.body) this.emitStmt(s);
+      this.popScope();
+      this.ind--;
+      this.ol("}");
+    }
+  }
+
+  private emitDefersFrom(firstScope: number): void {
+    for (let i = this.deferScopes.length - 1; i >= firstScope; i--) {
+      this.emitDeferredList(this.deferScopes[i]);
+    }
+  }
+
+  private emitAllDefers(): void {
+    this.emitDefersFrom(0);
   }
 
   private recordVarDesc(name: string, d: TypeDesc): void {
@@ -916,6 +970,9 @@ export class CodeGenJs {
       this.ol(`SD.print(${args});`);
     } else if (stmt instanceof ExprStmt) {
       this.ol(`${this.emitExpr(stmt.expr)};`);
+    } else if (stmt instanceof DeferStmt) {
+      if (stmt.id < 0) stmt.id = this.tempCounter++;
+      this.ol(`_sd_dfr${stmt.id} = 1;`);
     } else if (stmt instanceof ReturnStmt) {
       if (stmt.values.length > 1) {
         const vals = stmt.values
@@ -927,23 +984,30 @@ export class CodeGenJs {
               : s;
           })
           .join(", ");
-        this.ol(`return [${vals}];`);
+        const rv = `_sd_rv${this.tempCounter++}`;
+        this.ol(`const ${rv} = [${vals}];`);
+        this.emitAllDefers();
+        this.ol(`return ${rv};`);
       } else if (stmt.values.length === 1) {
-        this.ol(`return ${this.copyIfValue(stmt.values[0])};`);
+        const rv = `_sd_rv${this.tempCounter++}`;
+        this.ol(`const ${rv} = ${this.copyIfValue(stmt.values[0])};`);
+        this.emitAllDefers();
+        this.ol(`return ${rv};`);
       } else {
+        this.emitAllDefers();
         this.ol("return;");
       }
     } else if (stmt instanceof IfStmt) {
       this.ol(`if (${this.emitExpr(stmt.condition)}) {`);
       this.ind++;
-      this.pushScope();
+      this.pushScopeFor(stmt.then_body);
       for (const s of stmt.then_body) this.emitStmt(s);
       this.popScope();
       this.ind--;
       if (stmt.has_else) {
         this.ol("} else {");
         this.ind++;
-        this.pushScope();
+        this.pushScopeFor(stmt.else_body);
         for (const s of stmt.else_body) this.emitStmt(s);
         this.popScope();
         this.ind--;
@@ -966,8 +1030,10 @@ export class CodeGenJs {
           this.ol(`case ${label}:`);
         }
         this.ind++;
-        this.pushScope();
+        this.pushScopeFor(c.body);
+        this.breakTargets.push(this.deferScopes.length - 1);
         for (const s of c.body) this.emitStmt(s);
+        this.breakTargets.pop();
         this.popScope();
         this.ol("break;");
         this.ind--;
@@ -997,9 +1063,25 @@ export class CodeGenJs {
     } else if (stmt instanceof DoWhileStmt) {
       this.emitLoopPrologue(stmt, `do {`, stmt.body, undefined, `while (${this.emitExpr(stmt.condition)});`);
     } else if (stmt instanceof BreakStmt) {
-      this.ol(stmt.nonlocal ? "SD.nlBrk(_sd_nl);" : "break;");
+      if (stmt.nonlocal) {
+        this.emitAllDefers();
+        this.ol("SD.nlBrk(_sd_nl);");
+      } else {
+        if (this.breakTargets.length > 0) {
+          this.emitDefersFrom(this.breakTargets[this.breakTargets.length - 1]);
+        }
+        this.ol("break;");
+      }
     } else if (stmt instanceof ContinueStmt) {
-      this.ol(stmt.nonlocal ? "SD.nlCont(_sd_nl);" : "continue;");
+      if (stmt.nonlocal) {
+        this.emitAllDefers();
+        this.ol("SD.nlCont(_sd_nl);");
+      } else {
+        if (this.loopScopes.length > 0) {
+          this.emitDefersFrom(this.loopScopes[this.loopScopes.length - 1]);
+        }
+        this.ol("continue;");
+      }
     } else if (stmt instanceof FunctionDecl) {
       // Hoisted to module scope; nothing emitted at the definition site.
     }
@@ -1064,8 +1146,12 @@ export class CodeGenJs {
       this.ind++;
     }
     if (beforeBody) beforeBody();
-    this.pushScope();
+    this.pushScopeFor(body);
+    this.loopScopes.push(this.deferScopes.length - 1);
+    this.breakTargets.push(this.deferScopes.length - 1);
     for (const s of body) this.emitStmt(s);
+    this.breakTargets.pop();
+    this.loopScopes.pop();
     this.popScope();
     if (nlTarget) {
       this.ind--;
@@ -1210,7 +1296,7 @@ export class CodeGenJs {
     );
     this.ind++;
     this.currentFn = fn;
-    this.pushScope();
+    this.pushScopeFor(fn.body);
     for (const p of fn.params) this.recordVarDesc(p.name, this.paramDescOf(p));
     for (const s of fn.body) this.emitStmt(s);
     this.popScope();

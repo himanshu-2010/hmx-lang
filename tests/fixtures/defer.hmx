@@ -1,0 +1,59 @@
+// M18: `defer` runs its block when the enclosing scope exits, newest first.
+// It runs on normal fall-through, `return`, `break` and `continue`, and only if
+// control actually reached the defer statement.
+fn make(n: int) -> text {
+    defer { print("release", n) }
+    return "value-" + tostr(n)
+}
+
+fn early(x: int) -> int {
+    defer { print("outer") }
+    if (x > 0) {
+        defer { print("taken") }
+        return 1
+    }
+    defer { print("not-taken") }
+    return 2
+}
+
+fn stable() -> text {
+    let s = "original"
+    defer { s = "changed" }      // must not affect the returned reference
+    return s
+}
+
+fn main() {
+    defer { print("main-last") }
+    defer { print("main-first") }
+    let a = make(1)
+    print(a)
+    print(early(1))
+    print(early(0))
+    for (let i = 0; i < 3; i++) {
+        defer { print("iter", i) }
+        if (i == 0) { continue }
+        if (i == 2) { break }
+        print("body", i)
+    }
+    if (true) {
+        defer { print("if-done") }
+        print("if-body")
+    }
+    let items = ["a", "b"]
+    foreach (it in items) {
+        defer { print("item", it) }
+        print("visit", it)
+    }
+    foreach (c in "xy") {
+        defer { print("char", c) }
+    }
+    if (true) {
+        defer { print("outer-if") }
+        if (true) {
+            defer { print("inner-if") }
+            print("nested")
+        }
+    }
+    print(stable())
+    print("end")
+}

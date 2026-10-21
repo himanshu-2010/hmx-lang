@@ -354,3 +354,17 @@ prior fixtures, and lands one complete feature.
     failures; valgrind **71/71**; ASan+LSan and UBSan clean; fixture
     `generic_structs.hmx` + stress `m17_3_generic_structs` + 12 negatives
     `gstructs_*`.
+- **M18.1 `defer` (SYNTAX.md §11.9):** `defer { ... }` / `defer expr` schedules
+  cleanup for the enclosing scope, LIFO, on fall-through, `return`, `break`,
+  `continue`, and before a non-local `longjmp` from the same function. Each
+  direct defer gets a `volatile int _sd_dfrN` guard initialised at scope entry;
+  the defer statement sets it, so a defer after an early return never runs.
+  Codegen runs defers before the scope's reference-counted locals are released.
+  The resolver rejects `return`/`break`/`continue` inside a deferred block and
+  defer inside a loop a nested function exits non-locally (that `longjmp`
+  bypasses the target loop's teardown). `statement` is re-opened at the end of
+  `parser.y` (rules 188–189), keeping existing rule numbers; `defer`/`try`/
+  `catch` tokens land now, the latter two for M18.2. Native **517/517** (67
+  integration / 271 negative / 146 stress / 33 CLI); web vitest **498/498**
+  (483 parity + 15 app); valgrind **73/73**; ASan+LSan and UBSan clean; fixture
+  `defer.hmx` + stress `m18_defer` + 3 negatives.

@@ -17,6 +17,7 @@ import {
   ConditionalExpr,
   ContinueStmt,
   DecimalLiteral,
+  DeferStmt,
   DestructDecl,
   DoWhileStmt,
   ElementAssignStmt,
@@ -56,6 +57,7 @@ import {
   type Expression,
   type DestructPattern,
   type FunctionTypeInfo,
+  type Statement,
 } from "./ast";
 import tables from "./tables/tables.json";
 import type { LRContext } from "./lalr";
@@ -260,6 +262,8 @@ const ruleSigs: RuleSig[] = [
   ["type_arg_list", 1], // 185
   ["param_type", 4], // 186
   ["named_ref", 4], // 187
+  ["statement", 4], // 188
+  ["statement", 2], // 189
 ];
 
 // Verify SIG against the extracted tables (lhs name + RHS length per rule).
@@ -302,7 +306,7 @@ function mkProgram(): Program {
 
 type Action = (rhs: unknown[], ctx: LRContext) => unknown;
 
-const A: Action[] = new Array(180).fill(null);
+const A: Action[] = new Array(190).fill(null);
 
 // Rule 0: dummy, never fires.
 A[0] = () => null;
@@ -986,6 +990,22 @@ A[187] = (rhs) => {
   td.type_name = rhs[0] as string;
   td.type_args = rhs[2] as TypeDesc[];
   return td;
+};
+
+// -- M18: defer (rules 188-189) --
+// r188: statement: DEFER '{' stmt_list '}'
+A[188] = (rhs, ctx) => {
+  const d = new DeferStmt(rhs[2] as Statement[]);
+  d.line = ctx.line;
+  return d;
+};
+// r189: statement: DEFER expression
+A[189] = (rhs, ctx) => {
+  const e = new ExprStmt(rhs[1] as Expression);
+  e.line = ctx.line;
+  const d = new DeferStmt([e]);
+  d.line = ctx.line;
+  return d;
 };
 
 // ---------------------------------------------------------------------------

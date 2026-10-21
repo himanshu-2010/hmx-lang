@@ -206,6 +206,25 @@ fn main() {
 }
 '
 
+test_clean "switch_case_heap_locals" '
+fn main() {
+    let m = 2
+    switch (m) {
+        case 1: print("one")
+        case 2:
+            let s = "hello" + "world"
+            let xs = [s, "tail"]
+            print(xs[0], xs[1])
+            switch (length(xs)) {
+                case 2:
+                    let inner = s + "!"
+                    print(inner)
+            }
+        default: print("d")
+    }
+}
+'
+
 test_clean "string_methods_views" '
 fn main() {
     let s = "hello world"

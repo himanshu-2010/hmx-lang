@@ -2054,6 +2054,20 @@
         "stderr": "",
         "exit": 0
       }
+    },
+    {
+      "name": "m18_defer",
+      "kind": "output",
+      "source": "fn make(n: int) -> text {\n        defer { print(\"release\", n) }\n        return \"value-\" + tostr(n)\n    }\n    fn early(x: int) -> int {\n        defer { print(\"outer\") }\n        if (x > 0) {\n            defer { print(\"taken\") }\n            return 1\n        }\n        defer { print(\"not-taken\") }\n        return 2\n    }\n    fn stable() -> text {\n        let s = \"original\"\n        defer { s = \"changed\" }\n        return s\n    }\n    fn main() {\n        defer { print(\"main-last\") }\n        defer { print(\"main-first\") }\n        let a = make(1)\n        print(a)\n        print(early(1))\n        print(early(0))\n        for (let i = 0; i < 3; i++) {\n            defer { print(\"iter\", i) }\n            if (i == 0) { continue }\n            if (i == 2) { break }\n            print(\"body\", i)\n        }\n        if (true) {\n            defer { print(\"if-done\") }\n            print(\"if-body\")\n        }\n        print(stable())\n        print(\"end\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "release 1\nvalue-1\ntaken\nouter\n1\nnot-taken\nouter\n2\niter 0\nbody 1\niter 1\niter 2\nif-body\nif-done\noriginal\nend\nmain-first\nmain-last\n",
+        "stderr": "",
+        "exit": 0
+      }
     }
   ]
 }

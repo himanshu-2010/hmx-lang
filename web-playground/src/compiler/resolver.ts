@@ -24,6 +24,7 @@ import {
   ConditionalExpr,
   ContinueStmt,
   DecimalLiteral,
+  DeferStmt,
   DestructDecl,
   DoWhileStmt,
   ElementAssignStmt,
@@ -70,6 +71,61 @@ import {
 // ---------------------------------------------------------------------------
 // Module-level helpers (mirroring the file-static helpers in type_resolver.cpp)
 // ---------------------------------------------------------------------------
+
+/** First `defer` reachable without crossing a nested function boundary. */
+function findDeferStmt(stmts: Statement[]): DeferStmt | null {
+  for (const s of stmts) {
+    if (s instanceof DeferStmt) return s;
+    if (s instanceof IfStmt) {
+      const d = findDeferStmt(s.then_body) ?? findDeferStmt(s.else_body);
+      if (d) return d;
+    } else if (s instanceof SwitchStmt) {
+      for (const c of s.cases) {
+        const d = findDeferStmt(c.body);
+        if (d) return d;
+      }
+    } else if (
+      s instanceof LoopStmt ||
+      s instanceof ForeachStmt ||
+      s instanceof WhileStmt ||
+      s instanceof ForStmt ||
+      s instanceof DoWhileStmt
+    ) {
+      const d = findDeferStmt(s.body);
+      if (d) return d;
+    }
+  }
+  return null;
+}
+
+/** First return/break/continue reachable in a defer body. */
+function findDeferExit(stmts: Statement[]): Statement | null {
+  for (const s of stmts) {
+    if (s instanceof ReturnStmt || s instanceof BreakStmt || s instanceof ContinueStmt) return s;
+    if (s instanceof DeferStmt) {
+      const x = findDeferExit(s.body);
+      if (x) return x;
+    } else if (s instanceof IfStmt) {
+      const x = findDeferExit(s.then_body) ?? findDeferExit(s.else_body);
+      if (x) return x;
+    } else if (s instanceof SwitchStmt) {
+      for (const c of s.cases) {
+        const x = findDeferExit(c.body);
+        if (x) return x;
+      }
+    } else if (
+      s instanceof LoopStmt ||
+      s instanceof ForeachStmt ||
+      s instanceof WhileStmt ||
+      s instanceof ForStmt ||
+      s instanceof DoWhileStmt
+    ) {
+      const x = findDeferExit(s.body);
+      if (x) return x;
+    }
+  }
+  return null;
+}
 
 function paramTypeDesc(p: { desc: TypeDesc; type: TypeKind; elem_desc: TypeDesc; tuple_members: TypeDesc[] }): TypeDesc {
   // A named-type reference ({Unknown, type_name}) is a transient marker the
@@ -375,6 +431,17 @@ export class TypeResolver {
 
   // ---- non-local exit analysis ----
 
+  private rejectDeferInNonlocalLoop(body: Statement[], enclosing: FunctionDecl | null): void {
+    const bad = findDeferStmt(body);
+    if (bad) {
+      throw this.err(
+        bad.line,
+        "defer is not supported inside a loop that a nested function exits non-locally",
+        enclosing ? enclosing.file : ""
+      );
+    }
+  }
+
   private analyzeNonlocalExits(program: Program): void {
     this.next_loop_id_ = 0;
     const lexStack: Statement[] = [];
@@ -416,6 +483,7 @@ export class TypeResolver {
         lexStack.push(stmt);
         this.analyzeNonlocalStmts(stmt.body, enclosing, lexStack, localDepth + 1, switchDepths);
         lexStack.pop();
+        if (stmt.nl_target) this.rejectDeferInNonlocalLoop(stmt.body, enclosing);
       } else if (this.isLoopStmt(stmt)) {
         stmt.nl_id = this.next_loop_id_++;
         stmt.nl_owner = enclosing;
@@ -430,6 +498,18 @@ export class TypeResolver {
           this.analyzeNonlocalStmts(stmt.body, enclosing, lexStack, localDepth + 1, switchDepths);
         }
         lexStack.pop();
+        let body: Statement[] | null = null;
+        if (
+          stmt instanceof LoopStmt ||
+          stmt instanceof ForeachStmt ||
+          stmt instanceof WhileStmt ||
+          stmt instanceof DoWhileStmt
+        ) {
+          body = stmt.body;
+        }
+        if (stmt.nl_target && body) this.rejectDeferInNonlocalLoop(body, enclosing);
+      } else if (stmt instanceof DeferStmt) {
+        this.analyzeNonlocalStmts(stmt.body, enclosing, lexStack, localDepth, switchDepths);
       } else if (stmt instanceof BreakStmt) {
         if (lexStack.length === 0) {
           throw this.err(stmt.line, "break outside of a loop", enclosing ? enclosing.file : "");
@@ -2184,6 +2264,16 @@ export class TypeResolver {
       this.allow_void_call_ = true;
       this.resolveExpr(stmt.expr);
       this.allow_void_call_ = saved;
+    } else if (stmt instanceof DeferStmt) {
+      const bad = findDeferExit(stmt.body);
+      if (bad) {
+        const what =
+          bad instanceof ReturnStmt ? "return" : bad instanceof BreakStmt ? "break" : "continue";
+        throw this.err(bad.line, `${what} is not allowed inside a defer block`);
+      }
+      this.pushScope();
+      for (const s of stmt.body) this.resolveStatement(s);
+      this.popScope();
     } else if (stmt instanceof DestructDecl) {
       this.resolveDestructDecl(stmt);
     } else if (stmt instanceof MultiAssignStmt) {
@@ -3095,6 +3185,8 @@ export class TypeResolver {
       for (const s of stmt.body) this.expandTypeRefsStmt(s);
     } else if (stmt instanceof ExprStmt) {
       if (stmt.expr) this.expandTypeRefsExpr(stmt.expr);
+    } else if (stmt instanceof DeferStmt) {
+      for (const s of stmt.body) this.expandTypeRefsStmt(s);
     } else if (stmt instanceof DestructDecl) {
       if (stmt.rhs) this.expandTypeRefsExpr(stmt.rhs);
     } else if (stmt instanceof MultiAssignStmt) {
@@ -3333,6 +3425,8 @@ export class TypeResolver {
       for (const a of stmt.args) this.substituteExpr(a, bind);
     } else if (stmt instanceof ExprStmt) {
       if (stmt.expr) this.substituteExpr(stmt.expr, bind);
+    } else if (stmt instanceof DeferStmt) {
+      for (const s of stmt.body) this.substituteStmt(s, bind);
     }
   }
 

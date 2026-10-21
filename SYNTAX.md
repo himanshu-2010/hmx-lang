@@ -171,6 +171,8 @@ The following words are reserved and cannot be used as identifiers:
 | `do` | Post-condition loop |
 | `break` | Exit the enclosing loop early |
 | `continue` | Skip to the next iteration of the enclosing loop |
+| `defer` | Run a block when the enclosing scope exits (§11.9) |
+| `try` / `catch` | Reserved for recoverable faults (M18, not yet implemented) |
 | `print` | Output statement |
 | `in` | `foreach` iterable separator |
 | `return` | Function return value |
@@ -863,6 +865,7 @@ A statement is one of the following. Statements execute in sequence.
 | Header-controlled loop | `for (init; condition; update) { }` |
 | Post-condition loop | `do { } while (...)` |
 | Loop control | `break` / `continue` |
+| Deferred block | `defer { ... }` / `defer expr` (§11.9) |
 | Function declaration | `fn name() { }` |
 | Return | `return expr...` or `return` |
 
@@ -1115,6 +1118,61 @@ foreach (x in a) {
 }
 print(a[0])                // 10
 ```
+
+### 11.9 The `defer` Statement **[Implemented]**
+
+`defer` schedules a block (or a single expression) to run when the **enclosing
+scope** exits. Deferred blocks run in reverse registration order (LIFO) and run
+on every structured exit from that scope: normal fall-through, `return`,
+`break`, and `continue` — including a `return` from inside a nested block. A
+defer whose statement was never reached does not run (for example, a defer placed
+after an early `return`).
+
+```hmx
+fn copy(dst: text, src: text) {
+    defer { print("closing", dst) }
+    print("copying", src)
+}
+
+fn main() {
+    defer { print("first registered") }
+    defer { print("second registered") }
+    copy("out.txt", "in.txt")
+    print("done")
+}
+// copying in.txt
+// closing out.txt
+// done
+// second registered
+// first registered
+```
+
+Both forms are accepted:
+
+```
+defer_stmt : "defer" "{" statement+ "}"
+           | "defer" expression
+```
+
+`defer write_log("done")` is shorthand for `defer { write_log("done") }`.
+
+Restrictions:
+
+- `return`, `break`, and `continue` are not allowed inside a deferred block; a
+  deferred block runs during scope teardown, so transferring control there is a
+  compile error.
+- A deferred block may not live inside a loop that a nested function exits
+  non-locally (a `break`/`continue` that compiles to `longjmp`). Such an exit
+  bypasses the loop body's teardown; the resolver rejects the combination rather
+  than silently skipping cleanup. Defers inside the nested function itself are
+  allowed and run before its non-local jump.
+- Deferred blocks do not catch runtime faults: a hard fault still prints to
+  stderr and exits with status 1 (recoverable faults via `try`/`catch` are
+  M18.2).
+
+Deferred code may read and call methods on locals of the enclosing scope; those
+locals are still alive when it runs. It runs before the enclosing scope's
+reference-counted locals are released.
 
 ---
 

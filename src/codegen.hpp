@@ -94,6 +94,7 @@ private:
         bool is_volatile = false;  // declared `volatile` (see fn_setjmp_)
     };
     std::vector<std::vector<OwnedEntry>> scopes_;   // mirrors emitted C blocks
+    std::vector<std::vector<DeferStmt*>> defer_scopes_;  // M18: defers per scope, registration order
     std::vector<int> loop_scopes_;                  // scope indices of loop bodies
     std::vector<int> break_targets_;                // scope indices breakable by `break` (loop or switch case)
 
@@ -150,7 +151,21 @@ private:
     std::string slot_rel_name(const TypeDesc& d) const;
     // Scope bookkeeping for owned locals.
     void push_scope();
+    // Push a scope and hoist a runtime guard for each `defer` that is a direct
+    // child of `body`. Defers are registered dynamically, so the guard starts
+    // at 0 and the defer statement itself sets it to 1; teardown runs only the
+    // defers control actually reached (an early `return` must not run a later
+    // defer).
+    void push_scope_for(const std::vector<StmtPtr>& body);
+    void push_scope_for(const std::vector<Statement*>& body);
     void pop_scope();
+    // Run the defers registered in one scope, newest first, then that scope's
+    // releases (pop_scope does both).
+    void emit_deferred_list(const std::vector<DeferStmt*>& list);
+    // Run defers for scopes [first_scope, scopes_.size()) innermost-first.
+    void emit_defers_from(size_t first_scope);
+    void emit_all_defers();
+    void emit_defers_at_current_scope();
     void declare_owned(const std::string& cname, const TypeDesc& t, bool is_volatile = false);
     // Full descriptor of a parameter (Unknown if not one) and the side effect
     // of registering a reassigned heap parameter as owned at function scope.

@@ -464,6 +464,15 @@ struct ExprStmt : Statement {
     ExprPtr expr;
 };
 
+// M18 `defer { ... }` — statements that run when the enclosing block exits,
+// in reverse registration order (LIFO). Codegen assigns each defer a unique
+// `id` and guards its body with a runtime flag, so a defer is skipped when
+// control left the block before reaching it.
+struct DeferStmt : Statement {
+    std::vector<StmtPtr> body;
+    int id = -1;                 // codegen-assigned guard id
+};
+
 // A top-level type declaration: `alias`, `struct`, or `enum`.
 enum class TypeDeclKind { Alias, Struct, Enum };
 
