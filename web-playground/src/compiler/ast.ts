@@ -27,15 +27,18 @@ export interface TypeDesc {
   tuple_members: TypeDesc[]; // valid when type == Tuple
   fn_info: FunctionTypeInfo | null; // valid when type == Function
   /** Nominal name of a declared type (Struct/Enum), or a transient marker for
-   * a referenced type name before the resolver expands it (Unknown + name). */
+   * a referenced type name before the resolver expands it (Unknown + name).
+   * M17.3: type_args holds the concrete type arguments of a generic
+   * instantiation (`Box[int]` -> base name "Box", args [int]). */
   type_name: string;
+  type_args: TypeDesc[];
 }
 
 export function mkType(kind: TypeKind): TypeDesc {
-  return { type: kind, elem: null, tuple_members: [], fn_info: null, type_name: "" };
+  return { type: kind, elem: null, tuple_members: [], fn_info: null, type_name: "", type_args: [] };
 }
 
-const EMPTY: TypeDesc = { type: TypeKind.Unknown, elem: null, tuple_members: [], fn_info: null, type_name: "" };
+const EMPTY: TypeDesc = { type: TypeKind.Unknown, elem: null, tuple_members: [], fn_info: null, type_name: "", type_args: [] };
 export function emptyTypeDesc(): TypeDesc {
   return EMPTY;
 }
@@ -43,7 +46,7 @@ export function elementOf(d: TypeDesc): TypeDesc {
   return d.elem ? d.elem : EMPTY;
 }
 export function arrayOf(e: TypeDesc): TypeDesc {
-  return { type: TypeKind.Array, elem: e, tuple_members: [], fn_info: null, type_name: "" };
+  return { type: TypeKind.Array, elem: e, tuple_members: [], fn_info: null, type_name: "", type_args: [] };
 }
 
 export function typeDescEquals(a: TypeDesc, b: TypeDesc): boolean {
@@ -54,7 +57,9 @@ export function typeDescEquals(a: TypeDesc, b: TypeDesc): boolean {
   }
   if (!tupleMembersEquals(a.tuple_members, b.tuple_members)) return false;
   if (a.type === TypeKind.Struct || a.type === TypeKind.Enum) {
-    return a.type_name === b.type_name;
+    // M17.3: `Box[int]` and `Box[text]` share the base name; the type
+    // arguments are what make the specializations distinct.
+    return a.type_name === b.type_name && typeDescListEquals(a.type_args, b.type_args);
   }
   if (a.type === TypeKind.Function) {
     if (a.fn_info === b.fn_info) return true;
@@ -62,7 +67,9 @@ export function typeDescEquals(a: TypeDesc, b: TypeDesc): boolean {
     if (!tupleMembersEquals(a.fn_info.params, b.fn_info.params)) return false;
     return typeDescEquals(a.fn_info.ret, b.fn_info.ret);
   }
-  return true;
+  // Primitive kinds have an empty type_name; named-type markers (Unknown +
+  // type_name, possibly with type arguments) must compare their reference.
+  return a.type_name === b.type_name && typeDescListEquals(a.type_args, b.type_args);
 }
 
 function tupleMembersEquals(a: TypeDesc[], b: TypeDesc[]): boolean {
@@ -95,7 +102,8 @@ export function typeDescLess(a: TypeDesc, b: TypeDesc): boolean {
     return a.tuple_members.length < b.tuple_members.length;
   }
   if (a.type === TypeKind.Struct || a.type === TypeKind.Enum) {
-    return a.type_name < b.type_name;
+    if (a.type_name !== b.type_name) return a.type_name < b.type_name;
+    return typeDescListLess(a.type_args, b.type_args);
   }
   if (a.type === TypeKind.Function) {
     if (a.fn_info && b.fn_info) {
@@ -112,7 +120,17 @@ export function typeDescLess(a: TypeDesc, b: TypeDesc): boolean {
     }
     return b.fn_info != null;
   }
-  return false;
+  if (a.type_name !== b.type_name) return a.type_name < b.type_name;
+  return typeDescListLess(a.type_args, b.type_args);
+}
+
+/** Lexicographic vector<TypeDesc> comparison (std::vector::operator<). */
+function typeDescListLess(a: TypeDesc[], b: TypeDesc[]): boolean {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    if (!typeDescEquals(a[i], b[i])) return typeDescLess(a[i], b[i]);
+  }
+  return a.length < b.length;
 }
 
 // ---- type_to_* helpers (ast.cpp) ----
@@ -164,12 +182,23 @@ export function typeToString(kind: TypeKind): string {
   }
 }
 
+function typeArgsToString(d: TypeDesc): string {
+  if (d.type_args.length === 0) return "";
+  let s = "[";
+  d.type_args.forEach((a, i) => {
+    if (i > 0) s += ", ";
+    s += typeDescToString(a);
+  });
+  s += "]";
+  return s;
+}
+
 export function typeDescToString(d: TypeDesc): string {
   if (d.type === TypeKind.Struct || d.type === TypeKind.Enum) {
-    return d.type_name !== "" ? d.type_name : typeToString(d.type);
+    return d.type_name !== "" ? d.type_name + typeArgsToString(d) : typeToString(d.type);
   }
   // A not-yet-expanded named-type reference prints as its name.
-  if (d.type === TypeKind.Unknown && d.type_name !== "") return d.type_name;
+  if (d.type === TypeKind.Unknown && d.type_name !== "") return d.type_name + typeArgsToString(d);
   if (d.type === TypeKind.Array) {
     return "array of " + typeDescToString(elementOf(d));
   }
@@ -197,6 +226,52 @@ export function tupleTypeToString(members: TypeDesc[]): string {
     s += typeDescToString(m);
   });
   s += ")";
+  return s;
+}
+
+// M17.3: C-identifier-safe encoding of a concrete descriptor, used to name
+// generic instantiations (`__gen_f_n_Box__int`). Structs and enums mangle by
+// their specialization key so `Box[int]` and `Box[text]` never collide.
+export function typeMangle(d: TypeDesc): string {
+  switch (d.type) {
+    case TypeKind.Int: return "int";
+    case TypeKind.Decimal: return "dec";
+    case TypeKind.Text: return "text";
+    case TypeKind.Bool: return "bool";
+    case TypeKind.Char: return "char";
+    case TypeKind.Byte: return "byte";
+    case TypeKind.Array: return "arr_" + typeMangle(elementOf(d));
+    case TypeKind.Tuple: {
+      let s = "tup";
+      for (const m of d.tuple_members) s += "_" + typeMangle(m);
+      return s;
+    }
+    case TypeKind.Function: {
+      let s = "fn";
+      if (d.fn_info) {
+        for (const p of d.fn_info.params) s += "_" + typeMangle(p);
+        s += "_r_" + typeMangle(d.fn_info.ret);
+      }
+      return s;
+    }
+    case TypeKind.Struct:
+    case TypeKind.Enum:
+      return "n_" + typeInstName(d);
+    case TypeKind.Unknown:
+      return d.type_name === "" ? "unk" : "n_" + typeInstName(d);
+  }
+  return "unk";
+}
+
+/** Canonical key of a type's specialization: the plain declared name when the
+ * type takes no type arguments, `Box__int` for `Box[int]`. */
+export function typeInstName(d: TypeDesc): string {
+  if (d.type_name === "" || d.type_args.length === 0) return d.type_name;
+  let s = d.type_name + "__";
+  d.type_args.forEach((a, i) => {
+    if (i > 0) s += "_";
+    s += typeMangle(a);
+  });
   return s;
 }
 
@@ -749,6 +824,9 @@ export class TypeDecl implements Statement {
   nl_owner: FunctionDecl | null = null;
   file = "";
   tdecl_kind = TypeDeclKind.Alias;
+  /** M17/M17.3: type parameters of a generic fn/struct template
+   * (`struct Box[T]`); empty for ordinary declarations. */
+  type_params: string[] = [];
   alias_target: TypeDesc = mkType(TypeKind.Unknown);
   fields: StructFieldInfo[] = [];
   variants: string[] = [];
@@ -949,6 +1027,7 @@ function cloneTypeDesc(d: TypeDesc): TypeDesc {
       ? { params: d.fn_info.params.map(cloneTypeDesc), ret: cloneTypeDesc(d.fn_info.ret) }
       : null,
     type_name: d.type_name,
+    type_args: d.type_args.map(cloneTypeDesc),
   };
 }
 
@@ -1219,6 +1298,7 @@ function cloneStmt<T extends Statement>(s: T): T {
   if (s instanceof TypeDecl) {
     const out = new TypeDecl(s.name);
     out.tdecl_kind = s.tdecl_kind;
+    out.type_params = s.type_params.slice();
     out.file = s.file;
     out.alias_target = cloneTypeDesc(s.alias_target);
     out.fields = s.fields.map((f) => ({ name: f.name, desc: cloneTypeDesc(f.desc) }));

@@ -68,6 +68,16 @@ private:
     std::unordered_map<std::string, GenericTemplate> generic_fns_;
     std::unordered_map<std::string, FunctionDecl*> instantiated_;  // mangled name -> clone
     std::vector<std::unique_ptr<FunctionDecl>> generic_instances_; // ownership of clones
+    // M17.3: generic struct templates (`struct Box[T] { … }`). Like generic
+    // functions, a template never enters type_decls_/expanded_structs_ and
+    // emits no code; a use site (type position `Box[int]` or the constructor
+    // call `Box(5)`) instantiates a concrete clone under its specialization
+    // key (type_inst_name: "Box" + "__" + mangled args -> "Box__int"), which
+    // is registered in type_decls_ and resolved like an ordinary struct.
+    // Instantiations are owned here and appended to the program at the end of
+    // resolve(); generic_structs_ is cleared once every use has been expanded.
+    std::unordered_map<std::string, TypeDecl*> generic_structs_;
+    std::vector<std::unique_ptr<TypeDecl>> generic_struct_instances_;
     std::vector<std::vector<std::unordered_map<std::string, Symbol>>> outer_scope_stack_;
     // Parallel to outer_scope_stack_ (aligned 1:1): the function owning each
     // entry's scope group (nullptr for the top-level/main group). M13 uses it
@@ -142,7 +152,18 @@ private:
     void expand_type_refs_stmt(Statement* stmt);
     void expand_type_refs_expr(Expression* expr);
     TypeDesc expand_desc(const TypeDesc& d, bool by_value);
-    TypeDesc resolve_named(const std::string& name, bool by_value);
+    // Resolve a named type reference. `args` is the explicit type-argument
+    // list of the reference (`Box[int]` -> {"Box"}, {int}); empty for an
+    // ordinary name. A generic struct is instantiated on demand (M17.3).
+    TypeDesc resolve_named(const std::string& name,
+                           const std::vector<TypeDesc>& args, bool by_value);
+    // M17.3: clone a generic struct template with `type_params` bound to
+    // `args` positionally, register the clone in type_decls_ under its
+    // specialization key, and return that key. A no-op when the
+    // specialization already exists; validates argument arity.
+    std::string instantiate_struct(TypeDecl* tmpl,
+                                   const std::vector<TypeDesc>& args,
+                                   int line_no);
     void sync_param_desc(FunctionDecl::Param& p);
     void sync_return_desc(bool has_return, TypeKind& return_type,
                           TypeDesc& return_desc, TypeDesc& return_elem,
@@ -165,7 +186,7 @@ private:
     void unify_type_params(const TypeDesc& param, const TypeDesc& arg,
                            const std::set<std::string>& type_params,
                            std::unordered_map<std::string, TypeDesc>& bind,
-                           const std::string& fname, int line_no);
+                           const std::string& ctx, int line_no);
     TypeDesc substitute_desc(const TypeDesc& d,
                              const std::unordered_map<std::string, TypeDesc>& bind);
     void substitute_stmt(Statement* stmt,

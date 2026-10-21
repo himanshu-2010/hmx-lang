@@ -479,9 +479,10 @@ bool TypeResolver::types_match(const TypeDesc& a, const TypeDesc& b) const {
     if (a.type != b.type) return false;
     if (a.type == TypeKind::Array) return a.element() == b.element();
     if (a.type == TypeKind::Tuple) return a.tuple_members == b.tuple_members;
-    // Structs and enums are nominal: identity is the declared type name.
+    // Structs and enums are nominal: identity is the declared type name plus,
+    // for generic structs, the type arguments (`Box[int]` vs `Box[text]`).
     if (a.type == TypeKind::Struct || a.type == TypeKind::Enum)
-        return a.type_name == b.type_name;
+        return a.type_name == b.type_name && a.type_args == b.type_args;
     return true;
 }
 
@@ -667,7 +668,7 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         if (!sym) {
             sym = find_outer_symbol(id->name);
             if (!sym) {
-                if (type_decls_.count(id->name)) {
+                if (type_decls_.count(id->name) || generic_structs_.count(id->name)) {
                     throw err(line(),
                         "cannot use type '" + id->name + "' as a value");
                 }
@@ -697,14 +698,54 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             throw err(line(), "cannot call function 'main'");
         }
         // M16: struct construction — `Name(args)` where Name is a user type.
-        if (type_decls_.count(call->name)) {
+        // M17.3: `Box(5)` where `Box` is a generic struct template — the type
+        // arguments are inferred from the constructor arguments (SYNTAX §20.2),
+        // the specialization is instantiated, and only then does the ordinary
+        // struct-constructor path below run against the concrete fields.
+        TypeDecl* ctor_decl = nullptr;
+        TypeDesc target;
+        if (auto git = generic_structs_.find(call->name);
+            git != generic_structs_.end()) {
+            TypeDecl* tmpl = git->second;
+            if (call->args.size() != tmpl->fields.size()) {
+                throw err(line(),
+                    "struct '" + call->name + "' constructor expects " +
+                    std::to_string(tmpl->fields.size()) + " arguments, got " +
+                    std::to_string(call->args.size()));
+            }
+            std::set<std::string> tparams(tmpl->type_params.begin(),
+                                          tmpl->type_params.end());
+            std::unordered_map<std::string, TypeDesc> bind;
+            for (size_t i = 0; i < tmpl->fields.size(); i++) {
+                // Resolve each argument once for inference; the shared path
+                // below re-resolves it, which is idempotent for every
+                // expression node (lambda synthesis is guarded).
+                resolve_expr(call->args[i].get());
+                TypeDesc ad = expr_desc(call->args[i].get());
+                unify_type_params(tmpl->fields[i].desc, ad, tparams, bind,
+                                  "generic type '" + call->name + "'", line());
+            }
+            for (auto& tp : tmpl->type_params) {
+                if (!bind.count(tp)) {
+                    throw err(line(), "cannot infer type argument '" + tp +
+                        "' for generic type '" + call->name + "'");
+                }
+            }
+            target.type = TypeKind::Struct;
+            target.type_name = call->name;
+            for (auto& tp : tmpl->type_params) target.type_args.push_back(bind[tp]);
+            // Registers the specialization under its key and expands its
+            // fields in place (no-op when it already exists).
+            resolve_named(call->name, target.type_args, /*by_value=*/true);
+            ctor_decl = type_decls_[type_inst_name(target)];
+        } else if (type_decls_.count(call->name)) {
             TypeDecl* t = type_decls_[call->name];
-            TypeDesc target;
             if (t->kind == TypeDeclKind::Struct) {
                 target.type = TypeKind::Struct;
                 target.type_name = t->name;
+                ctor_decl = t;
             } else if (t->kind == TypeDeclKind::Alias) {
-                target = resolve_named(t->name, /*by_value=*/true);
+                target = resolve_named(t->name, /*args=*/{}, /*by_value=*/true);
                 if (target.type == TypeKind::Enum) {
                     throw err(line(),
                         "enum type '" + call->name + "' cannot be constructed");
@@ -713,18 +754,26 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                     throw err(line(),
                         "cannot construct type '" + call->name + "'");
                 }
+                ctor_decl = type_decls_[type_inst_name(target)];
             } else {
                 throw err(line(),
                     "enum type '" + call->name + "' cannot be constructed");
             }
-            const TypeDecl& st = *type_decls_[target.type_name];
+        }
+        if (ctor_decl) {
+            const TypeDecl& st = *ctor_decl;
             if (st.kind != TypeDeclKind::Struct) {
                 throw err(line(),
                     "internal: constructor for type '" + call->name + "' is not a struct");
             }
+            // Display name of the specialization: `Point` for an ordinary
+            // struct, `Box[int]` for a generic one (st.name is the internal
+            // specialization key `Box__int`, which must not leak into
+            // diagnostics).
+            const std::string disp = type_desc_to_string(target);
             if (call->args.size() != st.fields.size()) {
                 throw err(line(),
-                    "struct '" + st.name + "' constructor expects " +
+                    "struct '" + disp + "' constructor expects " +
                     std::to_string(st.fields.size()) + " arguments, got " +
                     std::to_string(call->args.size()));
             }
@@ -734,12 +783,12 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                 if (ad.type == TypeKind::Unknown) {
                     throw err(line(),
                         "cannot infer type of argument " + std::to_string(i + 1) +
-                        " to struct constructor '" + st.name + "'");
+                        " to struct constructor '" + disp + "'");
                 }
                 if (!types_match(ad, st.fields[i].desc)) {
                     throw err(line(),
                         "type mismatch: field '" + st.fields[i].name +
-                        "' of struct '" + st.name + "' expects " +
+                        "' of struct '" + disp + "' expects " +
                         type_desc_to_string(st.fields[i].desc) + ", got " +
                         type_desc_to_string(ad));
                 }
@@ -747,7 +796,7 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
             std::vector<TypeDesc> fields;
             for (const auto& f : st.fields) fields.push_back(f.desc);
             call->is_struct_ctor = true;
-            call->struct_ctor_name = target.type_name;
+            call->struct_ctor_name = type_inst_name(target);
             call->struct_ctor_fields = fields;
             call->struct_ctor_desc = target;
             result = TypeKind::Struct;
@@ -1271,7 +1320,8 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                     enum_desc.type = TypeKind::Enum;
                     enum_desc.type_name = td->name;
                 } else if (td->kind == TypeDeclKind::Alias) {
-                    TypeDesc decomp = resolve_named(td->name, /*by_value=*/true);
+                    TypeDesc decomp = resolve_named(td->name, /*args=*/{},
+                                                    /*by_value=*/true);
                     if (decomp.type == TypeKind::Enum) enum_desc = decomp;
                 }
                 if (enum_desc.type == TypeKind::Enum) {
@@ -1309,11 +1359,11 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
                 "cannot access member '" + mem->member + "' of " +
                 type_desc_to_string(bd));
         }
-        auto sit = type_decls_.find(bd.type_name);
+        auto sit = type_decls_.find(type_inst_name(bd));
         if (sit == type_decls_.end() ||
             sit->second->kind != TypeDeclKind::Struct) {
             throw err(line(),
-                "internal: unknown struct type '" + bd.type_name + "'");
+                "internal: unknown struct type '" + type_inst_name(bd) + "'");
         }
         const auto& fields = sit->second->fields;
         int fi = -1;
@@ -1322,11 +1372,11 @@ TypeKind TypeResolver::resolve_expr(Expression* expr) {
         }
         if (fi < 0) {
             throw err(line(),
-                "struct type '" + bd.type_name + "' has no field '" +
+                "struct type '" + type_desc_to_string(bd) + "' has no field '" +
                 mem->member + "'");
         }
         mem->is_field = true;
-        mem->struct_name = bd.type_name;
+        mem->struct_name = type_inst_name(bd);
         mem->field_index = fi;
         mem->field_desc = fields[fi].desc;
         result = mem->field_desc.type;
@@ -1813,6 +1863,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                     probe.type_name = bit->second->name;
                 } else if (bit->second->kind == TypeDeclKind::Alias) {
                     TypeDesc decomp = resolve_named(bit->second->name,
+                                                    /*args=*/{},
                                                     /*by_value=*/true);
                     if (decomp.type == TypeKind::Enum) probe = decomp;
                 }
@@ -1833,11 +1884,11 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                 "cannot assign to member '" + massign->member + "' of " +
                 type_desc_to_string(bd));
         }
-        auto sit = type_decls_.find(bd.type_name);
+        auto sit = type_decls_.find(type_inst_name(bd));
         if (sit == type_decls_.end() ||
             sit->second->kind != TypeDeclKind::Struct) {
             throw err(stmt->line,
-                "internal: unknown struct type '" + bd.type_name + "'");
+                "internal: unknown struct type '" + type_inst_name(bd) + "'");
         }
         const auto& fields = sit->second->fields;
         int fi = -1;
@@ -1846,7 +1897,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         }
         if (fi < 0) {
             throw err(stmt->line,
-                "struct type '" + bd.type_name + "' has no field '" +
+                "struct type '" + type_desc_to_string(bd) + "' has no field '" +
                 massign->member + "'");
         }
         // Root-identifier walk for immutability / capture checks.
@@ -1917,7 +1968,7 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
                     type_to_string(vt));
             }
         }
-        massign->struct_name = bd.type_name;
+        massign->struct_name = type_inst_name(bd);
         massign->field_index = fi;
         massign->field_desc = fd;
     } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
@@ -2371,7 +2422,33 @@ void TypeResolver::collect_type_decls(Program& program) {
     for (auto& stmt : program.statements) {
         auto* t = dynamic_cast<TypeDecl*>(stmt.get());
         if (!t) continue;
-        if (type_decls_.count(t->name)) {
+        if (!t->type_params.empty()) {
+            // M17.3: a generic struct template. It never enters type_decls_
+            // (like generic functions never enter functions_); uses instantiate
+            // concrete specializations that do.
+            if (t->kind != TypeDeclKind::Struct) {
+                throw err(t->line,
+                    "type parameters are only supported on struct declarations",
+                    t->file);
+            }
+            if (type_decls_.count(t->name) || generic_structs_.count(t->name)) {
+                throw err(t->line,
+                    "duplicate declaration of type '" + t->name + "'", t->file);
+            }
+            // Type parameters are looked up by name within one declaration, so
+            // a repeat would silently alias one parameter to another.
+            std::unordered_set<std::string> seen;
+            for (auto& tp : t->type_params) {
+                if (!seen.insert(tp).second) {
+                    throw err(t->line,
+                        "duplicate type parameter '" + tp + "' in struct '" +
+                        t->name + "'", t->file);
+                }
+            }
+            generic_structs_[t->name] = t;
+            continue;
+        }
+        if (type_decls_.count(t->name) || generic_structs_.count(t->name)) {
             throw err(t->line,
                 "duplicate declaration of type '" + t->name + "'", t->file);
         }
@@ -2392,8 +2469,18 @@ void TypeResolver::collect_type_decls(Program& program) {
 }
 
 TypeDesc TypeResolver::expand_desc(const TypeDesc& d, bool by_value) {
-    if (d.type == TypeKind::Unknown && !d.type_name.empty())
-        return resolve_named(d.type_name, by_value);
+    if (d.type == TypeKind::Unknown && !d.type_name.empty()) {
+        // M17.3: type arguments are themselves type expressions — expand them
+        // first so `alias L = Box[Other]` resolves `Other`, and an undefined
+        // or generic name inside the brackets fails here with its own
+        // diagnostic. by_value: an explicit type argument occupies the
+        // instantiation (its own self-containment is checked normally).
+        std::vector<TypeDesc> args;
+        args.reserve(d.type_args.size());
+        for (const auto& a : d.type_args)
+            args.push_back(expand_desc(a, /*by_value=*/true));
+        return resolve_named(d.type_name, args, by_value);
+    }
     if (d.type == TypeKind::Array) {
         TypeDesc out = d;
         TypeDesc e = expand_desc(d.element(), /*by_value=*/false);
@@ -2416,8 +2503,32 @@ TypeDesc TypeResolver::expand_desc(const TypeDesc& d, bool by_value) {
     return d;
 }
 
-TypeDesc TypeResolver::resolve_named(const std::string& name, bool by_value) {
-    auto it = type_decls_.find(name);
+TypeDesc TypeResolver::resolve_named(const std::string& name,
+                                     const std::vector<TypeDesc>& args,
+                                     bool by_value) {
+    // M17.3: a generic struct resolves through instantiation — the clone
+    // registers itself in type_decls_ under the specialization key, and every
+    // later lookup (this call included) finds it there like an ordinary struct.
+    std::string key = name;
+    auto git = generic_structs_.find(name);
+    if (git != generic_structs_.end()) {
+        if (args.empty()) {
+            throw err(line(),
+                "generic type '" + name + "' requires type arguments");
+        }
+        TypeDesc probe;
+        probe.type = TypeKind::Struct;
+        probe.type_name = name;
+        probe.type_args = args;
+        key = type_inst_name(probe);
+        if (!type_decls_.count(key)) {
+            instantiate_struct(git->second, args, line());
+        }
+    } else if (!args.empty()) {
+        throw err(line(),
+            "type '" + name + "' does not take type arguments");
+    }
+    auto it = type_decls_.find(key);
     if (it == type_decls_.end()) {
         throw err(line(), "undefined type '" + name + "'");
     }
@@ -2434,23 +2545,34 @@ TypeDesc TypeResolver::resolve_named(const std::string& name, bool by_value) {
             return out;
         }
         case TypeDeclKind::Struct: {
-            if (by_value && building_structs_.count(name)) {
+            if (by_value && building_structs_.count(key)) {
+                // Diagnose with the source-level spelling of the reference
+                // (`Node[int]`), not the internal specialization key.
+                TypeDesc disp;
+                disp.type = TypeKind::Struct;
+                disp.type_name = name;
+                disp.type_args = args;
                 throw err(t->line,
-                    "struct type '" + name + "' cannot contain itself by value", t->file);
+                    "struct type '" + type_desc_to_string(disp) +
+                    "' cannot contain itself by value", t->file);
             }
-            auto cached = expanded_structs_.find(name);
+            auto cached = expanded_structs_.find(key);
             if (cached != expanded_structs_.end()) return cached->second;
             TypeDesc out;
             out.type = TypeKind::Struct;
+            // The *base* name plus the type arguments identify the
+            // specialization; the TypeDecl registered under `key` carries the
+            // substituted fields for exactly this (base, args) pair.
             out.type_name = name;
+            out.type_args = args;
             // Cache before expanding fields so (indirect, heap) self-references
             // resolve to the descriptor instead of recursing forever.
-            expanded_structs_[name] = out;
-            building_structs_.insert(name);
+            expanded_structs_[key] = out;
+            building_structs_.insert(key);
             for (auto& f : t->fields) {
                 f.desc = expand_desc(f.desc, /*by_value=*/true);
             }
-            building_structs_.erase(name);
+            building_structs_.erase(key);
             return out;
         }
         case TypeDeclKind::Enum: {
@@ -2463,14 +2585,50 @@ TypeDesc TypeResolver::resolve_named(const std::string& name, bool by_value) {
     return TypeDesc{};
 }
 
+std::string TypeResolver::instantiate_struct(TypeDecl* tmpl,
+                                             const std::vector<TypeDesc>& args,
+                                             int line_no) {
+    if (args.size() != tmpl->type_params.size()) {
+        throw err(line_no, "type '" + tmpl->name + "' expects " +
+            std::to_string(tmpl->type_params.size()) + " type argument" +
+            (tmpl->type_params.size() == 1 ? "" : "s") + ", got " +
+            std::to_string(args.size()));
+    }
+    TypeDesc key_desc;
+    key_desc.type = TypeKind::Struct;
+    key_desc.type_name = tmpl->name;
+    key_desc.type_args = args;
+    std::string key = type_inst_name(key_desc);
+    if (type_decls_.count(key)) return key;   // specialization already exists
+    std::unordered_map<std::string, TypeDesc> bind;
+    for (size_t i = 0; i < tmpl->type_params.size(); i++)
+        bind[tmpl->type_params[i]] = args[i];
+    // The template body is never resolved on its own; the clone carries the
+    // substituted (still unexpanded) field descriptors, which resolve_named's
+    // struct case expands right after this function returns.
+    auto owned = std::unique_ptr<TypeDecl>(
+        static_cast<TypeDecl*>(clone_stmt(tmpl).release()));
+    TypeDecl* inst = owned.get();
+    inst->name = key;             // codegen registers structs by this key
+    inst->type_params.clear();    // an instantiation is not a template
+    for (auto& f : inst->fields) f.desc = substitute_desc(f.desc, bind);
+    type_decls_[key] = inst;
+    generic_struct_instances_.push_back(std::move(owned));
+    return key;
+}
+
 void TypeResolver::expand_type_refs(Program& program) {
     // Force-expand every declared type (in declaration order) so unused types
-    // are still validated and all descriptors are cached.
+    // are still validated and all descriptors are cached. Generic struct
+    // templates are skipped: their fields mention type parameters and are
+    // expanded per instantiation (M17.3), exactly like a generic function's
+    // parameter types.
     for (auto& stmt : program.statements) {
         if (auto* t = dynamic_cast<TypeDecl*>(stmt.get())) {
+            if (!t->type_params.empty()) continue;
             current_line_ = t->line;
             if (!t->file.empty()) current_file_ = t->file;
-            resolve_named(t->name, /*by_value=*/true);
+            resolve_named(t->name, /*args=*/{}, /*by_value=*/true);
         }
     }
     // Expand every annotation/parameter/return reference in the program.
@@ -2658,7 +2816,7 @@ void TypeResolver::collect_functions_stmt(Statement* stmt) {
             throw err(fn->line,
                 "duplicate declaration of function '" + fn->name + "'", fn->file);
         }
-        if (type_decls_.count(fn->name)) {
+        if (type_decls_.count(fn->name) || generic_structs_.count(fn->name)) {
             throw err(fn->line,
                 "cannot declare function '" + fn->name +
                 "': a type with that name already exists", fn->file);
@@ -2780,7 +2938,7 @@ void TypeResolver::resolve(Program& program) {
         if (auto* var = dynamic_cast<VarDecl*>(stmt.get())) {
             current_line_ = var->line;
             if (!var->file.empty()) current_file_ = var->file;
-            if (type_decls_.count(var->name)) {
+            if (type_decls_.count(var->name) || generic_structs_.count(var->name)) {
                 throw err(var->line,
                     "cannot declare variable '" + var->name +
                     "': a type with that name already exists");
@@ -2791,7 +2949,7 @@ void TypeResolver::resolve(Program& program) {
             current_line_ = d->line;
             if (!d->file.empty()) current_file_ = d->file;
             for (const auto& pat : d->patterns) {
-                if (type_decls_.count(pat.name)) {
+                if (type_decls_.count(pat.name) || generic_structs_.count(pat.name)) {
                     throw err(d->line,
                         "cannot declare variable '" + pat.name +
                         "': a type with that name already exists");
@@ -2816,57 +2974,42 @@ void TypeResolver::resolve(Program& program) {
     lambda_fns_.clear();
     // Monomorphized generic instantiations are regular functions from here on:
     // they were resolved during pass 2 and just need to join the program so
-    // codegen emits them.
+    // codegen emits them. The same holds for generic struct specializations
+    // (M17.3): their fields were expanded the moment they were instantiated,
+    // so they only need to reach codegen's struct registry.
     for (auto& f : generic_instances_) {
         program.statements.push_back(std::move(f));
     }
     generic_instances_.clear();
+    for (auto& t : generic_struct_instances_) {
+        program.statements.push_back(std::move(t));
+    }
+    generic_struct_instances_.clear();
     // Generic templates are compile-time only — every use was monomorphized
     // above — so drop them before codegen. Their declarations are never
-    // registered in functions_/fn_decls_ and produce no code.
+    // registered in functions_/fn_decls_ / type_decls_ and produce no code.
     program.statements.erase(
         std::remove_if(program.statements.begin(), program.statements.end(),
                        [](const StmtPtr& s) {
-                           auto* fn = dynamic_cast<FunctionDecl*>(s.get());
-                           return fn && !fn->type_params.empty();
+                           if (auto* fn = dynamic_cast<FunctionDecl*>(s.get()))
+                               return !fn->type_params.empty();
+                           auto* t = dynamic_cast<TypeDecl*>(s.get());
+                           return t && !t->type_params.empty();
                        }),
         program.statements.end());
     generic_fns_.clear();
+    generic_structs_.clear();
 }
 
 // --- M17 generics: monomorphization -----------------------------------------
 
 // Encode a concrete type descriptor as a C-identifier-safe token so each
-// instantiation gets a deterministic, collision-free name.
+// instantiation gets a deterministic, collision-free name. Delegates to the
+// shared implementation in ast.cpp so struct specializations mangle by their
+// specialization key (`n_Box__int`) — the same token codegen uses for the C
+// type of `Box[int]`.
 std::string TypeResolver::mangle_desc(const TypeDesc& d) {
-    switch (d.type) {
-        case TypeKind::Int: return "int";
-        case TypeKind::Decimal: return "dec";
-        case TypeKind::Text: return "text";
-        case TypeKind::Bool: return "bool";
-        case TypeKind::Char: return "char";
-        case TypeKind::Byte: return "byte";
-        case TypeKind::Array: return "arr_" + mangle_desc(d.element());
-        case TypeKind::Tuple: {
-            std::string s = "tup";
-            for (auto& m : d.tuple_members) s += "_" + mangle_desc(m);
-            return s;
-        }
-        case TypeKind::Function: {
-            std::string s = "fn";
-            if (d.fn_info) {
-                for (auto& p : d.fn_info->params) s += "_" + mangle_desc(p);
-                s += "_r_" + mangle_desc(d.fn_info->ret);
-            }
-            return s;
-        }
-        case TypeKind::Struct:
-        case TypeKind::Enum:
-            return "n_" + d.type_name;
-        case TypeKind::Unknown:
-            return d.type_name.empty() ? "unk" : ("n_" + d.type_name);
-    }
-    return "unk";
+    return type_mangle(d);
 }
 
 std::string TypeResolver::mangle_generic(const std::string& fname,
@@ -2886,6 +3029,13 @@ TypeDesc TypeResolver::substitute_desc(const TypeDesc& d,
     if (d.type == TypeKind::Unknown && !d.type_name.empty()) {
         auto it = bind.find(d.type_name);
         if (it != bind.end()) return it->second;
+        // A generic struct reference (`Box[T]`) whose arguments mention a type
+        // parameter: substitute through the argument list (M17.3).
+        if (!d.type_args.empty()) {
+            TypeDesc out = d;
+            for (auto& a : out.type_args) a = substitute_desc(a, bind);
+            return out;
+        }
         return d;
     }
     if (d.type == TypeKind::Array)
@@ -3045,7 +3195,7 @@ void TypeResolver::register_generic_template(FunctionDecl* fn) {
     if (generic_fns_.count(fn->name) || functions_.count(fn->name)) {
         throw err(fn->line, "function '" + fn->name + "' is already declared", fn->file);
     }
-    if (type_decls_.count(fn->name)) {
+    if (type_decls_.count(fn->name) || generic_structs_.count(fn->name)) {
         throw err(fn->line, "cannot declare function '" + fn->name +
             "': a type with that name already exists", fn->file);
     }
@@ -3077,10 +3227,13 @@ void TypeResolver::register_generic_template(FunctionDecl* fn) {
 void TypeResolver::unify_type_params(const TypeDesc& param, const TypeDesc& arg,
         const std::set<std::string>& type_params,
         std::unordered_map<std::string, TypeDesc>& bind,
-        const std::string& fname, int line_no) {
+        const std::string& ctx, int line_no) {
+    // `ctx` names the declaration being inferred against — "generic function
+    // 'f'" or "generic type 'Box'" — so the shared unification messages read
+    // correctly for both M17.1 function calls and M17.3 struct constructors.
     if (!desc_fully_known(arg)) {
-        throw err(line_no, "cannot infer type parameter for generic function '" +
-            fname + "' from an argument whose type is not fully known");
+        throw err(line_no, "cannot infer type parameter for " + ctx +
+            " from an argument whose type is not fully known");
     }
     if (param.type == TypeKind::Unknown && !param.type_name.empty() &&
         type_params.count(param.type_name)) {
@@ -3089,49 +3242,61 @@ void TypeResolver::unify_type_params(const TypeDesc& param, const TypeDesc& arg,
             bind[param.type_name] = arg;
         } else if (!(it->second == arg)) {
             throw err(line_no, "type mismatch: type parameter '" + param.type_name +
-                "' of generic function '" + fname + "' inferred as both " +
+                "' of " + ctx + " inferred as both " +
                 type_desc_to_string(it->second) + " and " + type_desc_to_string(arg));
         }
         return;
     }
+    // A struct type parameter (M17.3): `fn wrap[T](x: T)` applied to `Box[int]`.
+    // The declared name is a generic struct template; the argument must be an
+    // instantiation of it, and the type arguments unify positionally so `T := int`.
+    if (param.type == TypeKind::Unknown && generic_structs_.count(param.type_name)) {
+        if (arg.type != TypeKind::Struct || arg.type_name != param.type_name ||
+            arg.type_args.size() != param.type_args.size()) {
+            throw err(line_no, "type mismatch: argument for " + ctx + " expects " +
+                type_desc_to_string(param) + ", got " + type_desc_to_string(arg));
+        }
+        for (size_t i = 0; i < param.type_args.size(); i++)
+            unify_type_params(param.type_args[i], arg.type_args[i], type_params, bind,
+                              ctx, line_no);
+        return;
+    }
     if (param.type == TypeKind::Array) {
         if (arg.type != TypeKind::Array) {
-            throw err(line_no, "type mismatch: argument for generic function '" + fname +
-                "' expects array of " + type_desc_to_string(param.element()) + ", got " +
-                type_desc_to_string(arg));
+            throw err(line_no, "type mismatch: argument for " + ctx + " expects array of " +
+                type_desc_to_string(param.element()) + ", got " + type_desc_to_string(arg));
         }
-        unify_type_params(param.element(), arg.element(), type_params, bind, fname, line_no);
+        unify_type_params(param.element(), arg.element(), type_params, bind, ctx, line_no);
         return;
     }
     if (param.type == TypeKind::Tuple) {
         if (arg.type != TypeKind::Tuple ||
             arg.tuple_members.size() != param.tuple_members.size()) {
-            throw err(line_no, "type mismatch: argument for generic function '" + fname +
-                "' expects tuple " + tuple_type_to_string(param.tuple_members) + ", got " +
-                type_desc_to_string(arg));
+            throw err(line_no, "type mismatch: argument for " + ctx + " expects tuple " +
+                tuple_type_to_string(param.tuple_members) + ", got " + type_desc_to_string(arg));
         }
         for (size_t i = 0; i < param.tuple_members.size(); i++)
             unify_type_params(param.tuple_members[i], arg.tuple_members[i],
-                              type_params, bind, fname, line_no);
+                              type_params, bind, ctx, line_no);
         return;
     }
     if (param.type == TypeKind::Function && param.fn_info) {
         if (arg.type != TypeKind::Function || !arg.fn_info ||
             arg.fn_info->params.size() != param.fn_info->params.size()) {
-            throw err(line_no, "type mismatch: argument for generic function '" + fname +
-                "' expects " + type_desc_to_string(param) + ", got " + type_desc_to_string(arg));
+            throw err(line_no, "type mismatch: argument for " + ctx + " expects " +
+                type_desc_to_string(param) + ", got " + type_desc_to_string(arg));
         }
         for (size_t i = 0; i < param.fn_info->params.size(); i++)
             unify_type_params(param.fn_info->params[i], arg.fn_info->params[i],
-                              type_params, bind, fname, line_no);
+                              type_params, bind, ctx, line_no);
         unify_type_params(param.fn_info->ret, arg.fn_info->ret,
-                          type_params, bind, fname, line_no);
+                          type_params, bind, ctx, line_no);
         return;
     }
     TypeDesc resolved = expand_desc(param, /*by_value=*/true);
     if (resolved != arg) {
-        throw err(line_no, "type mismatch: argument for generic function '" + fname +
-            "' expects " + type_desc_to_string(resolved) + ", got " + type_desc_to_string(arg));
+        throw err(line_no, "type mismatch: argument for " + ctx + " expects " +
+            type_desc_to_string(resolved) + ", got " + type_desc_to_string(arg));
     }
 }
 
@@ -3151,7 +3316,7 @@ std::string TypeResolver::monomorphize_call(CallExpr* call, GenericTemplate& tmp
         resolve_expr(call->args[i].get());
         TypeDesc ad = expr_desc(call->args[i].get());
         unify_type_params(decl->params[i].desc, ad, tmpl.type_params, bind,
-                          decl->name, line());
+                          "generic function '" + decl->name + "'", line());
     }
     for (auto& tp : decl->type_params) {
         if (!bind.count(tp)) {

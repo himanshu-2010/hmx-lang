@@ -1,0 +1,56 @@
+// M17.3: generic structs — monomorphized per instantiation.
+// The integration suite compiles and runs this; it must exit 0.
+
+struct Box[T] {
+    value: T
+}
+
+struct Pair[A, B] {
+    first: A
+    second: B
+}
+
+struct Tree[T] {
+    value: T
+    children: [Tree[T]]
+}
+
+alias IntBox = Box[int]
+
+fn unbox[T](b: Box[T]) -> T {
+    return b.value
+}
+
+fn swap[P, Q](p: Pair[P, Q]) -> Pair[Q, P] {
+    return Pair(p.second, p.first)
+}
+
+fn identity[T](x: T) -> T { return x }
+
+fn main() {
+    let bi = Box(42)
+    let bt = Box("hi")
+    print(unbox(bi))
+    print(unbox(bt))
+    print(identity(unbox(bi)))
+    let ib: IntBox = Box(7)
+    print(unbox(ib))
+    let p = Pair(1, "one")
+    print(p.first, p.second)
+    let q = swap(p)
+    print(q.first, q.second)
+    let boxed = [Box(1), Box(2)]
+    print(unbox(boxed[0]) + unbox(boxed[1]))
+    // Recursive generic struct through an array member (allowed — arrays are
+    // pointers, unlike by-value self-containment which the resolver rejects).
+    // An empty literal has no inferrable element type, so annotate it.
+    let none: [Tree[int]] = []
+    let leaf = Tree(1, none)
+    let root = Tree(0, [leaf])
+    print(root.value, root.children[0].value)
+    print(first_child(root))
+}
+
+fn first_child[T](t: Tree[T]) -> T {
+    return t.children[0].value
+}

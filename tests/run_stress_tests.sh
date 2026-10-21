@@ -2151,6 +2151,45 @@ test_output "m17_generic_functions" \
     }' \
     "$(printf '5\nhmx\n1\n1\ny\n2.500000\n10 30\nbeta')"
 
+# M17.3: generic structs are monomorphized per instantiation. The spec §20.6
+# worked example plus multi-parameter structs, an alias naming an
+# instantiation, a generic function that swaps instantiations, and an array
+# of instantiated structs must all behave like hand-written specializations.
+test_output "m17_3_generic_structs" \
+    'struct Box[T] {
+        value: T
+    }
+    struct Pair[A, B] {
+        first: A
+        second: B
+    }
+    alias IntBox = Box[int]
+    fn unbox[T](b: Box[T]) -> T {
+        return b.value
+    }
+    fn swap[P, Q](p: Pair[P, Q]) -> Pair[Q, P] {
+        return Pair(p.second, p.first)
+    }
+    fn identity[T](x: T) -> T { return x }
+    fn main() {
+        let bi = Box(42)
+        let bt = Box("hi")
+        print(unbox(bi))
+        print(unbox(bt))
+        print(identity(unbox(bi)))
+        let ib: IntBox = Box(7)
+        print(unbox(ib))
+        let p = Pair(1, "one")
+        print(p.first, p.second)
+        let q = swap(p)
+        print(q.first, q.second)
+        let sw = swap(Pair(Box(9), 0))
+        print(unbox(sw.second))
+        let boxed = [Box(1), Box(2)]
+        print(unbox(boxed[0]) + unbox(boxed[1]))
+    }' \
+    "$(printf '42\nhi\n42\n7\n1 one\none 1\n9\n3')"
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

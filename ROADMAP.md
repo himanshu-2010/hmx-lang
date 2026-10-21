@@ -124,9 +124,9 @@
   declared, inferred at call sites, cloned and monomorphized per instantiation
   (mangled `__gen_<fname>_<types>`), with a locked diagnostic surface for
   inference failure, wrong arity, use-as-value, duplicate/default/variadic/nested
-  restrictions, and instantiation-only type errors. Native **65** integration /
-  **254** negative / **144** stress, web parity 0 failures, valgrind **70/70**.
-  Generic **structs** + instantiation in type position are **M17.3**.
+  restrictions, and instantiation-only type errors. Native **66** integration /
+  **268** negative / **145** stress, web parity 0 failures, valgrind **71/71**.
+  Generic **structs** + instantiation in type position are **M17.3 (landed)**.
 - **M18** `Option[T]` / `Result[T,E]` + `try`/`?`/`defer` on existing setjmp
   machinery; hard faults stay print+exit(1) by default, recoverable via `catch`.
 - **M19** int64 / u32 / u64 / float32 + checked-arithmetic flag; BigInt stretch.

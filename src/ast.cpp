@@ -500,6 +500,7 @@ StmtPtr clone_stmt_impl(const Statement* s) {
         out->alias_target = t->alias_target;
         out->fields = t->fields;
         out->variants = t->variants;
+        out->type_params = t->type_params;
         out->line = t->line;
         return out;
     }
@@ -519,14 +520,18 @@ bool TypeDesc::operator==(const TypeDesc& other) const {
     }
     if (tuple_members != other.tuple_members) return false;
     if (type == TypeKind::Struct || type == TypeKind::Enum) {
-        return type_name == other.type_name;
+        // M17.3: `Box[int]` and `Box[text]` share the base name; the type
+        // arguments are what make the specializations distinct.
+        return type_name == other.type_name && type_args == other.type_args;
     }
     if (type == TypeKind::Function) {
         if (fn_info == other.fn_info) return true;
         if (!fn_info || !other.fn_info) return false;
         return *fn_info == *other.fn_info;
     }
-    return true;
+    // Primitive kinds have an empty type_name; named-type markers (Unknown +
+    // type_name, possibly with type arguments) must compare their reference.
+    return type_name == other.type_name && type_args == other.type_args;
 }
 
 bool TypeDesc::operator<(const TypeDesc& other) const {
@@ -538,7 +543,8 @@ bool TypeDesc::operator<(const TypeDesc& other) const {
     }
     if (tuple_members != other.tuple_members) return tuple_members < other.tuple_members;
     if (type == TypeKind::Struct || type == TypeKind::Enum) {
-        return type_name < other.type_name;
+        if (type_name != other.type_name) return type_name < other.type_name;
+        return type_args < other.type_args;
     }
     if (type == TypeKind::Function) {
         if (fn_info && other.fn_info) {
@@ -548,7 +554,8 @@ bool TypeDesc::operator<(const TypeDesc& other) const {
         }
         return (bool)other.fn_info;
     }
-    return false;
+    if (type_name != other.type_name) return type_name < other.type_name;
+    return type_args < other.type_args;
 }
 
 bool FunctionTypeInfo::operator==(const FunctionTypeInfo& other) const {
@@ -607,12 +614,25 @@ std::string type_to_string(TypeKind kind) {
     }
 }
 
+static std::string type_args_to_string(const TypeDesc& desc) {
+    if (desc.type_args.empty()) return std::string();
+    std::string s = "[";
+    for (size_t i = 0; i < desc.type_args.size(); i++) {
+        if (i > 0) s += ", ";
+        s += type_desc_to_string(desc.type_args[i]);
+    }
+    s += "]";
+    return s;
+}
+
 std::string type_desc_to_string(const TypeDesc& desc) {
     if (desc.type == TypeKind::Struct || desc.type == TypeKind::Enum) {
-        return desc.type_name.empty() ? type_to_string(desc.type) : desc.type_name;
+        if (desc.type_name.empty()) return type_to_string(desc.type);
+        return desc.type_name + type_args_to_string(desc);
     }
     // A not-yet-expanded named-type reference prints as its name.
-    if (desc.type == TypeKind::Unknown && !desc.type_name.empty()) return desc.type_name;
+    if (desc.type == TypeKind::Unknown && !desc.type_name.empty())
+        return desc.type_name + type_args_to_string(desc);
     if (desc.type == TypeKind::Array) {
         return "array of " + type_desc_to_string(desc.element());
     }
@@ -640,5 +660,54 @@ std::string tuple_type_to_string(const std::vector<TypeDesc>& members) {
         s += type_desc_to_string(members[i]);
     }
     s += ")";
+    return s;
+}
+
+// M17.3: C-identifier-safe encoding of a concrete descriptor, used to name
+// generic instantiations (`__gen_f_n_Box__int`). Structs and enums mangle by
+// their specialization key so `Box[int]` and `Box[text]` never collide.
+std::string type_mangle(const TypeDesc& d) {
+    switch (d.type) {
+        case TypeKind::Int: return "int";
+        case TypeKind::Decimal: return "dec";
+        case TypeKind::Text: return "text";
+        case TypeKind::Bool: return "bool";
+        case TypeKind::Char: return "char";
+        case TypeKind::Byte: return "byte";
+        case TypeKind::Array: return "arr_" + type_mangle(d.element());
+        case TypeKind::Tuple: {
+            std::string s = "tup";
+            for (auto& m : d.tuple_members) s += "_" + type_mangle(m);
+            return s;
+        }
+        case TypeKind::Function: {
+            std::string s = "fn";
+            if (d.fn_info) {
+                for (auto& p : d.fn_info->params) s += "_" + type_mangle(p);
+                s += "_r_" + type_mangle(d.fn_info->ret);
+            }
+            return s;
+        }
+        case TypeKind::Struct:
+        case TypeKind::Enum:
+            return "n_" + type_inst_name(d);
+        case TypeKind::Unknown:
+            return d.type_name.empty() ? "unk" : ("n_" + type_inst_name(d));
+    }
+    return "unk";
+}
+
+// Canonical key of a type's specialization: the plain declared name when the
+// type takes no type arguments, `Box__int` for `Box[int]`. The resolver
+// registers the cloned TypeDecl of a generic struct under exactly this name,
+// and codegen maps a resolved descriptor back to it with this function, so the
+// two sides can never disagree on a specialization's identity.
+std::string type_inst_name(const TypeDesc& d) {
+    if (d.type_name.empty() || d.type_args.empty()) return d.type_name;
+    std::string s = d.type_name + "__";
+    for (size_t i = 0; i < d.type_args.size(); i++) {
+        if (i > 0) s += "_";
+        s += type_mangle(d.type_args[i]);
+    }
     return s;
 }

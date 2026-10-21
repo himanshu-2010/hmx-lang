@@ -4,10 +4,10 @@
   "intro": "HMX is a small statically typed language by Himanshu Kumar that transpiles to C and ships a native binary — plus a browser playground that runs the whole compiler client-side. This is how it started, where it is now, and what still stands between it and production.",
   "stats": {
     "version": "0.10.0",
-    "nativeTests": 496,
+    "nativeTests": 512,
     "packagingTests": 160,
-    "vitest": 477,
-    "valgrind": 70
+    "vitest": 493,
+    "valgrind": 71
   },
   "chapters": [
     {
@@ -92,6 +92,12 @@
           "date": "2026-10-19",
           "title": "Generics, part one: generic functions (M17.1)",
           "detail": "Type parameters on functions — fn identity[T](x: T) -> T — inferred at each call site and monomorphized into its own specialization, with no constraints. Native and web stay byte-identical, and a reflective clone that overflowed on the nonlocal-exit back-pointer was replaced by a faithful node-by-node port.",
+          "status": "done"
+        },
+        {
+          "date": "2026-10-19",
+          "title": "Generics, part two: generic structs (M17.3)",
+          "detail": "struct Box[T] { value: T } is a template instantiated on demand by Box[int] in type position or constructor inference; each distinct type argument list becomes its own concrete struct (Box__int), cloned with parameters bound and appended to the program. Aliases, generic functions over generic structs, arrays of instantiations, and recursive structs through array members all work; diagnostics spell Box[int] rather than the internal key, and the native/web parsers and resolvers stay byte-identical.",
           "status": "current"
         }
       ]

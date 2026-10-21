@@ -58,6 +58,8 @@ import {
   typeDescEquals,
   typeDescToString,
   typeDescListEquals,
+  typeInstName,
+  typeMangle,
   typeToString,
   tupleTypeToString,
   HMX_MAX_NESTING,
@@ -202,6 +204,12 @@ export class TypeResolver {
   private expanded_structs_ = new Map<string, TypeDesc>(); // nominal name -> full struct desc
   private building_structs_ = new Set<string>(); // names whose fields are being expanded (direct chain)
   private expanding_aliases_ = new Set<string>(); // names of aliases mid-expansion (cycle detection)
+
+  // M17.3 generics: generic struct templates registered from declarations
+  // (never in type_decls_, like generic functions), plus the instantiated
+  // specializations owned until `resolve()` splices them into the program.
+  private generic_structs_ = new Map<string, TypeDecl>();
+  private generic_struct_instances_: TypeDecl[] = [];
 
   // M17 generics: templates registered from declarations, plus the resolved
   // instantiations produced at each call site. `generic_instances_` owns the
@@ -658,8 +666,11 @@ export class TypeResolver {
     if (a.type !== b.type) return false;
     if (a.type === TypeKind.Array) return typeDescEquals(elementOf(a), elementOf(b));
     if (a.type === TypeKind.Tuple) return typeDescListEquals(a.tuple_members, b.tuple_members);
-    // Structs and enums are nominal: identity is the declared type name.
-    if (a.type === TypeKind.Struct || a.type === TypeKind.Enum) return a.type_name === b.type_name;
+    // Structs and enums are nominal: identity is the declared type name plus,
+    // for generic structs, the type arguments (`Box[int]` vs `Box[text]`).
+    if (a.type === TypeKind.Struct || a.type === TypeKind.Enum) {
+      return a.type_name === b.type_name && typeDescListEquals(a.type_args, b.type_args);
+    }
     return true;
   }
 
@@ -694,7 +705,7 @@ export class TypeResolver {
     if (!sym.is_mutable) {
       throw this.err(line, `cannot modify immutable variable '${slot.name}'`);
     }
-    const have: TypeDesc = { type: sym.type, elem: sym.elem, tuple_members: sym.tuple_members, fn_info: null, type_name: "" };
+    const have: TypeDesc = { type: sym.type, elem: sym.elem, tuple_members: sym.tuple_members, fn_info: null, type_name: "", type_args: [] };
     if (!this.typesMatch(have, vd)) {
       throw this.err(
         line,
@@ -850,7 +861,7 @@ export class TypeResolver {
       if (!sym) {
         sym = this.findOuterSymbol(expr.name);
         if (!sym) {
-          if (this.type_decls_.has(expr.name)) {
+          if (this.type_decls_.has(expr.name) || this.generic_structs_.has(expr.name)) {
             throw this.err(this.line(), `cannot use type '${expr.name}' as a value`);
           }
           const fit = this.functions_.get(expr.name);
@@ -1077,31 +1088,81 @@ export class TypeResolver {
         throw this.err(this.line(), "cannot call function 'main'");
       }
       // M16: struct construction — `Name(args)` where Name is a user type.
-      const tdecl = this.type_decls_.get(expr.name);
-      if (tdecl) {
-        let target = mkType(TypeKind.Unknown);
-        if (tdecl.tdecl_kind === TypeDeclKind.Struct) {
-          target = mkType(TypeKind.Struct);
-          target.type_name = tdecl.name;
-        } else if (tdecl.tdecl_kind === TypeDeclKind.Alias) {
-          target = this.resolveNamedType(tdecl.name, true);
-          if (target.type === TypeKind.Enum) {
+      // M17.3: `Box(5)` where `Box` is a generic struct template — the type
+      // arguments are inferred from the constructor arguments (SYNTAX §20.2),
+      // the specialization is instantiated, and only then does the ordinary
+      // struct-constructor path below run against the concrete fields.
+      let ctorDecl: TypeDecl | null = null;
+      let target = mkType(TypeKind.Unknown);
+      const git = this.generic_structs_.get(expr.name);
+      if (git) {
+        const tmpl = git;
+        if (expr.args.length !== tmpl.fields.length) {
+          throw this.err(
+            this.line(),
+            `struct '${expr.name}' constructor expects ${stdToStr(tmpl.fields.length)} arguments, got ${stdToStr(expr.args.length)}`
+          );
+        }
+        const tparams = new Set(tmpl.type_params);
+        const bind = new Map<string, TypeDesc>();
+        for (let i = 0; i < tmpl.fields.length; i++) {
+          // Resolve each argument once for inference; the shared path
+          // below re-resolves it, which is idempotent for every
+          // expression node (lambda synthesis is guarded).
+          this.resolveExpr(expr.args[i]);
+          const ad = this.exprDesc(expr.args[i]);
+          this.unifyTypeParams(tmpl.fields[i].desc, ad, tparams, bind, `generic type '${expr.name}'`, this.line());
+        }
+        for (const tp of tmpl.type_params) {
+          if (!bind.has(tp)) {
+            throw this.err(
+              this.line(),
+              `cannot infer type argument '${tp}' for generic type '${expr.name}'`
+            );
+          }
+        }
+        target = mkType(TypeKind.Struct);
+        target.type_name = expr.name;
+        for (const tp of tmpl.type_params) target.type_args.push(bind.get(tp)!);
+        // Registers the specialization under its key and expands its
+        // fields in place (no-op when it already exists).
+        this.resolveNamedType(expr.name, target.type_args, true);
+        ctorDecl = this.type_decls_.get(typeInstName(target))!;
+      } else {
+        const tdecl = this.type_decls_.get(expr.name);
+        if (tdecl) {
+          if (tdecl.tdecl_kind === TypeDeclKind.Struct) {
+            target = mkType(TypeKind.Struct);
+            target.type_name = tdecl.name;
+            ctorDecl = tdecl;
+          } else if (tdecl.tdecl_kind === TypeDeclKind.Alias) {
+            target = this.resolveNamedType(tdecl.name, [], true);
+            if (target.type === TypeKind.Enum) {
+              throw this.err(this.line(), `enum type '${expr.name}' cannot be constructed`);
+            }
+            if (target.type !== TypeKind.Struct) {
+              throw this.err(this.line(), `cannot construct type '${expr.name}'`);
+            }
+            ctorDecl = this.type_decls_.get(typeInstName(target))!;
+          } else {
             throw this.err(this.line(), `enum type '${expr.name}' cannot be constructed`);
           }
-          if (target.type !== TypeKind.Struct) {
-            throw this.err(this.line(), `cannot construct type '${expr.name}'`);
-          }
-        } else {
-          throw this.err(this.line(), `enum type '${expr.name}' cannot be constructed`);
         }
-        const st = this.type_decls_.get(target.type_name)!;
+      }
+      if (ctorDecl) {
+        const st = ctorDecl;
         if (st.tdecl_kind !== TypeDeclKind.Struct) {
           throw this.err(this.line(), `internal: constructor for type '${expr.name}' is not a struct`);
         }
+        // Display name of the specialization: `Point` for an ordinary
+        // struct, `Box[int]` for a generic one (st.name is the internal
+        // specialization key `Box__int`, which must not leak into
+        // diagnostics).
+        const disp = typeDescToString(target);
         if (expr.args.length !== st.fields.length) {
           throw this.err(
             this.line(),
-            `struct '${st.name}' constructor expects ${stdToStr(st.fields.length)} arguments, got ${stdToStr(expr.args.length)}`
+            `struct '${disp}' constructor expects ${stdToStr(st.fields.length)} arguments, got ${stdToStr(expr.args.length)}`
           );
         }
         for (let i = 0; i < st.fields.length; i++) {
@@ -1110,19 +1171,19 @@ export class TypeResolver {
           if (ad.type === TypeKind.Unknown) {
             throw this.err(
               this.line(),
-              `cannot infer type of argument ${stdToStr(i + 1)} to struct constructor '${st.name}'`
+              `cannot infer type of argument ${stdToStr(i + 1)} to struct constructor '${disp}'`
             );
           }
           if (!this.typesMatch(ad, st.fields[i].desc)) {
             throw this.err(
               this.line(),
-              `type mismatch: field '${st.fields[i].name}' of struct '${st.name}' expects ${typeDescToString(st.fields[i].desc)}, got ${typeDescToString(ad)}`
+              `type mismatch: field '${st.fields[i].name}' of struct '${disp}' expects ${typeDescToString(st.fields[i].desc)}, got ${typeDescToString(ad)}`
             );
           }
         }
         const fields: TypeDesc[] = st.fields.map((f) => f.desc);
         expr.is_struct_ctor = true;
-        expr.struct_ctor_name = target.type_name;
+        expr.struct_ctor_name = typeInstName(target);
         expr.struct_ctor_fields = fields;
         expr.struct_ctor_desc = target;
         result = TypeKind.Struct;
@@ -1429,7 +1490,7 @@ export class TypeResolver {
               enumDesc = mkType(TypeKind.Enum);
               enumDesc.type_name = td.name;
             } else if (td.tdecl_kind === TypeDeclKind.Alias) {
-              const decomp = this.resolveNamedType(td.name, true);
+              const decomp = this.resolveNamedType(td.name, [], true);
               if (decomp.type === TypeKind.Enum) enumDesc = decomp;
             }
             if (enumDesc.type === TypeKind.Enum) {
@@ -1468,9 +1529,9 @@ export class TypeResolver {
             `cannot access member '${expr.member}' of ${typeDescToString(bd)}`
           );
         }
-        const stt = this.type_decls_.get(bd.type_name);
+        const stt = this.type_decls_.get(typeInstName(bd));
         if (!stt || stt.tdecl_kind !== TypeDeclKind.Struct) {
-          throw this.err(this.line(), `internal: unknown struct type '${bd.type_name}'`);
+          throw this.err(this.line(), `internal: unknown struct type '${typeInstName(bd)}'`);
         }
         const sfields = stt.fields;
         let sfi = -1;
@@ -1480,11 +1541,11 @@ export class TypeResolver {
         if (sfi < 0) {
           throw this.err(
             this.line(),
-            `struct type '${bd.type_name}' has no field '${expr.member}'`
+            `struct type '${typeDescToString(bd)}' has no field '${expr.member}'`
           );
         }
         expr.is_field = true;
-        expr.struct_name = bd.type_name;
+        expr.struct_name = typeInstName(bd);
         expr.field_index = sfi;
         expr.field_desc = sfields[sfi].desc;
         result = expr.field_desc.type;
@@ -1991,7 +2052,7 @@ export class TypeResolver {
             probe = mkType(TypeKind.Enum);
             probe.type_name = bite.name;
           } else if (bite.tdecl_kind === TypeDeclKind.Alias) {
-            const decomp = this.resolveNamedType(bite.name, true);
+            const decomp = this.resolveNamedType(bite.name, [], true);
             if (decomp.type === TypeKind.Enum) probe = decomp;
           }
           if (probe.type === TypeKind.Enum) {
@@ -2013,9 +2074,9 @@ export class TypeResolver {
           `cannot assign to member '${massign.member}' of ${typeDescToString(mbd)}`
         );
       }
-      const mast = this.type_decls_.get(mbd.type_name);
+      const mast = this.type_decls_.get(typeInstName(mbd));
       if (!mast || mast.tdecl_kind !== TypeDeclKind.Struct) {
-        throw this.err(stmt.line, `internal: unknown struct type '${mbd.type_name}'`);
+        throw this.err(stmt.line, `internal: unknown struct type '${typeInstName(mbd)}'`);
       }
       const mfields = mast.fields;
       let mfi = -1;
@@ -2099,7 +2160,7 @@ export class TypeResolver {
           );
         }
       }
-      massign.struct_name = mbd.type_name;
+      massign.struct_name = typeInstName(mbd);
       massign.field_index = mfi;
       massign.field_desc = mfd;
     } else if (stmt instanceof PrintStmt) {
@@ -2551,7 +2612,7 @@ export class TypeResolver {
       if (this.functions_.has(fn.name)) {
         throw this.err(fn.line, `duplicate declaration of function '${fn.name}'`, fn.file);
       }
-      if (this.type_decls_.has(fn.name)) {
+      if (this.type_decls_.has(fn.name) || this.generic_structs_.has(fn.name)) {
         throw this.err(
           fn.line,
           `cannot declare function '${fn.name}': a type with that name already exists`,
@@ -2689,7 +2750,7 @@ export class TypeResolver {
       if (stmt instanceof VarDecl) {
         this.current_line_ = stmt.line;
         if (stmt.file.length > 0) this.current_file_ = stmt.file;
-        if (this.type_decls_.has(stmt.name)) {
+        if (this.type_decls_.has(stmt.name) || this.generic_structs_.has(stmt.name)) {
           throw this.err(
             stmt.line,
             `cannot declare variable '${stmt.name}': a type with that name already exists`
@@ -2701,7 +2762,7 @@ export class TypeResolver {
         this.current_line_ = stmt.line;
         if (stmt.file.length > 0) this.current_file_ = stmt.file;
         for (const pat of stmt.patterns) {
-          if (this.type_decls_.has(pat.name)) {
+          if (this.type_decls_.has(pat.name) || this.generic_structs_.has(pat.name)) {
             throw this.err(
               stmt.line,
               `cannot declare variable '${pat.name}': a type with that name already exists`
@@ -2727,21 +2788,31 @@ export class TypeResolver {
     this.lambda_fns_ = [];
     // Monomorphized generic instantiations are regular functions from here on:
     // they were resolved during pass 2 and just need to join the program so
-    // codegen emits them.
+    // codegen emits them. The same holds for generic struct specializations
+    // (M17.3): their fields were expanded the moment they were instantiated,
+    // so they only need to reach codegen's struct registry.
     for (const f of this.generic_instances_) {
       program.statements.push(f);
     }
     this.generic_instances_ = [];
+    for (const t of this.generic_struct_instances_) {
+      program.statements.push(t);
+    }
+    this.generic_struct_instances_ = [];
     // Generic templates are compile-time only — every use was monomorphized
     // above — so drop them before codegen. Their declarations are never
-    // registered in functions_/fn_decls_ and produce no code.
+    // registered in functions_/fn_decls_/type_decls_ and produce no code.
     for (let i = program.statements.length - 1; i >= 0; i--) {
       const s = program.statements[i];
       if (s instanceof FunctionDecl && s.type_params.length > 0) {
         program.statements.splice(i, 1);
       }
+      if (s instanceof TypeDecl && s.type_params.length > 0) {
+        program.statements.splice(i, 1);
+      }
     }
     this.generic_fns_.clear();
+    this.generic_structs_.clear();
   }
 
   // ---- M16: type declarations (alias / struct / enum) ----
@@ -2749,8 +2820,46 @@ export class TypeResolver {
   private collectTypeDecls(program: Program): void {
     for (const stmt of program.statements) {
       if (stmt instanceof TypeDecl) {
-        if (this.type_decls_.has(stmt.name)) {
-          throw this.err(stmt.line, `duplicate declaration of type '${stmt.name}'`, stmt.file);
+        if (stmt.type_params.length > 0) {
+          // M17.3: a generic struct template. It never enters type_decls_
+          // (like generic functions never enter functions_); uses instantiate
+          // concrete specializations that do.
+          if (stmt.tdecl_kind !== TypeDeclKind.Struct) {
+            throw this.err(
+              stmt.line,
+              `type parameters are only supported on struct declarations`,
+              stmt.file
+            );
+          }
+          if (this.type_decls_.has(stmt.name) || this.generic_structs_.has(stmt.name)) {
+            throw this.err(
+              stmt.line,
+              `duplicate declaration of type '${stmt.name}'`,
+              stmt.file
+            );
+          }
+          // Type parameters are looked up by name within one declaration, so
+          // a repeat would silently alias one parameter to another.
+          const seenTp = new Set<string>();
+          for (const tp of stmt.type_params) {
+            if (seenTp.has(tp)) {
+              throw this.err(
+                stmt.line,
+                `duplicate type parameter '${tp}' in struct '${stmt.name}'`,
+                stmt.file
+              );
+            }
+            seenTp.add(tp);
+          }
+          this.generic_structs_.set(stmt.name, stmt);
+          continue;
+        }
+        if (this.type_decls_.has(stmt.name) || this.generic_structs_.has(stmt.name)) {
+          throw this.err(
+            stmt.line,
+            `duplicate declaration of type '${stmt.name}'`,
+            stmt.file
+          );
         }
         // Variants are looked up by name within one enum, so a repeat would
         // silently shadow the earlier ordinal.
@@ -2774,15 +2883,21 @@ export class TypeResolver {
 
   private expandDesc(d: TypeDesc, byValue: boolean): TypeDesc {
     if (d.type === TypeKind.Unknown && d.type_name !== "") {
-      return this.resolveNamedType(d.type_name, byValue);
+      // M17.3: type arguments are themselves type expressions — expand them
+      // first so `alias L = Box[Other]` resolves `Other`, and an undefined
+      // or generic name inside the brackets fails here with its own
+      // diagnostic. by_value: an explicit type argument occupies the
+      // instantiation (its own self-containment is checked normally).
+      const args = d.type_args.map((a) => this.expandDesc(a, true));
+      return this.resolveNamedType(d.type_name, args, byValue);
     }
     if (d.type === TypeKind.Array) {
-      const out: TypeDesc = { type: d.type, elem: null, tuple_members: d.tuple_members, fn_info: d.fn_info, type_name: d.type_name };
+      const out: TypeDesc = { type: d.type, elem: null, tuple_members: d.tuple_members, fn_info: d.fn_info, type_name: d.type_name, type_args: d.type_args };
       out.elem = this.expandDesc(elementOf(d), false);
       return out;
     }
     if (d.type === TypeKind.Tuple) {
-      return { type: d.type, elem: d.elem, tuple_members: d.tuple_members.map((m) => this.expandDesc(m, true)), fn_info: d.fn_info, type_name: d.type_name };
+      return { type: d.type, elem: d.elem, tuple_members: d.tuple_members.map((m) => this.expandDesc(m, true)), fn_info: d.fn_info, type_name: d.type_name, type_args: d.type_args };
     }
     if (d.type === TypeKind.Function && d.fn_info) {
       return {
@@ -2794,13 +2909,33 @@ export class TypeResolver {
           ret: this.expandDesc(d.fn_info.ret, false),
         },
         type_name: d.type_name,
+        type_args: d.type_args,
       };
     }
     return d;
   }
 
-  private resolveNamedType(name: string, byValue: boolean): TypeDesc {
-    const t = this.type_decls_.get(name);
+  private resolveNamedType(name: string, args: TypeDesc[], byValue: boolean): TypeDesc {
+    // M17.3: a generic struct resolves through instantiation — the clone
+    // registers itself in type_decls_ under the specialization key, and every
+    // later lookup (this call included) finds it there like an ordinary struct.
+    let key = name;
+    const git = this.generic_structs_.get(name);
+    if (git) {
+      if (args.length === 0) {
+        throw this.err(this.line(), `generic type '${name}' requires type arguments`);
+      }
+      const probe = mkType(TypeKind.Struct);
+      probe.type_name = name;
+      probe.type_args = args;
+      key = typeInstName(probe);
+      if (!this.type_decls_.has(key)) {
+        this.instantiateStruct(git, args, this.line());
+      }
+    } else if (args.length > 0) {
+      throw this.err(this.line(), `type '${name}' does not take type arguments`);
+    }
+    const t = this.type_decls_.get(key);
     if (!t) {
       throw this.err(this.line(), `undefined type '${name}'`);
     }
@@ -2815,21 +2950,34 @@ export class TypeResolver {
         return out;
       }
       case TypeDeclKind.Struct: {
-        if (byValue && this.building_structs_.has(name)) {
-          throw this.err(t.line, `struct type '${name}' cannot contain itself by value`, t.file);
+        if (byValue && this.building_structs_.has(key)) {
+          // Diagnose with the source-level spelling of the reference
+          // (`Node[int]`), not the internal specialization key.
+          const disp = mkType(TypeKind.Struct);
+          disp.type_name = name;
+          disp.type_args = args;
+          throw this.err(
+            t.line,
+            `struct type '${typeDescToString(disp)}' cannot contain itself by value`,
+            t.file
+          );
         }
-        const cached = this.expanded_structs_.get(name);
+        const cached = this.expanded_structs_.get(key);
         if (cached) return cached;
         const out = mkType(TypeKind.Struct);
+        // The *base* name plus the type arguments identify the
+        // specialization; the TypeDecl registered under `key` carries the
+        // substituted fields for exactly this (base, args) pair.
         out.type_name = name;
+        out.type_args = args;
         // Cache before expanding fields so (indirect, heap) self-references
         // resolve to the descriptor instead of recursing forever.
-        this.expanded_structs_.set(name, out);
-        this.building_structs_.add(name);
+        this.expanded_structs_.set(key, out);
+        this.building_structs_.add(key);
         for (const f of t.fields) {
           f.desc = this.expandDesc(f.desc, true);
         }
-        this.building_structs_.delete(name);
+        this.building_structs_.delete(key);
         return out;
       }
       case TypeDeclKind.Enum: {
@@ -2841,14 +2989,46 @@ export class TypeResolver {
     return mkType(TypeKind.Unknown);
   }
 
+  private instantiateStruct(tmpl: TypeDecl, args: TypeDesc[], lineNo: number): string {
+    if (args.length !== tmpl.type_params.length) {
+      throw this.err(
+        lineNo,
+        `type '${tmpl.name}' expects ${tmpl.type_params.length} type argument` +
+          (tmpl.type_params.length === 1 ? "" : "s") +
+          `, got ${args.length}`
+      );
+    }
+    const keyDesc = mkType(TypeKind.Struct);
+    keyDesc.type_name = tmpl.name;
+    keyDesc.type_args = args;
+    const key = typeInstName(keyDesc);
+    if (this.type_decls_.has(key)) return key; // specialization already exists
+    const bind = new Map<string, TypeDesc>();
+    tmpl.type_params.forEach((tp, i) => bind.set(tp, args[i]));
+    // The template body is never resolved on its own; the clone carries the
+    // substituted (still unexpanded) field descriptors, which resolveNamedType's
+    // struct case expands right after this function returns.
+    const inst = deepCloneAst(tmpl);
+    inst.name = key; // codegen registers structs by this key
+    inst.type_params = []; // an instantiation is not a template
+    for (const f of inst.fields) f.desc = this.substituteDesc(f.desc, bind);
+    this.type_decls_.set(key, inst);
+    this.generic_struct_instances_.push(inst);
+    return key;
+  }
+
   private expandTypeRefs(program: Program): void {
     // Force-expand every declared type (in declaration order) so unused types
     // are still validated and all descriptors are cached.
     for (const stmt of program.statements) {
       if (stmt instanceof TypeDecl) {
+        // Generic struct templates are skipped: their fields mention type
+        // parameters and are expanded per instantiation (M17.3), exactly like
+        // a generic function's parameter types.
+        if (stmt.type_params.length > 0) continue;
         this.current_line_ = stmt.line;
         if (stmt.file.length > 0) this.current_file_ = stmt.file;
-        this.resolveNamedType(stmt.name, true);
+        this.resolveNamedType(stmt.name, [], true);
       }
     }
     // Expand every annotation/parameter/return reference in the program.
@@ -3031,36 +3211,12 @@ export class TypeResolver {
 
   // ---- M17 generics: monomorphization ----
 
-  /** Encode a concrete descriptor as an identifier-safe token for mangling. */
+  /** Encode a concrete descriptor as an identifier-safe token for mangling.
+   * Delegates to the shared implementation in ast.ts so struct specializations
+   * mangle by their specialization key (`n_Box__int`) — the same token the JS
+   * codegen uses for the C type of `Box[int]`. */
   private mangleDesc(d: TypeDesc): string {
-    switch (d.type) {
-      case TypeKind.Int: return "int";
-      case TypeKind.Decimal: return "dec";
-      case TypeKind.Text: return "text";
-      case TypeKind.Bool: return "bool";
-      case TypeKind.Char: return "char";
-      case TypeKind.Byte: return "byte";
-      case TypeKind.Array: return "arr_" + this.mangleDesc(elementOf(d));
-      case TypeKind.Tuple: {
-        let s = "tup";
-        for (const m of d.tuple_members) s += "_" + this.mangleDesc(m);
-        return s;
-      }
-      case TypeKind.Function: {
-        let s = "fn";
-        if (d.fn_info) {
-          for (const p of d.fn_info.params) s += "_" + this.mangleDesc(p);
-          s += "_r_" + this.mangleDesc(d.fn_info.ret);
-        }
-        return s;
-      }
-      case TypeKind.Struct:
-      case TypeKind.Enum:
-        return "n_" + d.type_name;
-      case TypeKind.Unknown:
-        return d.type_name.length === 0 ? "unk" : "n_" + d.type_name;
-    }
-    return "unk";
+    return typeMangle(d);
   }
 
   private mangleGeneric(
@@ -3082,6 +3238,11 @@ export class TypeResolver {
       const it = bind.get(d.type_name);
       // Value-copy the binding so later in-place field edits cannot alias it.
       if (it) return deepCloneAst(it);
+      // A generic struct reference (`Box[T]`) whose arguments mention a type
+      // parameter: substitute through the argument list (M17.3).
+      if (d.type_args.length > 0) {
+        return { ...d, type_args: d.type_args.map((a) => this.substituteDesc(a, bind)) };
+      }
       return d;
     }
     if (d.type === TypeKind.Array) {
@@ -3101,6 +3262,7 @@ export class TypeResolver {
           ret: this.substituteDesc(d.fn_info.ret, bind),
         },
         type_name: d.type_name,
+        type_args: d.type_args,
       };
     }
     return d;
@@ -3239,7 +3401,7 @@ export class TypeResolver {
     if (this.generic_fns_.has(fn.name) || this.functions_.has(fn.name)) {
       throw this.err(fn.line, `function '${fn.name}' is already declared`, fn.file);
     }
-    if (this.type_decls_.has(fn.name)) {
+    if (this.type_decls_.has(fn.name) || this.generic_structs_.has(fn.name)) {
       throw this.err(
         fn.line,
         `cannot declare function '${fn.name}': a type with that name already exists`,
@@ -3276,13 +3438,16 @@ export class TypeResolver {
     arg: TypeDesc,
     typeParams: Set<string>,
     bind: Map<string, TypeDesc>,
-    fname: string,
+    ctx: string,
     line: number
   ): void {
+    // `ctx` names the declaration being inferred against — "generic function
+    // 'f'" or "generic type 'Box'" — so the shared unification messages read
+    // correctly for both M17.1 function calls and M17.3 struct constructors.
     if (!descFullyKnown(arg)) {
       throw this.err(
         line,
-        `cannot infer type parameter for generic function '${fname}' from an argument whose type is not fully known`
+        `cannot infer type parameter for ${ctx} from an argument whose type is not fully known`
       );
     }
     if (param.type === TypeKind.Unknown && param.type_name.length > 0 && typeParams.has(param.type_name)) {
@@ -3292,8 +3457,27 @@ export class TypeResolver {
       } else if (!typeDescEquals(it, arg)) {
         throw this.err(
           line,
-          `type mismatch: type parameter '${param.type_name}' of generic function '${fname}' inferred as both ${typeDescToString(it)} and ${typeDescToString(arg)}`
+          `type mismatch: type parameter '${param.type_name}' of ${ctx} inferred as both ${typeDescToString(it)} and ${typeDescToString(arg)}`
         );
+      }
+      return;
+    }
+    // A struct type parameter (M17.3): `fn wrap[T](x: T)` applied to `Box[int]`.
+    // The declared name is a generic struct template; the argument must be an
+    // instantiation of it, and the type arguments unify positionally so `T := int`.
+    if (param.type === TypeKind.Unknown && this.generic_structs_.has(param.type_name)) {
+      if (
+        arg.type !== TypeKind.Struct ||
+        arg.type_name !== param.type_name ||
+        arg.type_args.length !== param.type_args.length
+      ) {
+        throw this.err(
+          line,
+          `type mismatch: argument for ${ctx} expects ${typeDescToString(param)}, got ${typeDescToString(arg)}`
+        );
+      }
+      for (let i = 0; i < param.type_args.length; i++) {
+        this.unifyTypeParams(param.type_args[i], arg.type_args[i], typeParams, bind, ctx, line);
       }
       return;
     }
@@ -3301,21 +3485,21 @@ export class TypeResolver {
       if (arg.type !== TypeKind.Array) {
         throw this.err(
           line,
-          `type mismatch: argument for generic function '${fname}' expects array of ${typeDescToString(elementOf(param))}, got ${typeDescToString(arg)}`
+          `type mismatch: argument for ${ctx} expects array of ${typeDescToString(elementOf(param))}, got ${typeDescToString(arg)}`
         );
       }
-      this.unifyTypeParams(elementOf(param), elementOf(arg), typeParams, bind, fname, line);
+      this.unifyTypeParams(elementOf(param), elementOf(arg), typeParams, bind, ctx, line);
       return;
     }
     if (param.type === TypeKind.Tuple) {
       if (arg.type !== TypeKind.Tuple || arg.tuple_members.length !== param.tuple_members.length) {
         throw this.err(
           line,
-          `type mismatch: argument for generic function '${fname}' expects tuple ${tupleTypeToString(param.tuple_members)}, got ${typeDescToString(arg)}`
+          `type mismatch: argument for ${ctx} expects tuple ${tupleTypeToString(param.tuple_members)}, got ${typeDescToString(arg)}`
         );
       }
       for (let i = 0; i < param.tuple_members.length; i++) {
-        this.unifyTypeParams(param.tuple_members[i], arg.tuple_members[i], typeParams, bind, fname, line);
+        this.unifyTypeParams(param.tuple_members[i], arg.tuple_members[i], typeParams, bind, ctx, line);
       }
       return;
     }
@@ -3323,20 +3507,20 @@ export class TypeResolver {
       if (arg.type !== TypeKind.Function || !arg.fn_info || arg.fn_info.params.length !== param.fn_info.params.length) {
         throw this.err(
           line,
-          `type mismatch: argument for generic function '${fname}' expects ${typeDescToString(param)}, got ${typeDescToString(arg)}`
+          `type mismatch: argument for ${ctx} expects ${typeDescToString(param)}, got ${typeDescToString(arg)}`
         );
       }
       for (let i = 0; i < param.fn_info.params.length; i++) {
-        this.unifyTypeParams(param.fn_info.params[i], arg.fn_info!.params[i], typeParams, bind, fname, line);
+        this.unifyTypeParams(param.fn_info.params[i], arg.fn_info!.params[i], typeParams, bind, ctx, line);
       }
-      this.unifyTypeParams(param.fn_info.ret, arg.fn_info.ret, typeParams, bind, fname, line);
+      this.unifyTypeParams(param.fn_info.ret, arg.fn_info.ret, typeParams, bind, ctx, line);
       return;
     }
     const resolved = this.expandDesc(param, true);
     if (!typeDescEquals(resolved, arg)) {
       throw this.err(
         line,
-        `type mismatch: argument for generic function '${fname}' expects ${typeDescToString(resolved)}, got ${typeDescToString(arg)}`
+        `type mismatch: argument for ${ctx} expects ${typeDescToString(resolved)}, got ${typeDescToString(arg)}`
       );
     }
   }
@@ -3355,7 +3539,7 @@ export class TypeResolver {
       // below re-resolves it, which is idempotent (lambda synthesis is guarded).
       this.resolveExpr(call.args[i]);
       const ad = this.exprDesc(call.args[i]);
-      this.unifyTypeParams(decl.params[i].desc, ad, tmpl.type_params, bind, decl.name, this.line());
+      this.unifyTypeParams(decl.params[i].desc, ad, tmpl.type_params, bind, `generic function '${decl.name}'`, this.line());
     }
     for (const tp of decl.type_params) {
       if (!bind.has(tp)) {

@@ -2244,6 +2244,116 @@ test_error "generics_undefined_type" \
     }' \
     "undefined type 'Missing'"
 
+# ── M17.3: generic structs ────────────────────────────────────────────────
+test_error "gstructs_duplicate_type_param" \
+    'struct B[T, T] { x: T }
+    fn main() { print(1) }' \
+    "duplicate type parameter 'T' in struct 'B'"
+
+test_error "gstructs_arity_too_many" \
+    'struct Box[T] { value: T }
+    fn main() {
+        let b: Box[int, text] = Box(1)
+        print(b.value)
+    }' \
+    "type 'Box' expects 1 type argument, got 2"
+
+test_error "gstructs_requires_type_arguments" \
+    'struct Box[T] { value: T }
+    fn main() {
+        let b: Box = Box(1)
+        print(b.value)
+    }' \
+    "generic type 'Box' requires type arguments"
+
+test_error "gstructs_args_on_non_generic" \
+    'struct Point { x: int }
+    fn main() {
+        let p: Point[int] = Point(1)
+        print(p.x)
+    }' \
+    "type 'Point' does not take type arguments"
+
+test_error "gstructs_uninferrable_ctor" \
+    'struct S[T] { n: int }
+    fn main() {
+        let s = S(5)
+        print(s.n)
+    }' \
+    "cannot infer type argument 'T' for generic type 'S'"
+
+test_error "gstructs_as_value" \
+    'struct Box[T] { value: T }
+    fn main() {
+        let f = Box
+        print(1)
+    }' \
+    "cannot use type 'Box' as a value"
+
+test_error "gstructs_self_by_value" \
+    'struct Node[T] {
+        value: T
+        next: Node[T]
+    }
+    fn get(n: Node[int]) -> int { return n.value }
+    fn main() { print(1) }' \
+    "struct type 'Node\[int\]' cannot contain itself by value"
+
+test_error "gstructs_ctor_arity" \
+    'struct Box[T] { value: T }
+    fn main() {
+        let b = Box(1, 2)
+        print(b.value)
+    }' \
+    "struct 'Box' constructor expects 1 arguments, got 2"
+
+test_error "gstructs_annotation_mismatch" \
+    'struct Box[T] { value: T }
+    fn main() {
+        let b: Box[int] = Box("hi")
+        print(b.value)
+    }' \
+    "variable 'b' declared as Box\[int\] but initialized with Box\[text\]"
+
+test_error "gstructs_undefined_type_argument" \
+    'struct Box[T] { value: T }
+    fn main() {
+        let b: Box[Missing] = Box(1)
+        print(b.value)
+    }' \
+    "undefined type 'Missing'"
+
+test_error "gstructs_param_mismatch" \
+    'struct Box[T] { value: T }
+    fn unbox[T](b: Box[T]) -> T { return b.value }
+    fn main() { print(unbox(5)) }' \
+    "argument for generic function 'unbox' expects Box\[T\], got int"
+
+test_error "gstructs_conflicting_inference" \
+    'struct Box[T] { value: T }
+    fn put[T](b: Box[T], x: T) -> T { return x }
+    fn main() { print(put(Box(1), "hi")) }' \
+    "type parameter 'T' of generic function 'put' inferred as both int and text"
+
+test_error "gstructs_ctor_field_conflict" \
+    'struct Dup[T] {
+        a: T
+        b: T
+    }
+    fn main() {
+        let d = Dup(1, "hi")
+        print(d.a)
+    }' \
+    "type parameter 'T' of generic type 'Dup' inferred as both int and text"
+
+test_error "gstructs_ctor_field_shape" \
+    'struct Wrap[T] { items: [T] }
+    fn main() {
+        let w = Wrap(5)
+        print(1)
+    }' \
+    "type mismatch: argument for generic type 'Wrap' expects array of T, got int"
+
 # Deep nesting: the guard at the top of TypeResolver::resolve rejects any program
 # whose AST is deeper than HMX_MAX_NESTING (200) *before* a recursive walk runs,
 # so an arbitrarily deep program is a clean diagnostic, never a C-stack overflow

@@ -61,6 +61,7 @@ import {
   elementOf,
   mkType,
   typeToString,
+  typeInstName,
 } from "./ast";
 
 /** Decode the interior of an HMX string literal the way gcc decodes a C
@@ -167,15 +168,16 @@ export class CodeGenJs {
       return d.tuple_members.some((m) => this.typeHasHeap(m));
     }
     if (d.type === TypeKind.Struct) {
-      const td = this.structTypes.get(d.type_name);
+      const key = typeInstName(d);
+      const td = this.structTypes.get(key);
       if (!td) return false;
       // By-value self-containment is rejected by the resolver and array/function
       // fields answer `true` immediately, so this terminates; the guard also
       // covers mutually-referencing struct pairs defensively.
-      if (this.heapVisiting.has(d.type_name)) return false;
-      this.heapVisiting.add(d.type_name);
+      if (this.heapVisiting.has(key)) return false;
+      this.heapVisiting.add(key);
       const res = td.fields.some((f) => this.typeHasHeap(f.desc));
-      this.heapVisiting.delete(d.type_name);
+      this.heapVisiting.delete(key);
       return res;
     }
     return false;
@@ -422,8 +424,9 @@ export class CodeGenJs {
     }
     // Nominal types mangle by name (mirrors mangle_type_name in the C backend)
     // so `(Point)` and `(int, Point)` get distinct, stable helper names.
+    // Generic struct instantiations include their type arguments (`Box__int`).
     if (d.type === TypeKind.Struct || d.type === TypeKind.Enum) {
-      return `nom_${d.type_name}`;
+      return `nom_${typeInstName(d)}`;
     }
     if (d.type === TypeKind.Function) {
       let s = "fn";
@@ -493,15 +496,16 @@ export class CodeGenJs {
   /** Slot descriptors of an aggregate: struct fields or tuple members. */
   private aggregateMembers(d: TypeDesc): TypeDesc[] {
     if (d.type === TypeKind.Struct) {
-      const td = this.structTypes.get(d.type_name);
-      if (!td) throw new Error(`internal error: unknown struct type '${d.type_name}'`);
+      const key = typeInstName(d);
+      const td = this.structTypes.get(key);
+      if (!td) throw new Error(`internal error: unknown struct type '${key}'`);
       return td.fields.map((f) => f.desc);
     }
     return d.tuple_members;
   }
 
   private copyMangle(d: TypeDesc): string {
-    if (d.type === TypeKind.Struct) return `st_${d.type_name}`;
+    if (d.type === TypeKind.Struct) return `st_${typeInstName(d)}`;
     let s = "tp";
     for (const m of d.tuple_members) s += `_${this.pappMangleType(m)}`;
     return s;
@@ -561,6 +565,7 @@ export class CodeGenJs {
     else if (v.annotation === TypeKind.Function) d.fn_info = v.annotation_desc.fn_info;
     else if (v.annotation === TypeKind.Struct || v.annotation === TypeKind.Enum) {
       d.type_name = v.annotation_desc.type_name;
+      d.type_args = v.annotation_desc.type_args;
     }
     return d;
   }
@@ -572,6 +577,7 @@ export class CodeGenJs {
     else if (p.type === TypeKind.Function) d.fn_info = p.desc.fn_info;
     else if (p.type === TypeKind.Struct || p.type === TypeKind.Enum) {
       d.type_name = p.desc.type_name;
+      d.type_args = p.desc.type_args;
     }
     return d;
   }

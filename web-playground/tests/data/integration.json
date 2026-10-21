@@ -408,6 +408,20 @@
       }
     },
     {
+      "name": "generic_structs",
+      "kind": "fixture",
+      "source": "// M17.3: generic structs — monomorphized per instantiation.\n// The integration suite compiles and runs this; it must exit 0.\n\nstruct Box[T] {\n    value: T\n}\n\nstruct Pair[A, B] {\n    first: A\n    second: B\n}\n\nstruct Tree[T] {\n    value: T\n    children: [Tree[T]]\n}\n\nalias IntBox = Box[int]\n\nfn unbox[T](b: Box[T]) -> T {\n    return b.value\n}\n\nfn swap[P, Q](p: Pair[P, Q]) -> Pair[Q, P] {\n    return Pair(p.second, p.first)\n}\n\nfn identity[T](x: T) -> T { return x }\n\nfn main() {\n    let bi = Box(42)\n    let bt = Box(\"hi\")\n    print(unbox(bi))\n    print(unbox(bt))\n    print(identity(unbox(bi)))\n    let ib: IntBox = Box(7)\n    print(unbox(ib))\n    let p = Pair(1, \"one\")\n    print(p.first, p.second)\n    let q = swap(p)\n    print(q.first, q.second)\n    let boxed = [Box(1), Box(2)]\n    print(unbox(boxed[0]) + unbox(boxed[1]))\n    // Recursive generic struct through an array member (allowed — arrays are\n    // pointers, unlike by-value self-containment which the resolver rejects).\n    // An empty literal has no inferrable element type, so annotate it.\n    let none: [Tree[int]] = []\n    let leaf = Tree(1, none)\n    let root = Tree(0, [leaf])\n    print(root.value, root.children[0].value)\n    print(first_child(root))\n}\n\nfn first_child[T](t: Tree[T]) -> T {\n    return t.children[0].value\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "42\nhi\n42\n7\n1 one\none 1\n3\n0 1\n1\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "generics",
       "kind": "fixture",
       "source": "// M17 generic functions: monomorphized per call site, no constraints.\n// Each call infers its type arguments from the argument types.\n\nfn identity[T](x: T) -> T {\n    return x\n}\n\nfn first[T](a: [T], i: int) -> T {\n    return a[i]\n}\n\nfn pick[T](flag: bool, a: T, b: T) -> T {\n    if (flag) { return a }\n    return b\n}\n\nfn repeat[T](x: T, n: int) -> [T] {\n    let out: [T] = []\n    let i = 0\n    while (i < n) {\n        push(out, x)\n        i = i + 1\n    }\n    return out\n}\n\n// A generic that calls another generic; both are instantiated.\nfn twice_identity[T](x: T) -> T {\n    return identity(identity(x))\n}\n\nfn count_down[T](n: int, tag: T) -> int {\n    if (n == 0) { return 0 }\n    return 1 + count_down(n - 1, tag)\n}\n\nstruct Box {\n    value: int\n}\n\nfn unwrap(b: Box) -> int {\n    return b.value\n}\n\nfn apply_to[T](f: fn(T) -> int, x: T) -> int {\n    return f(x)\n}\n\nfn size_of(x: int) -> int {\n    return x\n}\n\nfn main() {\n    print(identity(7))\n    print(identity(\"hmx\"))\n    print(identity(2.5))\n\n    let nums = [10, 20, 30]\n    print(first(nums, 2))\n    let words = [\"a\", \"b\"]\n    print(first(words, 1))\n\n    print(pick(true, 1, 2), pick(false, \"x\", \"y\"))\n\n    let r = repeat(9, 3)\n    print(r[0], r[1], r[2])\n\n    print(identity(identity(5)))\n\n    let box = Box(41)\n    print(box.value)\n}\n\nfn main2() {\n    print(pick(1 < 2, \"one\", \"two\"))\n}\n",

@@ -71,6 +71,7 @@ Program* g_program = nullptr;
 %type <tdesc> param_type named_ref
 %type <tlist> fn_type_params
 %type <strlist> type_param_list opt_type_params
+%type <tlist> type_arg_list
 %type <fields> struct_fields
 %type <strlist> enum_variants
 %type <program> program
@@ -184,13 +185,15 @@ type_decl
             free($2);
             $$ = t;
         }
-    | STRUCT IDENTIFIER '{' struct_fields '}'
+    | STRUCT IDENTIFIER opt_type_params '{' struct_fields '}'
         {
             auto* t = new TypeDecl();
             t->kind = TypeDeclKind::Struct;
             t->name = $2;
-            t->fields = std::move(*$4);
-            delete $4;
+            t->type_params = std::move(*$3);
+            delete $3;
+            t->fields = std::move(*$5);
+            delete $5;
             t->line = yylineno;
             free($2);
             $$ = t;
@@ -1643,6 +1646,54 @@ type_param_list
             v->push_back(std::string($1));
             free($1);
             $$ = v;
+        }
+    ;
+
+// M17.3: type position with explicit type arguments (`Box[int]`). The
+// productions for the bracketed forms of `param_type` and `named_ref` are
+// re-opened here, after every other rule, so the rule numbers of the grammar
+// above stay exactly what the web `actions.ts` table was built against (only
+// these four rules are appended). `type_arg_list` mirrors `type_param_list`.
+type_arg_list
+    : type_arg_list ',' param_type
+        {
+            $1->push_back(*$3);
+            delete $3;
+            $$ = $1;
+        }
+    | param_type
+        {
+            auto* v = new std::vector<TypeDesc>();
+            v->push_back(*$1);
+            delete $1;
+            $$ = v;
+        }
+    ;
+
+param_type
+    : IDENTIFIER '[' type_arg_list ']'
+        {
+            // A named type reference with explicit type arguments
+            // (`Box[int]`); the resolver instantiates (or rejects) it.
+            auto* td = new TypeDesc{};
+            td->type_name = std::string($1);
+            td->type_args = std::move(*$3);
+            delete $3;
+            free($1);
+            $$ = td;
+        }
+    ;
+
+named_ref
+    : IDENTIFIER '[' type_arg_list ']'
+        {
+            // Annotation form of the same reference (`let b: Box[int]`).
+            auto* td = new TypeDesc{};
+            td->type_name = std::string($1);
+            td->type_args = std::move(*$3);
+            delete $3;
+            free($1);
+            $$ = td;
         }
     ;
 

@@ -331,3 +331,26 @@ prior fixtures, and lands one complete feature.
     failures; valgrind **70/70**; ASan+LSan and UBSan clean; fuzzer clean;
     fixture `generics.hmx` + stress `m17_generic_functions` + 9 negatives
     `generics_*`.
+- **M17.3 generic structs (SYNTAX.md §20):** `struct Box[T] { value: T }` is a
+  template instantiated on demand — `Box[int]` in type position or `Box(5)` by
+  constructor inference — and each distinct type-argument list is cloned into a
+  concrete struct registered under a specialization key (`Box__int`), exactly as
+  M17.1 monomorphizes functions. Design decisions:
+  - **Grammar.** The `struct` rule reuses `opt_type_params` (RHS 5 → 6) and four
+    new rules are appended at the end of `parser.y` (`type_arg_list` ×2,
+    `param_type`/`named_ref` `IDENTIFIER '[' type_arg_list ']'`), so all
+    pre-existing rule numbers stay stable. Still 9 shift/reduce conflicts;
+    web `tables.json` regenerated (188 rules, 488 states) and `actions.ts` synced.
+  - **Descriptor identity.** `TypeDesc` keeps the base name and gains a
+    `type_args` vector; `type_inst_name` (`Box__int`) is the specialization key
+    used by the resolver registry and codegen's struct table, while diagnostics
+    spell the reference `Box[int]`. `type_mangle`/`type_inst_name` are shared from
+    `ast.cpp` (the resolver's `mangle_desc` delegates), so a generic function over
+    `Box[T]` mangles as `__gen_unbox_n_Box__int`.
+  - **Templates** live in `generic_structs_` (never `type_decls_`) and are erased
+    with the function templates; instantiations are appended to the program.
+  - Native **510/510** (66 integration / 266 negative / 145 stress / 33 CLI);
+    web vitest **491/491** (476 parity + 15 app), `gen-data.mts` parity 0
+    failures; valgrind **71/71**; ASan+LSan and UBSan clean; fixture
+    `generic_structs.hmx` + stress `m17_3_generic_structs` + 12 negatives
+    `gstructs_*`.

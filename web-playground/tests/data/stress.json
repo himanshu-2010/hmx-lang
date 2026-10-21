@@ -2040,6 +2040,20 @@
         "stderr": "",
         "exit": 0
       }
+    },
+    {
+      "name": "m17_3_generic_structs",
+      "kind": "output",
+      "source": "struct Box[T] {\n        value: T\n    }\n    struct Pair[A, B] {\n        first: A\n        second: B\n    }\n    alias IntBox = Box[int]\n    fn unbox[T](b: Box[T]) -> T {\n        return b.value\n    }\n    fn swap[P, Q](p: Pair[P, Q]) -> Pair[Q, P] {\n        return Pair(p.second, p.first)\n    }\n    fn identity[T](x: T) -> T { return x }\n    fn main() {\n        let bi = Box(42)\n        let bt = Box(\"hi\")\n        print(unbox(bi))\n        print(unbox(bt))\n        print(identity(unbox(bi)))\n        let ib: IntBox = Box(7)\n        print(unbox(ib))\n        let p = Pair(1, \"one\")\n        print(p.first, p.second)\n        let q = swap(p)\n        print(q.first, q.second)\n        let sw = swap(Pair(Box(9), 0))\n        print(unbox(sw.second))\n        let boxed = [Box(1), Box(2)]\n        print(unbox(boxed[0]) + unbox(boxed[1]))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "42\nhi\n42\n7\n1 one\none 1\n9\n3\n",
+        "stderr": "",
+        "exit": 0
+      }
     }
   ]
 }

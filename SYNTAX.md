@@ -2087,11 +2087,12 @@ Rules:
 
 ## 20. Generics **[Implemented]**
 
-> **Implementation status.** Generic **functions** are implemented end-to-end
-> (M17.1): declaration, call-site inference, monomorphization, and the full
-> diagnostic surface. The generic **struct** forms (`struct Box[T] { … }`) and
-> instantiation in type position (`Box[int]`) are specified below but land in
-> **M17.3**; until then only the function forms compile.
+> **Implementation status.** Generic **functions** (M17.1) and generic
+> **structs** (M17.3) are implemented end-to-end: declaration, call-site and
+> constructor-argument inference, monomorphization, type-position
+> instantiation (`Box[int]`), aliases naming an instantiation
+> (`alias IntBox = Box[int]`), and the full diagnostic surface. Type parameters
+> on `alias`/`enum` declarations remain spec-only (see §20.7).
 
 Generics let a function or type be written once and used with many different
 types. A **type parameter** is declared in `[ ]` right after the declaration's

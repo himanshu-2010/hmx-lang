@@ -29,7 +29,14 @@ struct TypeDesc {
     // Nominal name of a declared type. Valid when type is Struct or Enum; also
     // used as a transient marker for referenced type names before the type
     // resolver expands them (type == Unknown && !type_name.empty()).
-    std::string type_name;
+    // M17.3: for a *generic* struct this holds the template's base name
+    // ("Box"), while type_args holds the concrete type arguments of the
+    // instantiation ([int]) — the two together identify the specialization.
+    // Non-generic types leave type_args empty.
+    // (= {} NSDMAs keep aggregate initializers like TypeDesc{k, {}, {}, {}}
+    // warning-free under -Wmissing-field-initializers; test before removing.)
+    std::string type_name = {};
+    std::vector<TypeDesc> type_args = {};      // explicit type arguments (`Box[int]`)
     const TypeDesc& element() const {
         static const TypeDesc empty{};
         return elem ? *elem : empty;
@@ -63,6 +70,12 @@ std::string type_to_format(TypeKind kind);
 std::string type_to_string(TypeKind kind);
 std::string type_desc_to_string(const TypeDesc& desc);
 std::string tuple_type_to_string(const std::vector<TypeDesc>& members);
+// M17.3: canonical key of a struct specialization — `type_name` for a
+// non-generic struct, `Box__int` for `Box[int]`. Used everywhere a descriptor
+// must be matched against a declared TypeDecl (resolver tables, codegen's
+// struct registry); the C-identifier mangling of a descriptor (`n_Box__int`).
+std::string type_inst_name(const TypeDesc& d);
+std::string type_mangle(const TypeDesc& d);
 
 struct ASTNode {
     virtual ~ASTNode() = default;
@@ -461,6 +474,7 @@ struct TypeDecl : Statement {
     TypeDesc alias_target;                  // Alias: the expanded target type
     std::vector<StructFieldInfo> fields;    // Struct: field name + expanded descriptor
     std::vector<std::string> variants;      // Enum: variant names
+    std::vector<std::string> type_params;  // Struct template: type parameter names
     TypeDecl() : kind(TypeDeclKind::Alias) {}
 };
 

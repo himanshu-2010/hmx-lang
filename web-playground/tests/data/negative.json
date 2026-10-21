@@ -2888,7 +2888,7 @@
       "pattern": "alias cycle detected involving type 'A'",
       "expected": {
         "stdout": "",
-        "stderr": "Error [line 1]: alias cycle detected involving type 'A'\n",
+        "stderr": "Error [line 2]: alias cycle detected involving type 'A'\n",
         "exit": 1
       }
     },
@@ -3519,6 +3519,202 @@
       "expected": {
         "stdout": "",
         "stderr": "Error [line 5]: undefined type 'Missing'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_duplicate_type_param",
+      "kind": "negative",
+      "source": "struct B[T, T] { x: T }\n    fn main() { print(1) }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "duplicate type parameter 'T' in struct 'B'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 1]: duplicate type parameter 'T' in struct 'B'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_arity_too_many",
+      "kind": "negative",
+      "source": "struct Box[T] { value: T }\n    fn main() {\n        let b: Box[int, text] = Box(1)\n        print(b.value)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type 'Box' expects 1 type argument, got 2",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: type 'Box' expects 1 type argument, got 2\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_requires_type_arguments",
+      "kind": "negative",
+      "source": "struct Box[T] { value: T }\n    fn main() {\n        let b: Box = Box(1)\n        print(b.value)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "generic type 'Box' requires type arguments",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: generic type 'Box' requires type arguments\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_args_on_non_generic",
+      "kind": "negative",
+      "source": "struct Point { x: int }\n    fn main() {\n        let p: Point[int] = Point(1)\n        print(p.x)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type 'Point' does not take type arguments",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: type 'Point' does not take type arguments\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_uninferrable_ctor",
+      "kind": "negative",
+      "source": "struct S[T] { n: int }\n    fn main() {\n        let s = S(5)\n        print(s.n)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot infer type argument 'T' for generic type 'S'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: cannot infer type argument 'T' for generic type 'S'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_as_value",
+      "kind": "negative",
+      "source": "struct Box[T] { value: T }\n    fn main() {\n        let f = Box\n        print(1)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot use type 'Box' as a value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: cannot use type 'Box' as a value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_self_by_value",
+      "kind": "negative",
+      "source": "struct Node[T] {\n        value: T\n        next: Node[T]\n    }\n    fn get(n: Node[int]) -> int { return n.value }\n    fn main() { print(1) }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "struct type 'Node\\[int\\]' cannot contain itself by value",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: struct type 'Node[int]' cannot contain itself by value\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_ctor_arity",
+      "kind": "negative",
+      "source": "struct Box[T] { value: T }\n    fn main() {\n        let b = Box(1, 2)\n        print(b.value)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "struct 'Box' constructor expects 1 arguments, got 2",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: struct 'Box' constructor expects 1 arguments, got 2\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_annotation_mismatch",
+      "kind": "negative",
+      "source": "struct Box[T] { value: T }\n    fn main() {\n        let b: Box[int] = Box(\"hi\")\n        print(b.value)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "variable 'b' declared as Box\\[int\\] but initialized with Box\\[text\\]",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: type mismatch: variable 'b' declared as Box[int] but initialized with Box[text]\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_undefined_type_argument",
+      "kind": "negative",
+      "source": "struct Box[T] { value: T }\n    fn main() {\n        let b: Box[Missing] = Box(1)\n        print(b.value)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "undefined type 'Missing'",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: undefined type 'Missing'\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_param_mismatch",
+      "kind": "negative",
+      "source": "struct Box[T] { value: T }\n    fn unbox[T](b: Box[T]) -> T { return b.value }\n    fn main() { print(unbox(5)) }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "argument for generic function 'unbox' expects Box\\[T\\], got int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: argument for generic function 'unbox' expects Box[T], got int\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_conflicting_inference",
+      "kind": "negative",
+      "source": "struct Box[T] { value: T }\n    fn put[T](b: Box[T], x: T) -> T { return x }\n    fn main() { print(put(Box(1), \"hi\")) }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type parameter 'T' of generic function 'put' inferred as both int and text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: type mismatch: type parameter 'T' of generic function 'put' inferred as both int and text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_ctor_field_conflict",
+      "kind": "negative",
+      "source": "struct Dup[T] {\n        a: T\n        b: T\n    }\n    fn main() {\n        let d = Dup(1, \"hi\")\n        print(d.a)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type parameter 'T' of generic type 'Dup' inferred as both int and text",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 7]: type mismatch: type parameter 'T' of generic type 'Dup' inferred as both int and text\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "gstructs_ctor_field_shape",
+      "kind": "negative",
+      "source": "struct Wrap[T] { items: [T] }\n    fn main() {\n        let w = Wrap(5)\n        print(1)\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "type mismatch: argument for generic type 'Wrap' expects array of T, got int",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: type mismatch: argument for generic type 'Wrap' expects array of T, got int\n",
         "exit": 1
       }
     },

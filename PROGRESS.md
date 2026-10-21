@@ -27,7 +27,8 @@ Implement the HMX transpiler's 8-phase plan (from `PLAN.md`) so users can write 
   after the declaration name (`fn identity[T](x: T) -> T`); **no constraints**
   (a body is checked per instantiation, C++-template style); inference is at the
   **call site** only (no `identity[int](5)`); a generic function cannot be used
-  as a value; generic **structs** and instantiation in type position are M17.3.
+  as a value; generic **structs** and instantiation in type position (`Box[int]`)
+  are implemented (M17.3).
 
 ## Progress
 
@@ -1667,12 +1668,61 @@ design was accepted in M17.0 (`SYNTAX.md` §20,
   byte-identical to native), oxlint 0 errors; valgrind **70/70** (14 matrix + 56
   fixtures).
 
+## Generic structs (M17.3) — monomorphization of types
+
+M17.1 monomorphized *functions*; M17.3 applies the same model to **structs**:
+`struct Box[T] { value: T }` is a template that is instantiated on demand by
+`Box[int]` in type position or inferred from a constructor call `Box(5)`, and
+each distinct type-argument list becomes its own concrete struct.
+
+- **Grammar.** The `struct` rule reuses `opt_type_params` (RHS length 5 → 6) and
+  four new rules are **appended** at the end of `parser.y`
+  (`type_arg_list` ×2, `param_type: IDENTIFIER '[' type_arg_list ']'`,
+  `named_ref: IDENTIFIER '[' type_arg_list ']'`) so every pre-existing rule
+  number stays stable and the web `actions.ts` table only needed index 25 edited
+  plus four appended actions. Still **9 shift/reduce conflicts over 7 states**.
+- **Descriptor identity.** A generic-struct descriptor keeps the **base** name in
+  `type_name` and carries the type arguments in a new `TypeDesc::type_args`
+  vector (`{Struct, "Box", [int]}`); the specialization key is
+  `type_inst_name(d)` = `Box__int`. `operator==`/`operator<`, `types_match`,
+  `expand_desc`, `substitute_desc`, and the C mangle all compare/recurse through
+  `type_args`, so `Box[int]` and `Box[text]` can never be confused. The
+  shared `type_inst_name`/`type_mangle` live in `ast.cpp`, and the resolver's
+  `mangle_desc` now delegates to `type_mangle`, so a generic *function* taking a
+  `Box[T]` mangles as `__gen_unbox_n_Box__int`.
+- **Templates are not declarations.** Generic structs live in a separate
+  `generic_structs_` map (never `type_decls_`, just as generic functions never
+  enter `functions_`); they emit no code and are erased at the end of
+  `resolve()` alongside the function templates. An instantiation is a clone of
+  the template with its type parameters bound and its fields substituted,
+  registered under the key and appended to `program.statements` for codegen.
+- **Diagnostics** print the source spelling (`Box[int]`), never the internal key
+  (`Box__int`): arity, "requires type arguments", "does not take type arguments",
+  uninferrable constructor argument, duplicate type parameter, and by-value
+  self-containment (`struct type 'Node[int]' cannot contain itself by value`).
+  A by-value field of the same instantiation is rejected through the
+  `building_structs_` key check; recursion through an array/function member is
+  allowed, exactly as for M16 structs.
+- **Web parity:** `ast.ts` gained `type_args`, `typeInstName`/`typeMangle`,
+  `typesMatch` type-argument comparison, and `TypeDecl.type_params` cloning;
+  `actions.ts`/`tables.json` were regenerated (188 rules, 488 states);
+  `resolver.ts` mirrors the template table, inference, instantiation, and error
+  strings; `codegen_js.ts` maps descriptors to the specialization key.
+- **Tests:** fixture `generic_structs.hmx` (the §20.6 worked example, a
+  two-parameter struct, an array of instantiations, a recursive generic struct,
+  a generic function over a generic struct, `alias IntBox = Box[int]`); stress
+  `m17_3_generic_structs`; twelve `gstructs_*` negatives.
+- **Hygiene:** native **510/510** (66 integration / 266 negative / 145 stress /
+  33 CLI), ASan+LSan-clean on integration and stress, UBSan control **3/3**;
+  web vitest **491/491** (476 parity + 15 app), `gen-data.mts` parity **0
+  failures** (stress 145 / negative 262 / integration 66 all byte-identical to
+  native), oxlint 0 errors; valgrind **71/71** (14 matrix + 57 fixtures).
+
 ## Known issues / deferred
-- Generic **structs** (`struct Box[T] { value: T }`) and instantiation in type
-  position (`Box[int]`) are specified (`SYNTAX.md` §20) but not yet wired in;
-  they are **M17.3**. Only generic **functions** are accepted today, and a
-  generic function cannot be used as a value (its type arguments would be
-  ambiguous) — call it by name.
+- Type parameters on **`alias`** and **`enum`** declarations, variadic generic
+  parameters, explicit instantiation syntax, and constraints/traits remain
+  spec-only (`SYNTAX.md` §20.7). Generic *functions* cannot be used as a value
+  (their type arguments would be ambiguous) — call them by name.
 - if/loop/while/for/do-while/return block line numbers point at closing brace (cosmetic).
 - `return` followed immediately by `IDENTIFIER = ...` or `(a, b) = ...` on next line misparses (return expr wins via shift); acceptable edge case.
 - bison emits nine harmless shift/reduce conflicts across 7 states, all resolved by shift:

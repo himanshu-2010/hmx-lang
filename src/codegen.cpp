@@ -839,7 +839,7 @@ std::string CodeGen::c_type_for_desc(const TypeDesc& d) {
     if (d.type == TypeKind::Array) return "sd_array*";
     if (d.type == TypeKind::Tuple) return tuple_name(d.tuple_members);
     if (d.type == TypeKind::Function) return "sd_closure";
-    if (d.type == TypeKind::Struct) return struct_c_name(d.type_name);
+    if (d.type == TypeKind::Struct) return struct_c_name(type_inst_name(d));
     return type_to_c(d.type);
 }
 
@@ -946,8 +946,9 @@ static std::string mangle_type_name(const TypeDesc& d) {
     }
     // Nominal types mangle by name so `(Point)` and `(int, Point)` get stable
     // C type names and never collide with the generic "struct"/"enum" words.
+    // Generic struct instantiations include their type arguments (`Box__int`).
     if (d.type == TypeKind::Struct || d.type == TypeKind::Enum)
-        return d.type_name;
+        return type_inst_name(d);
     if (d.type == TypeKind::Function) return "fn";
     return type_to_string(d.type);
 }
@@ -972,7 +973,7 @@ void CodeGen::register_tuple_types_deep(const TypeDesc& d) {
         tuple_name(d.tuple_members);
         for (auto& m : d.tuple_members) register_tuple_types_deep(m);
     } else if (d.type == TypeKind::Struct) {
-        register_struct_deep(d.type_name);
+        register_struct_deep(type_inst_name(d));
     } else if (d.type == TypeKind::Array) {
         register_tuple_types_deep(d.element());
     } else if (d.type == TypeKind::Function && d.fn_info) {
@@ -1004,7 +1005,8 @@ void CodeGen::emit_pending_named_types() {
             if (emitted_structs_.count(name)) continue;
             bool ready = true;
             for (auto& f : td->fields) {
-                if (f.desc.type == TypeKind::Struct && !emitted_structs_.count(f.desc.type_name)) {
+                if (f.desc.type == TypeKind::Struct &&
+                    !emitted_structs_.count(type_inst_name(f.desc))) {
                     ready = false;
                     break;
                 }
@@ -1026,7 +1028,8 @@ void CodeGen::emit_pending_named_types() {
             if (emitted_tuples_.count(members)) continue;
             bool ready = true;
             for (auto& m : members) {
-                if (m.type == TypeKind::Struct && !emitted_structs_.count(m.type_name)) {
+                if (m.type == TypeKind::Struct &&
+                    !emitted_structs_.count(type_inst_name(m))) {
                     ready = false;
                     break;
                 }
@@ -2367,7 +2370,7 @@ bool CodeGen::type_has_heap(const TypeDesc& d) const {
         // Heap iff any field is heap. Struct-by-value self-containment is
         // rejected by the resolver, and array/function fields are pointers
         // that return true immediately, so this never recurses infinitely.
-        auto it = struct_types_.find(d.type_name);
+        auto it = struct_types_.find(type_inst_name(d));
         if (it == struct_types_.end()) return false;
         for (auto& f : it->second->fields) if (type_has_heap(f.desc)) return true;
         return false;
@@ -2399,6 +2402,7 @@ static TypeDesc var_desc_of(const VarDecl* var) {
     } else if (var->annotation == TypeKind::Struct ||
                var->annotation == TypeKind::Enum) {
         d.type_name = var->annotation_desc.type_name;
+        d.type_args = var->annotation_desc.type_args;
     }
     return d;
 }
@@ -2538,7 +2542,7 @@ std::string CodeGen::slot_ret_name(const TypeDesc& d) const {
         case TypeKind::Array: return "sd_ret_arr";
         case TypeKind::Function: return "sd_ret_fn";
         case TypeKind::Tuple: return "sd_ret_" + tuple_name(d.tuple_members);
-        case TypeKind::Struct: return "sd_ret_" + struct_c_name(d.type_name);
+        case TypeKind::Struct: return "sd_ret_" + struct_c_name(type_inst_name(d));
         default:
             throw std::runtime_error("internal error: slot_ret_name for non-heap type");
     }
@@ -2550,7 +2554,7 @@ std::string CodeGen::slot_rel_name(const TypeDesc& d) const {
         case TypeKind::Array: return "sd_rel_arr";
         case TypeKind::Function: return "sd_rel_fn";
         case TypeKind::Tuple: return "sd_rel_" + tuple_name(d.tuple_members);
-        case TypeKind::Struct: return "sd_rel_" + struct_c_name(d.type_name);
+        case TypeKind::Struct: return "sd_rel_" + struct_c_name(type_inst_name(d));
         default:
             throw std::runtime_error("internal error: slot_rel_name for non-heap type");
     }

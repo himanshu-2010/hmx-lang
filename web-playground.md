@@ -10,8 +10,8 @@ Hard constraints from the project:
 - **Vite + React + TypeScript, nothing else.** No backend server, no WASM, no
   CodeMirror/Monaco unless we decide the editor shell needs it (see "Editor").
 - The only source of truth for language behavior is the native compiler in
-  `src/`. The web compiler must pass **the same 463 test cases** (65 integration
-  fixtures, 254 negative, 144 stress) before it ships — parity is the contract.
+  `src/`. The web compiler must pass **the same 479 test cases** (66 integration
+  fixtures, 268 negative, 145 stress) before it ships — parity is the contract.
 - `.hmx` extension and the error-message strings (grep-able by the negative
   suite) must match the native compiler so the negative suite can run verbatim.
 
@@ -181,7 +181,7 @@ without a C toolchain; the extract script only runs when the grammar changes.
 | Risk | Mitigation |
 |---|---|
 | Bison table extraction produces wrong tables | Diff the JSON against a tiny C harness that dumps the same tables from `parser.cpp`; parity suite catches any drift |
-| Conflict resolution behavior differs (the 6 shift/reduce conflicts) | We drive the exact resolved tables + bison's "shift on conflict" default; a dedicated negative test pins each conflict state |
+| Conflict resolution behavior differs (the 9 shift/reduce conflicts) | We drive the exact resolved tables + bison's "shift on conflict" default; a dedicated negative test pins each conflict state |
 | Ported resolver diverges (message text, ordering) | Run the 190 negative cases verbatim — they grep the exact stderr text |
 | Integer/`%`/division semantics off-by-one in JS | Dedicated parity tests for `-5`, `-100 % 7`, `5 / 2`, big numbers |
 | Snapshot-capture closures vs JS reference capture | Golden test: the `currying.hmx` + `main capture` closed-over-variable mutation cases |

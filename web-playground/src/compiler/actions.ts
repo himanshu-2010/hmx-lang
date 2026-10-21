@@ -97,7 +97,7 @@ const ruleSigs: RuleSig[] = [
   ["statement", 1], // 22
   ["statement", 1], // 23
   ["type_decl", 4], // 24
-  ["type_decl", 5], // 25
+  ["type_decl", 6], // 25
   ["type_decl", 5], // 26
   ["struct_fields", 4], // 27
   ["struct_fields", 3], // 28
@@ -256,6 +256,10 @@ const ruleSigs: RuleSig[] = [
   ["opt_type_params", 3], // 181
   ["type_param_list", 3], // 182
   ["type_param_list", 1], // 183
+  ["type_arg_list", 3], // 184
+  ["type_arg_list", 1], // 185
+  ["param_type", 4], // 186
+  ["named_ref", 4], // 187
 ];
 
 // Verify SIG against the extracted tables (lhs name + RHS length per rule).
@@ -350,11 +354,12 @@ A[24] = (rhs, ctx) => {
   t.line = ctx.line;
   return t;
 };
-// r25: STRUCT IDENTIFIER '{' struct_fields '}'
+// r25: STRUCT IDENTIFIER opt_type_params '{' struct_fields '}'
 A[25] = (rhs, ctx) => {
   const t = new TypeDecl(rhs[1] as string);
   t.tdecl_kind = TypeDeclKind.Struct;
-  t.fields = rhs[3] as StructFieldInfo[];
+  t.type_params = rhs[2] as string[];
+  t.fields = rhs[4] as StructFieldInfo[];
   t.line = ctx.line;
   return t;
 };
@@ -955,6 +960,33 @@ A[182] = (rhs) => {
 };
 // r183: type_param_list: IDENTIFIER
 A[183] = (rhs) => [rhs[0] as string];
+
+// -- M17.3: explicit type arguments in type position (rules 184-187) --
+// r184: type_arg_list: type_arg_list ',' param_type
+A[184] = (rhs) => {
+  const list = rhs[0] as TypeDesc[];
+  list.push(rhs[2] as TypeDesc);
+  return list;
+};
+// r185: type_arg_list: param_type
+A[185] = (rhs) => [rhs[0] as TypeDesc];
+// r186: param_type: IDENTIFIER '[' type_arg_list ']'
+A[186] = (rhs) => {
+  // A named type reference with explicit type arguments (`Box[int]`); the
+  // resolver instantiates (or rejects) it.
+  const td = mkType(TypeKind.Unknown);
+  td.type_name = rhs[0] as string;
+  td.type_args = rhs[2] as TypeDesc[];
+  return td;
+};
+// r187: named_ref: IDENTIFIER '[' type_arg_list ']'
+A[187] = (rhs) => {
+  // Annotation form of the same reference (`let b: Box[int]`).
+  const td = mkType(TypeKind.Unknown);
+  td.type_name = rhs[0] as string;
+  td.type_args = rhs[2] as TypeDesc[];
+  return td;
+};
 
 // ---------------------------------------------------------------------------
 // Entry point: the verified action table.
