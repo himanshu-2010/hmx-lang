@@ -540,10 +540,11 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
         functions_by_name_[fn->name] = fn;
     }
 
-    for (auto* stmt : top_level) {
+    std::vector<std::unique_ptr<ir::Node>> top_ir = ir::build(top_level);
+    for (auto& node : top_ir) {
         // Module top-level statements carry their own file for #line accuracy.
-        line_file_ = statement_file(stmt);
-        emit_stmt(stmt);
+        line_file_ = statement_file(node->ast);
+        emit_ir(*node);
     }
 
     FunctionDecl* main_fn = nullptr;
@@ -558,8 +559,9 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
         // the body ends, independently of the module top-level statements.
         out_ << "    {\n";
         push_scope_for(main_fn->body);
-        for (auto& body_stmt : main_fn->body) {
-            emit_stmt(body_stmt.get());
+        auto main_ir = ir::build(main_fn->body);
+        for (auto& node : main_ir) {
+            emit_ir(*node);
         }
         pop_scope();
         out_ << "    }\n";
@@ -592,8 +594,9 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
             loop_scopes_.clear();
             break_targets_.clear();
             push_scope_for(fn->body);
-            for (auto& body_stmt : fn->body) {
-                emit_stmt(body_stmt.get());
+            auto fn_ir = ir::build(fn->body);
+            for (auto& node : fn_ir) {
+                emit_ir(*node);
             }
             // Fall-through path: release any owned locals. Only void functions
             // may actually fall off the end; non-void functions must have
@@ -1774,8 +1777,11 @@ void CodeGen::emit_destruct_level(const std::vector<DestructPattern>& slots,
 // Defined below (with the other M15 helpers); forward-declared for emit_stmt.
 static TypeDesc var_desc_of(const VarDecl* var);
 
-void CodeGen::emit_stmt(Statement* stmt) {
-    if (auto* var = dynamic_cast<VarDecl*>(stmt)) {
+void CodeGen::emit_ir(const ir::Node& n) {
+    switch (n.kind) {
+    case ir::SKind::VarDecl: {
+        auto* var = static_cast<VarDecl*>(n.ast);
+
         emit_line_directive(var->line, line_file_);
         TypeDesc d = var_desc_of(var);
         std::string ct = c_type_for_desc(d);
@@ -1785,7 +1791,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
         else emit_expr(var->initializer.get());
         out_ << ";\n";
         declare_owned(safe_name(var->name), d, setjmp_fn_);
-    } else if (auto* assign = dynamic_cast<AssignStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::Assign: {
+        auto* assign = static_cast<AssignStmt*>(n.ast);
         emit_line_directive(assign->line, line_file_);
         out_ << "    " << safe_name(assign->name);
         if (assign->op == "++" || assign->op == "--") {
@@ -1817,7 +1826,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
                 out_ << ";\n";
             }
         }
-    } else if (auto* aa = dynamic_cast<ArrayAssignStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::ArrayAssign: {
+        auto* aa = static_cast<ArrayAssignStmt*>(n.ast);
         emit_line_directive(aa->line, line_file_);
         // COW-detect: evaluate the owned RHS first (may alias the stored slot),
         // check the index, detach (fork if the buffer is a shared view), drop
@@ -1846,7 +1858,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << slot_rel_name(ed) << "(&((" << ct << "*)" << cn << "->data)[_si]); ";
         }
         out_ << "((" << ct << "*)" << cn << "->data)[_si] = _sv; }\n";
-    } else if (auto* massign = dynamic_cast<MemberAssignStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::MemberAssign: {
+        auto* massign = static_cast<MemberAssignStmt*>(n.ast);
         emit_line_directive(massign->line, line_file_);
         // A write through a borrowed struct parameter first promotes that
         // parameter to an owned copy (retaining every slot), so the releases
@@ -1898,7 +1913,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
             emit_expr(massign->rhs.get());
             out_ << ";\n";
         }
-    } else if (auto* ea = dynamic_cast<ElementAssignStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::ElementAssign: {
+        auto* ea = static_cast<ElementAssignStmt*>(n.ast);
         emit_line_directive(ea->line, line_file_);
         auto* target = dynamic_cast<ArrayIndexExpr*>(ea->target.get());
         if (target && !target->is_tuple) {
@@ -1942,7 +1960,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
             emit_expr(ea->target.get());
             out_ << ") = _ev; });\n";
         }
-    } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
+        break;
+    }
+    case ir::SKind::DestructDecl: {
+        auto* td = static_cast<DestructDecl*>(n.ast);
         emit_line_directive(td->line, line_file_);
         std::string tmp = "__sd_d" + std::to_string(temp_counter_++);
         TypeDesc val;
@@ -1968,7 +1989,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
             emit_release_value(tmp, val);
             out_ << "\n";
         }
-    } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::MultiAssign: {
+        auto* ma = static_cast<MultiAssignStmt*>(n.ast);
         emit_line_directive(ma->line, line_file_);
         std::string tmp = "__sd_m" + std::to_string(temp_counter_++);
         TypeDesc val;
@@ -1994,7 +2018,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
             emit_release_value(tmp, val);
             out_ << "\n";
         }
-    } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::Print: {
+        auto* print = static_cast<PrintStmt*>(n.ast);
         emit_line_directive(print->line, line_file_);
         out_ << "    ({ ";
         std::vector<std::string> pt(print->args.size());
@@ -2037,13 +2064,19 @@ void CodeGen::emit_stmt(Statement* stmt) {
             }
         }
         out_ << "});\n";
-    } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::Defer: {
+        auto* d = static_cast<DeferStmt*>(n.ast);
         // Registration point: the deferred body runs at scope teardown, and
         // only if control actually reached this statement (the guard flag).
         emit_line_directive(d->line, line_file_);
         if (d->id < 0) d->id = temp_counter_++;   // defensive: unscanned scope
         out_ << "    _sd_dfr" << d->id << " = 1;\n";
-    } else if (auto* try_stmt = dynamic_cast<TryStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::Try: {
+        auto* try_stmt = static_cast<TryStmt*>(n.ast);
         emit_line_directive(try_stmt->line, line_file_);
         int id = temp_counter_++;
         out_ << "    {\n";
@@ -2053,7 +2086,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         out_ << "    _sd_try_top = &_sd_tf" << id << ";\n";
         out_ << "    if (setjmp(_sd_tf" << id << ".env) != 0) goto _sd_catch" << id << ";\n";
         try_frames_.push_back({id, scopes_.size()});
-        for (auto& body_stmt : try_stmt->body) emit_stmt(body_stmt.get());
+        for (auto& body_stmt : n.body) emit_ir(*body_stmt);
         pop_scope();
         out_ << "    _sd_try_top = _sd_tf" << id << ".prev;\n";
         out_ << "    goto _sd_after" << id << ";\n";
@@ -2065,13 +2098,16 @@ void CodeGen::emit_stmt(Statement* stmt) {
         out_ << "    sd_str* " << safe_name(try_stmt->error_name)
              << " = sd_error_text();\n";
         declare_owned(safe_name(try_stmt->error_name), text_desc, false);
-        for (auto& handler_stmt : try_stmt->handler) emit_stmt(handler_stmt.get());
+        for (auto& body_stmt : n.handler) emit_ir(*body_stmt);
         pop_scope();
         out_ << "    }\n";
         try_frames_.pop_back();
         out_ << "_sd_after" << id << ": ;\n";
         out_ << "    }\n";
-    } else if (auto* expr_stmt = dynamic_cast<ExprStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::ExprStmt: {
+        auto* expr_stmt = static_cast<ExprStmt*>(n.ast);
         emit_line_directive(expr_stmt->line, line_file_);
         // push/sort are statement-only builtins (the resolver types them as
         // returning nothing), but each retains its array argument into an
@@ -2102,7 +2138,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
             emit_expr(expr_stmt->expr.get());
             out_ << ");\n";
         }
-    } else if (auto* loop = dynamic_cast<LoopStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::Loop: {
+        auto* loop = static_cast<LoopStmt*>(n.ast);
         emit_line_directive(loop->line, line_file_);
         if (loop->nl_target) {
             out_ << "    jmp_buf _sd_nl_buf" << loop->nl_id << ";\n";
@@ -2118,7 +2157,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         push_scope_for(loop->body);
         loop_scopes_.push_back((int)scopes_.size() - 1);
         break_targets_.push_back((int)scopes_.size() - 1);
-        for (auto& body_stmt : loop->body) emit_stmt(body_stmt.get());
+        for (auto& body_stmt : n.body) emit_ir(*body_stmt);
         pop_scope();
         loop_scopes_.pop_back();
         break_targets_.pop_back();
@@ -2126,7 +2165,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << "    }\n";
         }
         out_ << "    }\n";
-    } else if (auto* fe = dynamic_cast<ForeachStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::Foreach: {
+        auto* fe = static_cast<ForeachStmt*>(n.ast);
         emit_line_directive(fe->line, line_file_);
         TypeKind itype = get_expr_type(fe->iterable.get());
         std::string idx = fe->index_name.empty() ? "_fe" : safe_name(fe->index_name);
@@ -2161,7 +2203,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
             push_scope_for(fe->body);
             loop_scopes_.push_back((int)scopes_.size() - 1);
             break_targets_.push_back((int)scopes_.size() - 1);
-            for (auto& body_stmt : fe->body) emit_stmt(body_stmt.get());
+            for (auto& body_stmt : n.body) emit_ir(*body_stmt);
             pop_scope();
             loop_scopes_.pop_back();
             break_targets_.pop_back();
@@ -2179,7 +2221,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
             push_scope_for(fe->body);
             loop_scopes_.push_back((int)scopes_.size() - 1);
             break_targets_.push_back((int)scopes_.size() - 1);
-            for (auto& body_stmt : fe->body) emit_stmt(body_stmt.get());
+            for (auto& body_stmt : n.body) emit_ir(*body_stmt);
             pop_scope();
             loop_scopes_.pop_back();
             break_targets_.pop_back();
@@ -2187,7 +2229,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << "    }\n";
             out_ << "    sd_release_str" << it << ";\n";
         }
-    } else if (auto* while_stmt = dynamic_cast<WhileStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::While: {
+        auto* while_stmt = static_cast<WhileStmt*>(n.ast);
         emit_line_directive(while_stmt->line, line_file_);
         if (while_stmt->nl_target) {
             out_ << "    jmp_buf _sd_nl_buf" << while_stmt->nl_id << ";\n";
@@ -2203,7 +2248,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         push_scope_for(while_stmt->body);
         loop_scopes_.push_back((int)scopes_.size() - 1);
         break_targets_.push_back((int)scopes_.size() - 1);
-        for (auto& body_stmt : while_stmt->body) emit_stmt(body_stmt.get());
+        for (auto& body_stmt : n.body) emit_ir(*body_stmt);
         pop_scope();
         loop_scopes_.pop_back();
         break_targets_.pop_back();
@@ -2211,18 +2256,21 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << "    }\n";
         }
         out_ << "    }\n";
-    } else if (auto* for_stmt = dynamic_cast<ForStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::For: {
+        auto* for_stmt = static_cast<ForStmt*>(n.ast);
         emit_line_directive(for_stmt->line, line_file_);
         if (for_stmt->nl_target) {
             out_ << "    jmp_buf _sd_nl_buf" << for_stmt->nl_id << ";\n";
         }
         push_scope();   // scope covering the init component (declared in the header)
         out_ << "    for (";
-        emit_for_component(for_stmt->init.get());
+        emit_for_component(n.init ? n.init->ast : nullptr);
         out_ << "; ";
         emit_expr(for_stmt->condition.get());
         out_ << "; ";
-        emit_for_component(for_stmt->update.get());
+        emit_for_component(n.update ? n.update->ast : nullptr);
         out_ << ") {\n";
         if (for_stmt->nl_target) {
             out_ << "    volatile int _sd_nls" << for_stmt->nl_id << " = setjmp(_sd_nl_buf" << for_stmt->nl_id << ");\n";
@@ -2232,7 +2280,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         push_scope_for(for_stmt->body);
         loop_scopes_.push_back((int)scopes_.size() - 1);
         break_targets_.push_back((int)scopes_.size() - 1);
-        for (auto& body_stmt : for_stmt->body) emit_stmt(body_stmt.get());
+        for (auto& body_stmt : n.body) emit_ir(*body_stmt);
         pop_scope();
         loop_scopes_.pop_back();
         break_targets_.pop_back();
@@ -2241,7 +2289,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
         }
         out_ << "    }\n";
         pop_scope();   // releases any heap vars declared in the init component
-    } else if (auto* do_while = dynamic_cast<DoWhileStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::DoWhile: {
+        auto* do_while = static_cast<DoWhileStmt*>(n.ast);
         emit_line_directive(do_while->line, line_file_);
         if (do_while->nl_target) {
             out_ << "    jmp_buf _sd_nl_buf" << do_while->nl_id << ";\n";
@@ -2255,7 +2306,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
         push_scope_for(do_while->body);
         loop_scopes_.push_back((int)scopes_.size() - 1);
         break_targets_.push_back((int)scopes_.size() - 1);
-        for (auto& body_stmt : do_while->body) emit_stmt(body_stmt.get());
+        for (auto& body_stmt : n.body) emit_ir(*body_stmt);
         pop_scope();
         loop_scopes_.pop_back();
         break_targets_.pop_back();
@@ -2265,7 +2316,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
         out_ << "    } while (";
         emit_expr(do_while->condition.get());
         out_ << ");\n";
-    } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::Return: {
+        auto* ret = static_cast<ReturnStmt*>(n.ast);
         emit_line_directive(ret->line, line_file_);
         if (ret->values.size() > 1) {
             // Tuple return: retain members (never transfer), then release the
@@ -2334,29 +2388,36 @@ void CodeGen::emit_stmt(Statement* stmt) {
             emit_all_scope_releases(nullptr);
             out_ << "    return;\n";
         }
-    } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::If: {
+        auto* ifs = static_cast<IfStmt*>(n.ast);
         emit_line_directive(ifs->line, line_file_);
         out_ << "    if (";
         emit_expr(ifs->condition.get());
         out_ << ") {\n";
         push_scope_for(ifs->then_body);
-        for (auto& body_stmt : ifs->then_body) emit_stmt(body_stmt.get());
+        for (auto& body_stmt : n.body) emit_ir(*body_stmt);
         pop_scope();
         out_ << "    }";
         if (ifs->has_else) {
             out_ << " else {\n";
             push_scope_for(ifs->else_body);
-            for (auto& body_stmt : ifs->else_body) emit_stmt(body_stmt.get());
+            for (auto& body_stmt : n.else_body) emit_ir(*body_stmt);
             pop_scope();
             out_ << "    }";
         }
         out_ << "\n";
-    } else if (auto* sw = dynamic_cast<SwitchStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::Switch: {
+        auto* sw = static_cast<SwitchStmt*>(n.ast);
         emit_line_directive(sw->line, line_file_);
         out_ << "    switch (";
         emit_expr(sw->value.get());
         out_ << ") {\n";
-        for (auto& c : sw->cases) {
+        for (size_t ci = 0; ci < n.cases.size(); ci++) {
+            const SwitchCase& c = *n.cases[ci].ast;
             out_ << "    ";
             if (c.is_default) {
                 out_ << "default:\n";
@@ -2370,7 +2431,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << "    {\n";
             push_scope_for(c.body);
             break_targets_.push_back((int)scopes_.size() - 1);
-            for (auto& body_stmt : c.body) emit_stmt(body_stmt.get());
+            for (auto& body_stmt : n.cases[ci].body) emit_ir(*body_stmt);
             // pop_scope runs this case's defers and releases its owned locals;
             // an extra emit_releases_at_current_scope() here would release
             // them twice (double free for heap-typed case locals).
@@ -2380,7 +2441,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
             out_ << "    }\n";
         }
         out_ << "    }\n";
-    } else if (auto* brk = dynamic_cast<BreakStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::Break: {
+        auto* brk = static_cast<BreakStmt*>(n.ast);
         emit_line_directive(brk->line, line_file_);
         if (brk->nonlocal) {
             emit_try_restore_from(0);
@@ -2400,7 +2464,10 @@ void CodeGen::emit_stmt(Statement* stmt) {
             }
             out_ << "    break;\n";
         }
-    } else if (auto* cont = dynamic_cast<ContinueStmt*>(stmt)) {
+        break;
+    }
+    case ir::SKind::Continue: {
+        auto* cont = static_cast<ContinueStmt*>(n.ast);
         emit_line_directive(cont->line, line_file_);
         if (cont->nonlocal) {
             emit_try_restore_from(0);
@@ -2421,10 +2488,18 @@ void CodeGen::emit_stmt(Statement* stmt) {
             }
             out_ << "    continue;\n";
         }
-    } else if (dynamic_cast<FunctionDecl*>(stmt)) {
+        break;
+    }
+    case ir::SKind::FuncDecl:
         // Nested function declarations are hoisted to program scope during
         // generation; nothing is emitted at their definition site.
-    }
+        break;
+    case ir::SKind::TypeDecl:
+        // Top-level type declarations only feed the helper/type tables
+        // (emit_pending_named_types); nothing is emitted at the definition
+        // site.
+        break;
+    }  // switch (n.kind)
 }
 
 void CodeGen::emit_for_component(Statement* stmt) {
@@ -2550,10 +2625,18 @@ void CodeGen::emit_deferred_list(const std::vector<DeferStmt*>& list) {
         DeferStmt* d = *it;
         out_ << "    if (_sd_dfr" << d->id << ") {\n";
         push_scope_for(d->body);
-        for (auto& s : d->body) emit_stmt(s.get());
+        for (auto& body_stmt : defer_children(d)) emit_ir(*body_stmt);
         pop_scope();
         out_ << "    }\n";
     }
+}
+
+const std::vector<std::unique_ptr<ir::Node>>& CodeGen::defer_children(const DeferStmt* d) {
+    auto it = defer_ir_.find(d);
+    if (it == defer_ir_.end()) {
+        it = defer_ir_.emplace(d, ir::build(d->body)).first;
+    }
+    return it->second;
 }
 
 void CodeGen::emit_defers_from(size_t first_scope) {

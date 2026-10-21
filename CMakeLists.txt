@@ -20,6 +20,7 @@ ADD_FLEX_BISON_DEPENDENCY(Lexer Parser)
 add_executable(hmx
     src/main.cpp
     src/ast.cpp
+    src/ir.cpp
     src/type_resolver.cpp
     src/codegen.cpp
     ${FLEX_Lexer_OUTPUTS}

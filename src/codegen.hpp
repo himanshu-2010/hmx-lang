@@ -2,6 +2,7 @@
 
 #include "ast.hpp"
 #include "type_resolver.hpp"
+#include "ir.hpp"
 #include <string>
 #include <sstream>
 #include <map>
@@ -49,8 +50,19 @@ private:
     std::set<FunctionDecl*> walked_lambdas_;
     int temp_counter_ = 0;
 
+    // Memoized IR children for defer bodies: a defer's guarded body is emitted
+    // lazily at scope teardown (possibly several times: every early return
+    // path runs it), so it is lowered once per DeferStmt.
+    std::map<const DeferStmt*, std::vector<std::unique_ptr<ir::Node>>> defer_ir_;
+    const std::vector<std::unique_ptr<ir::Node>>& defer_children(const DeferStmt* d);
+
     void emit_line_directive(int line, const std::string& file);
-    void emit_stmt(Statement* stmt);
+    // P1a: all statement emission dispatches on the IR node built by ir.cpp.
+    // Children come from the IR node (body/else_body/handler/cases/init/update);
+    // expressions are still reached through `node.ast` until the P1b lowering.
+    void emit_ir(const ir::Node& node);
+    // Emit_for_component still consumes raw For init/update statements (they
+    // carry no statement children of their own).
     void emit_for_component(Statement* stmt);
     void emit_expr(Expression* expr, bool parenthesize = false);
     std::string emit_function_signature(FunctionDecl* fn);
