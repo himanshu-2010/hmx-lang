@@ -25,6 +25,7 @@ import {
   ContinueStmt,
   DecimalLiteral,
   DeferStmt,
+  TryStmt,
   DestructDecl,
   DoWhileStmt,
   ElementAssignStmt,
@@ -93,6 +94,45 @@ function findDeferStmt(stmts: Statement[]): DeferStmt | null {
     ) {
       const d = findDeferStmt(s.body);
       if (d) return d;
+    }
+  }
+  return null;
+}
+
+/** M18.2: the try body may not introduce locals or defers: a caught fault uses
+ * a longjmp, which skips the body's teardown. Declare storage before the try. */
+function findTryDisallowed(stmts: Statement[]): Statement | null {
+  for (const s of stmts) {
+    if (
+      s instanceof DeferStmt ||
+      s instanceof VarDecl ||
+      s instanceof DestructDecl ||
+      s instanceof ForeachStmt
+    ) {
+      return s;
+    }
+    if (s instanceof ForStmt) {
+      if (s.init && s.init instanceof VarDecl) return s.init;
+      const x = findTryDisallowed(s.body);
+      if (x) return x;
+    } else if (s instanceof IfStmt) {
+      const x = findTryDisallowed(s.then_body) ?? findTryDisallowed(s.else_body);
+      if (x) return x;
+    } else if (s instanceof SwitchStmt) {
+      for (const c of s.cases) {
+        const x = findTryDisallowed(c.body);
+        if (x) return x;
+      }
+    } else if (
+      s instanceof LoopStmt ||
+      s instanceof WhileStmt ||
+      s instanceof DoWhileStmt
+    ) {
+      const x = findTryDisallowed(s.body);
+      if (x) return x;
+    } else if (s instanceof TryStmt) {
+      const x = findTryDisallowed(s.body);
+      if (x) return x;
     }
   }
   return null;
@@ -510,6 +550,9 @@ export class TypeResolver {
         if (stmt.nl_target && body) this.rejectDeferInNonlocalLoop(body, enclosing);
       } else if (stmt instanceof DeferStmt) {
         this.analyzeNonlocalStmts(stmt.body, enclosing, lexStack, localDepth, switchDepths);
+      } else if (stmt instanceof TryStmt) {
+        this.analyzeNonlocalStmts(stmt.body, enclosing, lexStack, localDepth, switchDepths);
+        this.analyzeNonlocalStmts(stmt.handler, enclosing, lexStack, localDepth, switchDepths);
       } else if (stmt instanceof BreakStmt) {
         if (lexStack.length === 0) {
           throw this.err(stmt.line, "break outside of a loop", enclosing ? enclosing.file : "");
@@ -2274,6 +2317,24 @@ export class TypeResolver {
       this.pushScope();
       for (const s of stmt.body) this.resolveStatement(s);
       this.popScope();
+    } else if (stmt instanceof TryStmt) {
+      const bad = findTryDisallowed(stmt.body);
+      if (bad) {
+        if (bad instanceof DeferStmt) {
+          throw this.err(bad.line, "defer is not supported inside a try block");
+        }
+        throw this.err(
+          bad.line,
+          "cannot declare a local inside a try block; declare it before the try"
+        );
+      }
+      this.pushScope();
+      for (const s of stmt.body) this.resolveStatement(s);
+      this.popScope();
+      this.pushScope();
+      this.define(stmt.error_name, TypeKind.Text, false, mkType(TypeKind.Unknown), [], mkType(TypeKind.Text));
+      for (const s of stmt.handler) this.resolveStatement(s);
+      this.popScope();
     } else if (stmt instanceof DestructDecl) {
       this.resolveDestructDecl(stmt);
     } else if (stmt instanceof MultiAssignStmt) {
@@ -3187,6 +3248,9 @@ export class TypeResolver {
       if (stmt.expr) this.expandTypeRefsExpr(stmt.expr);
     } else if (stmt instanceof DeferStmt) {
       for (const s of stmt.body) this.expandTypeRefsStmt(s);
+    } else if (stmt instanceof TryStmt) {
+      for (const s of stmt.body) this.expandTypeRefsStmt(s);
+      for (const s of stmt.handler) this.expandTypeRefsStmt(s);
     } else if (stmt instanceof DestructDecl) {
       if (stmt.rhs) this.expandTypeRefsExpr(stmt.rhs);
     } else if (stmt instanceof MultiAssignStmt) {
@@ -3404,6 +3468,9 @@ export class TypeResolver {
     } else if (stmt instanceof DoWhileStmt) {
       for (const s of stmt.body) this.substituteStmt(s, bind);
       if (stmt.condition) this.substituteExpr(stmt.condition, bind);
+    } else if (stmt instanceof TryStmt) {
+      for (const s of stmt.body) this.substituteStmt(s, bind);
+      for (const s of stmt.handler) this.substituteStmt(s, bind);
     } else if (stmt instanceof AssignStmt) {
       if (stmt.rhs) this.substituteExpr(stmt.rhs, bind);
     } else if (stmt instanceof MultiAssignStmt) {

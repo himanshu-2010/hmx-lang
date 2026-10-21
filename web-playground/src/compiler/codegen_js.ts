@@ -31,6 +31,7 @@ import {
   ContinueStmt,
   ExprStmt,
   DeferStmt,
+  TryStmt,
   NumberLiteral,
   DecimalLiteral,
   StringLiteral,
@@ -316,6 +317,9 @@ export class CodeGenJs {
       for (const s of stmt.body) cb(s);
     } else if (stmt instanceof DeferStmt) {
       for (const s of stmt.body) cb(s);
+    } else if (stmt instanceof TryStmt) {
+      for (const s of stmt.body) cb(s);
+      for (const s of stmt.handler) cb(s);
     }
   }
 
@@ -383,6 +387,9 @@ export class CodeGenJs {
       this.collectLambdasExpr(stmt.condition);
     } else if (stmt instanceof DeferStmt) {
       for (const s of stmt.body) this.collectLambdasStmt(s);
+    } else if (stmt instanceof TryStmt) {
+      for (const s of stmt.body) this.collectLambdasStmt(s);
+      for (const s of stmt.handler) this.collectLambdasStmt(s);
     }
   }
 
@@ -973,6 +980,26 @@ export class CodeGenJs {
     } else if (stmt instanceof DeferStmt) {
       if (stmt.id < 0) stmt.id = this.tempCounter++;
       this.ol(`_sd_dfr${stmt.id} = 1;`);
+    } else if (stmt instanceof TryStmt) {
+      const id = this.tempCounter++;
+      this.ol("try {");
+      this.ind++;
+      // The resolver restricts the body to statements that cannot own a local
+      // or register a defer, so a caught fault has no teardown to skip.
+      this.pushScope();
+      for (const s of stmt.body) this.emitStmt(s);
+      this.popScope();
+      this.ind--;
+      this.ol(`} catch (_sd_e${id}) {`);
+      this.ind++;
+      this.ol(`if (!SD.isFault(_sd_e${id})) throw _sd_e${id};`);
+      this.pushScope();
+      this.ol(`const ${this.mVar(stmt.error_name)} = _sd_e${id}.msg;`);
+      this.recordVarDesc(stmt.error_name, mkType(TypeKind.Text));
+      for (const s of stmt.handler) this.emitStmt(s);
+      this.popScope();
+      this.ind--;
+      this.ol("}");
     } else if (stmt instanceof ReturnStmt) {
       if (stmt.values.length > 1) {
         const vals = stmt.values

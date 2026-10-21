@@ -3761,6 +3761,48 @@
       }
     },
     {
+      "name": "try_defer_forbidden",
+      "kind": "negative",
+      "source": "fn main() {\n        try {\n            defer { print(1) }\n        } catch (e) {\n            print(e)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "defer is not supported inside a try block",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 3]: defer is not supported inside a try block\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "try_local_forbidden",
+      "kind": "negative",
+      "source": "fn main() {\n        try {\n            let x = 1\n        } catch (e) {\n            print(e)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "cannot declare a local inside a try block; declare it before the try",
+      "expected": {
+        "stdout": "",
+        "stderr": "Error [line 4]: cannot declare a local inside a try block; declare it before the try\n",
+        "exit": 1
+      }
+    },
+    {
+      "name": "try_without_catch",
+      "kind": "negative",
+      "source": "fn main() {\n        try {\n            print(1)\n        }\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": "syntax error",
+      "expected": {
+        "stdout": "",
+        "stderr": "Parse error [line 5]: syntax error near '}'\nError: parsing failed\n",
+        "exit": 1
+      }
+    },
+    {
       "name": "resolver_nesting_limit_not",
       "kind": "negative",
       "source": "fn main() {\n        let x = !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!true\n        print(0)\n        print(1)\n    }",

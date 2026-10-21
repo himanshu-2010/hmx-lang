@@ -1756,10 +1756,10 @@ each distinct type-argument list becomes its own concrete struct.
   `emit_releases_at_current_scope()` and then `pop_scope()` released the same
   entries again); removed the redundant call and added valgrind matrix case
   `switch_case_heap_locals` (nested switch, text + array locals).
-- **Hygiene:** native **517/517** (67 integration / 271 negative / 146 stress /
+- **Hygiene:** native **524/524** (68 integration / 274 negative / 149 stress /
   33 CLI); ASan+LSan-clean integration+stress; UBSan control **3/3** and
-  sanitizer suites clean; web vitest **498/498** (483 parity + 15 app),
-  `gen-data.mts` parity **0 failures**; valgrind **73/73** (15 matrix + 58
+  sanitizer suites clean; web vitest **505/505** (490 parity + 15 app),
+  `gen-data.mts` parity **0 failures**; valgrind **74/74** (15 matrix + 59
   fixtures); oxlint clean.
 
 ## Known issues / deferred

@@ -320,6 +320,7 @@ export enum NodeKind {
   MemberAssignStmt,
   TypeDecl,
   DeferStmt,
+  TryStmt,
 }
 
 export interface Expression {
@@ -814,6 +815,22 @@ export class DeferStmt implements Statement {
   constructor(public body: Statement[]) {}
 }
 
+/** M18.2 `try { ... } catch (e) { ... }`: a runtime fault unwinds to the
+ * handler, which binds the message as text. */
+export class TryStmt implements Statement {
+  kind = NodeKind.TryStmt;
+  line = 0;
+  resolved_type = TypeKind.Unknown;
+  nl_id = -1;
+  nl_target = false;
+  nl_owner: FunctionDecl | null = null;
+  constructor(
+    public body: Statement[],
+    public handler: Statement[],
+    public error_name: string
+  ) {}
+}
+
 // ---- M16 type declarations (alias / struct / enum) ----
 
 export enum TypeDeclKind {
@@ -962,6 +979,9 @@ function gatherChildren(node: AstNode, out: AstNode[]): void {
     push(node.expr);
   } else if (node instanceof DeferStmt) {
     pushList(node.body);
+  } else if (node instanceof TryStmt) {
+    pushList(node.body);
+    pushList(node.handler);
   }
   // NumberLiteral / DecimalLiteral / StringLiteral / CharLiteral /
   // BoolLiteral / Identifier / BreakStmt / ContinueStmt / TypeDecl:
@@ -1111,7 +1131,8 @@ function isStatement(node: unknown): node is Statement {
     node instanceof BreakStmt ||
     node instanceof ContinueStmt ||
     node instanceof ExprStmt ||
-    node instanceof DeferStmt
+    node instanceof DeferStmt ||
+    node instanceof TryStmt
   );
 }
 
@@ -1314,6 +1335,15 @@ function cloneStmt<T extends Statement>(s: T): T {
   }
   if (s instanceof DeferStmt) {
     const out = new DeferStmt(s.body.map(cloneStmt));
+    out.line = s.line;
+    return out as unknown as T;
+  }
+  if (s instanceof TryStmt) {
+    const out = new TryStmt(
+      s.body.map(cloneStmt),
+      s.handler.map(cloneStmt),
+      s.error_name
+    );
     out.line = s.line;
     return out as unknown as T;
   }

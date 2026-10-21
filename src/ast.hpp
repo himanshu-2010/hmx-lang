@@ -473,6 +473,15 @@ struct DeferStmt : Statement {
     int id = -1;                 // codegen-assigned guard id
 };
 
+// M18.2 `try { ... } catch (e) { ... }` — a runtime fault in the try body
+// unwinds to the handler. `error_name` is the text binding for the fault
+// message (empty means the message is ignored).
+struct TryStmt : Statement {
+    std::vector<StmtPtr> body;
+    std::vector<StmtPtr> handler;
+    std::string error_name;
+};
+
 // A top-level type declaration: `alias`, `struct`, or `enum`.
 enum class TypeDeclKind { Alias, Struct, Enum };
 

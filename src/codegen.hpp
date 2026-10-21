@@ -95,6 +95,8 @@ private:
     };
     std::vector<std::vector<OwnedEntry>> scopes_;   // mirrors emitted C blocks
     std::vector<std::vector<DeferStmt*>> defer_scopes_;  // M18: defers per scope, registration order
+    struct TryFrame { int id; size_t depth; };
+    std::vector<TryFrame> try_frames_;  // M18.2: active try handlers (lexical)
     std::vector<int> loop_scopes_;                  // scope indices of loop bodies
     std::vector<int> break_targets_;                // scope indices breakable by `break` (loop or switch case)
 
@@ -166,6 +168,9 @@ private:
     void emit_defers_from(size_t first_scope);
     void emit_all_defers();
     void emit_defers_at_current_scope();
+    // Restore `sd_try_top` when control leaves scopes >= first_scope, so a
+    // handler frame from an exited block is never left on the runtime stack.
+    void emit_try_restore_from(size_t first_scope);
     void declare_owned(const std::string& cname, const TypeDesc& t, bool is_volatile = false);
     // Full descriptor of a parameter (Unknown if not one) and the side effect
     // of registering a reassigned heap parameter as owned at function scope.

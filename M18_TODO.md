@@ -8,7 +8,8 @@
       depth/gather traversal and refcount ownership.
 - [x] Grammar: re-opened `statement` at the end of `parser.y`
       (`defer { ... }` | `defer expr`) so all pre-existing rule numbers stay
-      stable; web tables regenerated (189 rules / 493 states).
+      stable; web tables regenerated (190 rules / 504 states after the M18.2
+      `try` rule).
 - [x] Resolver: per-defer scope resolution; rejects `return`/`break`/`continue`
       inside a defer block; rejects defer inside a loop a nested function exits
       non-locally (longjmp bypasses the loop body's teardown).
@@ -21,16 +22,19 @@
       Also fixed a pre-existing double release of heap-typed switch-case locals
       (valgrind matrix now includes `switch_case_heap_locals`).
 
-## M18.2 — recoverable faults (`try` / `catch`)
+## M18.2 — recoverable faults (`try` / `catch`) **[landed, ADR 0003]**
 
-- [ ] Define the catchable value (message text + source line; `catch (e)`).
-- [ ] Introduce a per-process handler stack and an `sd_panic` runtime helper;
-      convert the ~33 `fprintf(stderr, ...); exit(1)` fault sites to it. With no
-      handler installed, behaviour must stay byte-identical (print + exit 1).
-- [ ] Emit `try { ... } catch (e) { ... }` with setjmp; restore the previous
-      handler on normal exit, early return, and longjmp.
-- [ ] Run the enclosing scopes' defers when a caught fault unwinds out of them.
-- [ ] Native + web resolver/codegen parity; tests for caught/bubbling faults and
+- [x] Define the catchable value (message text, `catch (e)`; `e` is `text` without
+      the trailing newline).
+- [x] Introduce a per-process handler stack and an `sd_panicf` runtime helper;
+      converted the `fprintf(stderr, ...); exit(1)` fault sites to it. With no
+      handler installed, behaviour stays byte-identical (print + exit 1).
+- [x] Emit `try { ... } catch (e) { ... }` with setjmp; restore the previous
+      handler on normal exit, early `return`, `break`/`continue`, and longjmp.
+- [x] Documented the M18.2 limitation: a caught fault unwinds by `longjmp`, so a
+      `try` body may not declare locals or contain `defer`, and retains live at
+      the fault site are not released (see `docs/adr/0003-try-catch.md`).
+- [x] Native + web resolver/codegen parity; tests for caught/bubbling faults and
       for default print+exit when uncaught.
 
 ## M18.3 — `Option[T]` / `Result[T,E]` and propagation

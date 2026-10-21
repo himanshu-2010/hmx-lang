@@ -2385,6 +2385,36 @@ test_error "defer_in_nonlocal_loop" \
     }' \
     "defer is not supported inside a loop that a nested function exits non-locally"
 
+# M18.2: `try` bodies may not introduce locals or `defer`, because a caught
+# fault unwinds by longjmp and would skip their teardown. `catch` is required.
+test_error "try_defer_forbidden" \
+    'fn main() {
+        try {
+            defer { print(1) }
+        } catch (e) {
+            print(e)
+        }
+    }' \
+    "defer is not supported inside a try block"
+
+test_error "try_local_forbidden" \
+    'fn main() {
+        try {
+            let x = 1
+        } catch (e) {
+            print(e)
+        }
+    }' \
+    "cannot declare a local inside a try block; declare it before the try"
+
+test_error "try_without_catch" \
+    'fn main() {
+        try {
+            print(1)
+        }
+    }' \
+    "syntax error"
+
 # Deep nesting: the guard at the top of TypeResolver::resolve rejects any program
 # whose AST is deeper than HMX_MAX_NESTING (200) *before* a recursive walk runs,
 # so an arbitrarily deep program is a clean diagnostic, never a C-stack overflow

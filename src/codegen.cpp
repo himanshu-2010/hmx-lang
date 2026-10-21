@@ -34,7 +34,23 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "#include <string.h>\n";
     out_ << "#include <errno.h>\n";
     out_ << "#include <limits.h>\n";
-    out_ << "#include <setjmp.h>\n\n";
+    out_ << "#include <setjmp.h>\n";
+    out_ << "#include <stdarg.h>\n\n";
+
+    // M18.2: catchable runtime faults. `sd_panicf` formats the same message the
+    // old `fprintf(stderr, ...)` sites printed, then either unwinds to the
+    // innermost `try` handler or preserves the default print+exit(1) behaviour.
+    out_ << "typedef struct sd_try_frame { jmp_buf env; struct sd_try_frame* prev; } sd_try_frame;\n";
+    out_ << "static sd_try_frame* _sd_try_top = 0;\n";
+    out_ << "static char sd_errbuf[2048];\n";
+    out_ << "static void _sd_panicf(const char* fmt, ...) {\n";
+    out_ << "    va_list ap; va_start(ap, fmt);\n";
+    out_ << "    vsnprintf(sd_errbuf, sizeof(sd_errbuf), fmt, ap);\n";
+    out_ << "    va_end(ap);\n";
+    out_ << "    if (_sd_try_top) longjmp(_sd_try_top->env, 1);\n";
+    out_ << "    fputs(sd_errbuf, stderr);\n";
+    out_ << "    exit(1);\n";
+    out_ << "}\n\n";
 
     // ─────────────────────────────────────────────────────────────────────────
     // M15 reference-counted runtime.
@@ -66,6 +82,12 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "    return r;\n";
     out_ << "}\n\n";
 
+    out_ << "static sd_str* sd_error_text(void) {\n";
+    out_ << "    size_t n = strlen(sd_errbuf);\n";
+    out_ << "    while (n > 0 && (sd_errbuf[n - 1] == '\\n' || sd_errbuf[n - 1] == '\\r')) n--;\n";
+    out_ << "    return sd_make_str(sd_errbuf, n);\n";
+    out_ << "}\n\n";
+
     out_ << "static sd_str* sd_retain_str(sd_str* s) { if (s) s->refs++; return s; }\n\n";
 
     out_ << "static void sd_release_str(sd_str* s) {\n";
@@ -78,7 +100,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "}\n\n";
 
     out_ << "static sd_str* sd_concat(sd_str* a, sd_str* b) {\n";
-    out_ << "    if (a->len > ~(size_t)0 - b->len - 1) { fprintf(stderr, \"Error: string length overflow\\n\"); exit(1); }\n";
+    out_ << "    if (a->len > ~(size_t)0 - b->len - 1) { _sd_panicf(\"Error: string length overflow\\n\"); }\n";
     out_ << "    size_t n = a->len + b->len;\n";
     out_ << "    sd_str* r = (sd_str*)malloc(sizeof(sd_str));\n";
     out_ << "    if (!r) exit(1);\n";
@@ -179,9 +201,8 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "    long v = strtol(buf, &end, 10);\n";
     out_ << "    if (end == buf || *end != '\\0' || errno == ERANGE ||\n";
     out_ << "        v < INT_MIN || v > INT_MAX) {\n";
-    out_ << "        fprintf(stderr, \"Error: parse_int: invalid int '%.*s'\\n\", (int)s->len, s->data);\n";
     out_ << "        free(buf);\n";
-    out_ << "        exit(1);\n";
+    out_ << "        _sd_panicf(\"Error: parse_int: invalid int '%.*s'\\n\", (int)s->len, s->data);\n";
     out_ << "    }\n";
     out_ << "    free(buf);\n";
     out_ << "    return (int)v;\n";
@@ -196,9 +217,8 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "    errno = 0;\n";
     out_ << "    double v = strtod(buf, &end);\n";
     out_ << "    if (end == buf || *end != '\\0' || errno == ERANGE) {\n";
-    out_ << "        fprintf(stderr, \"Error: parse_decimal: invalid decimal '%.*s'\\n\", (int)s->len, s->data);\n";
     out_ << "        free(buf);\n";
-    out_ << "        exit(1);\n";
+    out_ << "        _sd_panicf(\"Error: parse_decimal: invalid decimal '%.*s'\\n\", (int)s->len, s->data);\n";
     out_ << "    }\n";
     out_ << "    free(buf);\n";
     out_ << "    return v;\n";
@@ -227,7 +247,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "    size_t el = esize ? esize : 1;\n";
     out_ << "    if (length > INT_MAX - 16) exit(1);\n";
     out_ << "    size_t cap = (size_t)length + 16;\n";
-    out_ << "    if (cap > (~(size_t)0 - sizeof(sd_abuf)) / el) { fprintf(stderr, \"Error: array capacity overflow\\n\"); exit(1); }\n";
+    out_ << "    if (cap > (~(size_t)0 - sizeof(sd_abuf)) / el) { _sd_panicf(\"Error: array capacity overflow\\n\"); }\n";
     out_ << "    sd_array* a = (sd_array*)malloc(sizeof(sd_array));\n";
     out_ << "    if (!a) exit(1);\n";
     out_ << "    a->refs = 1;\n";
@@ -292,7 +312,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "    sd_detach(a);\n";
     out_ << "    if (a->length >= a->capacity) {\n";
     out_ << "        size_t cap = (size_t)a->capacity * 2 + 8;\n";
-    out_ << "        if ((size_t)a->esize != 0 && cap > (~(size_t)0 - sizeof(sd_abuf)) / (size_t)a->esize) { fprintf(stderr, \"Error: array capacity overflow\\n\"); exit(1); }\n";
+    out_ << "        if ((size_t)a->esize != 0 && cap > (~(size_t)0 - sizeof(sd_abuf)) / (size_t)a->esize) { _sd_panicf(\"Error: array capacity overflow\\n\"); }\n";
     out_ << "        sd_abuf* nb = (sd_abuf*)malloc(sizeof(sd_abuf) + cap * (size_t)a->esize);\n";
     out_ << "        if (!nb) exit(1);\n";
     out_ << "        nb->refs = 1;\n";
@@ -310,7 +330,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "}\n\n";
 
     out_ << "static sd_array* sd_array_slice(sd_array* a, int start, int end) {\n";
-    out_ << "    if (start < 0 || end < start || end > a->length) { fprintf(stderr, \"Error: slice out of bounds (%d, %d)\\n\", start, end); exit(1); }\n";
+    out_ << "    if (start < 0 || end < start || end > a->length) { _sd_panicf(\"Error: slice out of bounds (%d, %d)\\n\", start, end); }\n";
     out_ << "    sd_array* r = (sd_array*)malloc(sizeof(sd_array));\n";
     out_ << "    if (!r) exit(1);\n";
     out_ << "    r->refs = 1;\n";
@@ -333,7 +353,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
 
     out_ << "static sd_array* sd_array_concat(sd_array* x, sd_array* y) {\n";
     out_ << "    size_t nx = (size_t)x->length, ny = (size_t)y->length;\n";
-    out_ << "    if (nx > (size_t)(INT_MAX - 16) - ny) { fprintf(stderr, \"Error: array length overflow\\n\"); exit(1); }\n";
+    out_ << "    if (nx > (size_t)(INT_MAX - 16) - ny) { _sd_panicf(\"Error: array length overflow\\n\"); }\n";
     out_ << "    sd_array* r = sd_make_array_typed((const void*)0, 0, (int)(nx + ny), (size_t)x->esize, x->elem_rel, x->elem_ret);\n";
     out_ << "    if (nx) memcpy(r->data, x->data, nx * (size_t)x->esize);\n";
     out_ << "    if (ny) memcpy(r->data + nx * (size_t)x->esize, y->data, ny * (size_t)y->esize);\n";
@@ -345,7 +365,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "}\n\n";
 
     out_ << "static sd_array* sd_split(sd_str* s, sd_str* sep) {\n";
-    out_ << "    if (sep->len == 0) { fprintf(stderr, \"Error: split separator must not be empty\\n\"); exit(1); }\n";
+    out_ << "    if (sep->len == 0) { _sd_panicf(\"Error: split separator must not be empty\\n\"); }\n";
     out_ << "    const char* hay = s->data;\n";
     out_ << "    const char* ndl = sep->data;\n";
     out_ << "    size_t pl = sep->len;\n";
@@ -361,7 +381,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "        sd_str* piece = sd_make_str(cur, len);\n";
     out_ << "        if (a->length >= a->capacity) {\n";
     out_ << "            size_t cap = (size_t)a->capacity * 2;\n";
-    out_ << "            if (cap > (~(size_t)0 - sizeof(sd_abuf)) / sizeof(sd_str*)) { fprintf(stderr, \"Error: array capacity overflow\\n\"); exit(1); }\n";
+    out_ << "            if (cap > (~(size_t)0 - sizeof(sd_abuf)) / sizeof(sd_str*)) { _sd_panicf(\"Error: array capacity overflow\\n\"); }\n";
     out_ << "            sd_abuf* nb = (sd_abuf*)malloc(sizeof(sd_abuf) + cap * sizeof(sd_str*));\n";
     out_ << "            if (!nb) exit(1);\n";
     out_ << "            nb->refs = 1;\n";
@@ -381,24 +401,21 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
 
     out_ << "static int sd_check_index(int length, int index) {\n";
     out_ << "    if (index < 0 || index >= length) {\n";
-    out_ << "        fprintf(stderr, \"Error: array index out of bounds (index %d, length %d)\\n\", index, length);\n";
-    out_ << "        exit(1);\n";
+    out_ << "        _sd_panicf(\"Error: array index out of bounds (index %d, length %d)\\n\", index, length);\n";
     out_ << "    }\n";
     out_ << "    return index;\n";
     out_ << "}\n\n";
 
     out_ << "static int sd_check_tuple_index(int length, int index) {\n";
     out_ << "    if (index < 0 || index >= length) {\n";
-    out_ << "        fprintf(stderr, \"Error: tuple index out of bounds (index %d, length %d)\\n\", index, length);\n";
-    out_ << "        exit(1);\n";
+    out_ << "        _sd_panicf(\"Error: tuple index out of bounds (index %d, length %d)\\n\", index, length);\n";
     out_ << "    }\n";
     out_ << "    return index;\n";
     out_ << "}\n\n";
 
     out_ << "static unsigned char sd_to_byte(double v) {\n";
     out_ << "    if (v < 0 || v > 255) {\n";
-    out_ << "        fprintf(stderr, \"Error: byte cast out of range (%.0f)\\n\", v);\n";
-    out_ << "        exit(1);\n";
+    out_ << "        _sd_panicf(\"Error: byte cast out of range (%.0f)\\n\", v);\n";
     out_ << "    }\n";
     out_ << "    return (unsigned char)v;\n";
     out_ << "}\n\n";
@@ -514,6 +531,7 @@ std::string CodeGen::generate(Program& program, const std::string& source_file) 
     out_ << "int main(void) {\n";
     scopes_.clear();
     defer_scopes_.clear();
+    try_frames_.clear();
     loop_scopes_.clear();
     break_targets_.clear();
     push_scope_for(top_level);
@@ -605,6 +623,9 @@ void CodeGen::collect_function_decls(Statement* stmt) {
         recurse(fn->body);
     } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
         recurse(d->body);
+    } else if (auto* t = dynamic_cast<TryStmt*>(stmt)) {
+        recurse(t->body);
+        recurse(t->handler);
     } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
         recurse(ifs->then_body);
         recurse(ifs->else_body);
@@ -656,6 +677,12 @@ void CodeGen::collect_lambdas_stmt(Statement* stmt) {
         collect_lambdas_expr(es->expr.get());
     } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
         recurse(d->body);
+    } else if (auto* t = dynamic_cast<TryStmt*>(stmt)) {
+        // A try installs a setjmp frame, so locals modified between setjmp and
+        // a caught longjmp must be volatile.
+        cur_fn_setjmp_ = true;
+        recurse(t->body);
+        recurse(t->handler);
     } else if (auto* ret = dynamic_cast<ReturnStmt*>(stmt)) {
         for (auto& v : ret->values) collect_lambdas_expr(v.get());
     } else if (auto* print = dynamic_cast<PrintStmt*>(stmt)) {
@@ -1113,6 +1140,9 @@ void CodeGen::collect_tuple_types(Statement* stmt) {
         for (auto& s : dw->body) collect_tuple_types(s.get());
     } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
         for (auto& s : d->body) collect_tuple_types(s.get());
+    } else if (auto* t = dynamic_cast<TryStmt*>(stmt)) {
+        for (auto& s : t->body) collect_tuple_types(s.get());
+        for (auto& s : t->handler) collect_tuple_types(s.get());
     } else if (auto* ifs = dynamic_cast<IfStmt*>(stmt)) {
         for (auto& s : ifs->then_body) collect_tuple_types(s.get());
         for (auto& s : ifs->else_body) collect_tuple_types(s.get());
@@ -1208,7 +1238,7 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
         } else if (call->name == "chr") {
             out_ << "({ int _sd_c = (";
             emit_expr(call->args[0].get());
-            out_ << "); if (_sd_c < 0 || _sd_c > 255) { fprintf(stderr, \"Error: chr expects a character code between 0 and 255, got %d\\n\", _sd_c); exit(1); } (char)_sd_c; })";
+            out_ << "); if (_sd_c < 0 || _sd_c > 255) { _sd_panicf(\"Error: chr expects a character code between 0 and 255, got %d\\n\", _sd_c); } (char)_sd_c; })";
         } else if (call->name == "split") {
             out_ << "({ sd_str* _sd_x = ";
             emit_owned_expr(call->args[0].get());
@@ -1233,7 +1263,7 @@ void CodeGen::emit_expr(Expression* expr, bool parenthesize) {
             std::string T = c_type_for_desc(call->array_aux);
             out_ << "({ sd_array* _sd_p = ";
             emit_owned_expr(call->args[0].get());
-            out_ << "; if (_sd_p->length == 0) { fprintf(stderr, \"Error: pop on empty array\\n\"); exit(1); } "
+            out_ << "; if (_sd_p->length == 0) { _sd_panicf(\"Error: pop on empty array\\n\"); } "
                  << "--_sd_p->length; " << T << " _sd_v = *((" << T
                  << "*)((char*)_sd_p->data + (size_t)_sd_p->length * sizeof(" << T << "))); "
                  << "sd_release_array(_sd_p); _sd_v; })";
@@ -1682,7 +1712,7 @@ void CodeGen::emit_destruct_level(const std::vector<DestructPattern>& slots,
         arr_desc.elem = std::make_shared<TypeDesc>(elem);
         size_t n = 0;
         for (auto& p : slots) if (!p.is_rest) n++;
-        out_ << "    if (" << src << "->length < " << n << ") { fprintf(stderr, \"Error: cannot destructure array of length %d into " << n << " targets\\n\", " << src << "->length); exit(1); }\n";
+        out_ << "    if (" << src << "->length < " << n << ") { _sd_panicf(\"Error: cannot destructure array of length %d into " << n << " targets\\n\", " << src << "->length); }\n";
         size_t fix_i = 0;
         for (size_t i = 0; i < slots.size(); i++) {
             const DestructPattern& slot = slots[i];
@@ -1715,7 +1745,7 @@ void CodeGen::emit_destruct_level(const std::vector<DestructPattern>& slots,
     size_t n = 0;
     for (auto& p : slots) if (!p.is_rest) n++;
     std::string len_expr = "(int)" + src + "->len";
-    out_ << "    if (" << len_expr << " < " << n << ") { fprintf(stderr, \"Error: cannot destructure text of length %d into " << n << " targets\\n\", " << len_expr << "); exit(1); }\n";
+    out_ << "    if (" << len_expr << " < " << n << ") { _sd_panicf(\"Error: cannot destructure text of length %d into " << n << " targets\\n\", " << len_expr << "); }\n";
     size_t fix_i = 0;
     TypeDesc char_desc{TypeKind::Char, {}, {}, {}};
     TypeDesc text_desc{TypeKind::Text, {}, {}, {}};
@@ -2013,6 +2043,34 @@ void CodeGen::emit_stmt(Statement* stmt) {
         emit_line_directive(d->line, line_file_);
         if (d->id < 0) d->id = temp_counter_++;   // defensive: unscanned scope
         out_ << "    _sd_dfr" << d->id << " = 1;\n";
+    } else if (auto* try_stmt = dynamic_cast<TryStmt*>(stmt)) {
+        emit_line_directive(try_stmt->line, line_file_);
+        int id = temp_counter_++;
+        out_ << "    {\n";
+        push_scope();
+        out_ << "    sd_try_frame _sd_tf" << id << ";\n";
+        out_ << "    _sd_tf" << id << ".prev = _sd_try_top;\n";
+        out_ << "    _sd_try_top = &_sd_tf" << id << ";\n";
+        out_ << "    if (setjmp(_sd_tf" << id << ".env) != 0) goto _sd_catch" << id << ";\n";
+        try_frames_.push_back({id, scopes_.size()});
+        for (auto& body_stmt : try_stmt->body) emit_stmt(body_stmt.get());
+        pop_scope();
+        out_ << "    _sd_try_top = _sd_tf" << id << ".prev;\n";
+        out_ << "    goto _sd_after" << id << ";\n";
+        out_ << "_sd_catch" << id << ":\n";
+        out_ << "    _sd_try_top = _sd_tf" << id << ".prev;\n";
+        out_ << "    {\n";
+        push_scope();
+        TypeDesc text_desc{TypeKind::Text, {}, {}, {}};
+        out_ << "    sd_str* " << safe_name(try_stmt->error_name)
+             << " = sd_error_text();\n";
+        declare_owned(safe_name(try_stmt->error_name), text_desc, false);
+        for (auto& handler_stmt : try_stmt->handler) emit_stmt(handler_stmt.get());
+        pop_scope();
+        out_ << "    }\n";
+        try_frames_.pop_back();
+        out_ << "_sd_after" << id << ": ;\n";
+        out_ << "    }\n";
     } else if (auto* expr_stmt = dynamic_cast<ExprStmt*>(stmt)) {
         emit_line_directive(expr_stmt->line, line_file_);
         // push/sort are statement-only builtins (the resolver types them as
@@ -2220,6 +2278,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
                 else emit_expr(ret->values[i].get());
             }
             out_ << " }; ";
+            emit_try_restore_from(0);
             emit_all_defers();
             emit_all_scope_releases(nullptr);
             out_ << "return _rv; }\n";
@@ -2227,6 +2286,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
             TypeDesc rd = desc_of_expr(ret->values[0].get());
             Expression* v0 = ret->values[0].get();
             if (rd.type == TypeKind::Unknown) {
+                emit_try_restore_from(0);
                 emit_all_defers();
                 emit_all_scope_releases(nullptr);
                 out_ << "    return;\n";
@@ -2254,6 +2314,7 @@ void CodeGen::emit_stmt(Statement* stmt) {
                     out_ << "    { " << c_type_for_desc(rd) << " _rv = ";
                     emit_owned_expr(v0);
                     out_ << "; ";
+                    emit_try_restore_from(0);
                     emit_all_defers();
                     emit_all_scope_releases(nullptr);
                     out_ << "return _rv; }\n";
@@ -2262,11 +2323,13 @@ void CodeGen::emit_stmt(Statement* stmt) {
                 out_ << "    { " << c_type_for_desc(rd) << " _rv = ";
                 emit_expr(v0);
                 out_ << "; ";
+                emit_try_restore_from(0);
                 emit_all_defers();
                 emit_all_scope_releases(nullptr);
                 out_ << "return _rv; }\n";
             }
         } else {
+            emit_try_restore_from(0);
             emit_all_defers();
             emit_all_scope_releases(nullptr);
             out_ << "    return;\n";
@@ -2320,10 +2383,12 @@ void CodeGen::emit_stmt(Statement* stmt) {
     } else if (auto* brk = dynamic_cast<BreakStmt*>(stmt)) {
         emit_line_directive(brk->line, line_file_);
         if (brk->nonlocal) {
+            emit_try_restore_from(0);
             emit_all_defers();
             out_ << "    longjmp(*(jmp_buf*)_sd_nl, 1);\n";
         } else {
             if (!break_targets_.empty()) {
+                emit_try_restore_from((size_t)break_targets_.back());
                 emit_defers_from((size_t)break_targets_.back());
                 for (size_t i = (size_t)break_targets_.back(); i < scopes_.size(); i++) {
                     for (auto& e : scopes_[i]) {
@@ -2338,11 +2403,13 @@ void CodeGen::emit_stmt(Statement* stmt) {
     } else if (auto* cont = dynamic_cast<ContinueStmt*>(stmt)) {
         emit_line_directive(cont->line, line_file_);
         if (cont->nonlocal) {
+            emit_try_restore_from(0);
             emit_all_defers();
             out_ << "    longjmp(*(jmp_buf*)_sd_nl, 2);\n";
         } else {
             int t = innermost_loop_scope();
             if (t >= 0) {
+                emit_try_restore_from((size_t)t);
                 emit_defers_from((size_t)t);
                 for (size_t i = (size_t)t; i < scopes_.size(); i++) {
                     for (auto& e : scopes_[i]) {
@@ -2497,6 +2564,15 @@ void CodeGen::emit_defers_from(size_t first_scope) {
 }
 
 void CodeGen::emit_all_defers() { emit_defers_from(0); }
+
+void CodeGen::emit_try_restore_from(size_t first_scope) {
+    for (auto& f : try_frames_) {
+        if (f.depth > first_scope) {
+            out_ << "    _sd_try_top = _sd_tf" << f.id << ".prev;\n";
+            return;
+        }
+    }
+}
 
 void CodeGen::emit_defers_at_current_scope() {
     if (defer_scopes_.empty()) return;

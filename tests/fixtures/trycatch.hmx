@@ -1,0 +1,23 @@
+fn main() {
+    let n = 0
+    let a = [1, 2, 3]
+    defer { print("main-defer") }
+    try {
+        try {
+            print(a[9])
+            print("not reached")
+        } catch (e) {
+            print("inner caught:", e)
+        }
+        print("after inner:", n)
+    } catch (e) {
+        print("outer caught:", e)
+    }
+    try {
+        print(chr(300))
+        print("not reached")
+    } catch (e) {
+        print("chr caught:", e)
+    }
+    print("done")
+}

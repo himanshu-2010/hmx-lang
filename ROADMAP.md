@@ -132,8 +132,8 @@
   **M18.1 landed (`defer`):** `defer { ... }` / `defer expr`, LIFO on
   fall-through/`return`/`break`/`continue`, dynamic registration, guard flags,
   and cleanup before a non-local `longjmp` from the same function. `try`/`catch`
-  and `Option`/`Result` remain. Native **67** integration / **271** negative /
-  **146** stress, web parity 0 failures, valgrind **73/73**.
+  and `Option`/`Result` remain. Native **68** integration / **274** negative /
+  **149** stress, web parity 0 failures, valgrind **74/74**.
 - **M19** int64 / u32 / u64 / float32 + checked-arithmetic flag; BigInt stretch.
 
 ## 6. Batch D — Standard library

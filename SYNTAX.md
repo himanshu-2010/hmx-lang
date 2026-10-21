@@ -172,7 +172,7 @@ The following words are reserved and cannot be used as identifiers:
 | `break` | Exit the enclosing loop early |
 | `continue` | Skip to the next iteration of the enclosing loop |
 | `defer` | Run a block when the enclosing scope exits (§11.9) |
-| `try` / `catch` | Reserved for recoverable faults (M18, not yet implemented) |
+| `try` / `catch` | Recoverable runtime faults (§11.10) |
 | `print` | Output statement |
 | `in` | `foreach` iterable separator |
 | `return` | Function return value |
@@ -866,6 +866,7 @@ A statement is one of the following. Statements execute in sequence.
 | Post-condition loop | `do { } while (...)` |
 | Loop control | `break` / `continue` |
 | Deferred block | `defer { ... }` / `defer expr` (§11.9) |
+| Fault recovery | `try { ... } catch (e) { ... }` (§11.10) |
 | Function declaration | `fn name() { }` |
 | Return | `return expr...` or `return` |
 
@@ -1173,6 +1174,54 @@ Restrictions:
 Deferred code may read and call methods on locals of the enclosing scope; those
 locals are still alive when it runs. It runs before the enclosing scope's
 reference-counted locals are released.
+
+---
+
+### 11.10 The `try` / `catch` Statement **[Implemented]**
+
+A runtime fault — out-of-bounds indexing, invalid `parse_int`/`parse_decimal`,
+`chr` out of range, `byte` cast out of range, an empty `split` separator, etc. —
+normally prints to stderr and exits with status 1. `try` / `catch` makes such a
+fault recoverable: the fault message is bound as `text` to the catch variable
+and execution continues in the handler.
+
+```
+try_stmt : "try" "{" statement+ "}" "catch" "(" identifier ")" "{" statement+ "}"
+```
+
+The catch variable holds the fault message **without** its trailing newline, so
+`print(e)` renders a single line. A fault raised inside a `catch` handler is not
+caught by that same handler; it propagates to the next enclosing `try` (or, if
+none, exits with status 1 as usual).
+
+```
+fn main() {
+    let n = 0
+    try {
+        n = parse_int("not a number")
+        print("not reached")
+    } catch (e) {
+        print("caught:", e)   // caught: Error: parse_int: invalid int 'not a number'
+    }
+    print("still alive:", n)  // still alive: 0
+}
+```
+
+Nested `try` works; an inner handler catches first, and a fault it does not
+handle unwinds to an outer handler.
+
+Restrictions:
+
+- A `try` body may not declare a local (`let`, destructuring, `for`-init, or
+  `foreach` binding) and may not contain `defer`. A caught fault unwinds by
+  `longjmp`, which skips the body's teardown, so any storage it owns would be
+  leaked. Declare storage before the `try` instead.
+- Because a caught fault unwinds by `longjmp`, reference-counted retains live at
+  the fault site (for example a text lvalue read inside the body) are not
+  released. Keep fault-prone reads out of a `try` body, or read them before
+  entering it.
+- `return`, `break`, and `continue` are allowed inside a `try` body and behave
+  normally; the handler is deactivated before control leaves.
 
 ---
 

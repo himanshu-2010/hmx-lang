@@ -18,6 +18,7 @@ import {
   ContinueStmt,
   DecimalLiteral,
   DeferStmt,
+  TryStmt,
   DestructDecl,
   DoWhileStmt,
   ElementAssignStmt,
@@ -264,6 +265,7 @@ const ruleSigs: RuleSig[] = [
   ["named_ref", 4], // 187
   ["statement", 4], // 188
   ["statement", 2], // 189
+  ["statement", 11], // 190
 ];
 
 // Verify SIG against the extracted tables (lhs name + RHS length per rule).
@@ -306,7 +308,7 @@ function mkProgram(): Program {
 
 type Action = (rhs: unknown[], ctx: LRContext) => unknown;
 
-const A: Action[] = new Array(190).fill(null);
+const A: Action[] = new Array(191).fill(null);
 
 // Rule 0: dummy, never fires.
 A[0] = () => null;
@@ -1006,6 +1008,18 @@ A[189] = (rhs, ctx) => {
   const d = new DeferStmt([e]);
   d.line = ctx.line;
   return d;
+};
+
+// -- M18.2: try/catch (rule 190) --
+// r190: statement: TRY '{' stmt_list '}' CATCH '(' IDENTIFIER ')' '{' stmt_list '}'
+A[190] = (rhs, ctx) => {
+  const t = new TryStmt(
+    rhs[2] as Statement[],
+    rhs[9] as Statement[],
+    rhs[6] as string
+  );
+  t.line = ctx.line;
+  return t;
 };
 
 // ---------------------------------------------------------------------------

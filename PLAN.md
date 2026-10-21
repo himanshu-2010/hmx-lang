@@ -364,7 +364,8 @@ prior fixtures, and lands one complete feature.
   defer inside a loop a nested function exits non-locally (that `longjmp`
   bypasses the target loop's teardown). `statement` is re-opened at the end of
   `parser.y` (rules 188–189), keeping existing rule numbers; `defer`/`try`/
-  `catch` tokens land now, the latter two for M18.2. Native **517/517** (67
-  integration / 271 negative / 146 stress / 33 CLI); web vitest **498/498**
-  (483 parity + 15 app); valgrind **73/73**; ASan+LSan and UBSan clean; fixture
-  `defer.hmx` + stress `m18_defer` + 3 negatives.
+  `catch` tokens land now, the latter two for M18.2. Native **524/524** (68
+  integration / 274 negative / 149 stress / 33 CLI); web vitest **505/505**
+  (490 parity + 15 app); valgrind **74/74**; ASan+LSan and UBSan clean; fixture
+  `defer.hmx` + stress `m18_defer` + 3 negatives; `trycatch.hmx` + stress
+  `m18_try_*` + 3 negatives.

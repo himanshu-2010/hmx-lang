@@ -2234,6 +2234,60 @@ test_output "m18_defer" \
     }' \
     "$(printf 'release 1\nvalue-1\ntaken\nouter\n1\nnot-taken\nouter\n2\niter 0\nbody 1\niter 1\niter 2\nif-body\nif-done\noriginal\nend\nmain-first\nmain-last')"
 
+# M18.2: `try`/`catch` recovers from runtime faults via the setjmp machinery.
+# Caught faults print nothing to stderr; the message is bound as text. A fault
+# inside a `try` body that reads a text/heap lvalue may leak its retain (longjmp
+# skips the matching release), so these cases use array/char faults only.
+test_output "m18_try_caught" \
+    'fn main() {
+        let n = 0
+        let a = [1, 2, 3]
+        defer { print("main-defer") }
+        try {
+            try {
+                print(a[9])
+                print("not reached")
+            } catch (e) {
+                print("inner caught:", e)
+            }
+            print("after inner:", n)
+        } catch (e) {
+            print("outer caught:", e)
+        }
+        try {
+            print(chr(300))
+            print("not reached")
+        } catch (e) {
+            print("chr caught:", e)
+        }
+        print("done")
+    }' \
+    "$(printf 'inner caught: Error: array index out of bounds (index 9, length 3)\nafter inner: 0\nchr caught: Error: chr expects a character code between 0 and 255, got 300\ndone\nmain-defer')"
+
+test_output "m18_try_return" \
+    'fn ret(x: int) -> int {
+        try {
+            if (x > 0) { return 42 }
+            print(chr(300))
+            return 0
+        } catch (e) {
+            return 7
+        }
+        return 99
+    }
+    fn main() {
+        print(ret(1))
+        print(ret(0))
+        print("done")
+    }' \
+    "$(printf '42\n7\ndone')"
+
+test_exit_code "m18_try_uncaught" \
+    'fn main() {
+        print(chr(300))
+    }' \
+    1
+
 echo ""
 echo "Stress & Output Tests Passed: $PASS, Failed: $FAIL"
 rm -rf "$TMPDIR"

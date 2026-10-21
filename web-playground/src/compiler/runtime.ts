@@ -10,7 +10,7 @@
 
 /** Thrown to unwind the generated JS; the VM turns this into the exit code. */
 export class ExitSignal {
-  constructor(public code: number) {}
+  constructor(public code: number, public msg?: string) {}
 }
 
 /** Marker / meta objects thrown for non-local break (k=1) and continue (k=2). */
@@ -31,6 +31,8 @@ export interface SDRuntime {
   fD: (v: number) => string;
   // runtime exit / error helpers
   fail: (msg: string) => never;
+  /** true for a catchable runtime fault (not a silent exit or non-local marker) */
+  isFault: (e: unknown) => boolean;
   error: (msg: string) => void;
   silentExit: () => never;
   // indexing
@@ -119,8 +121,12 @@ export function createRuntime(stdin: string | string[]): SDRuntime {
       return fmtDecimal(v);
     },
     fail(msg: string): never {
-      err.push(msg, "\n");
-      throw new ExitSignal(1);
+      // Stderr is only written if the fault reaches the VM uncaught; a try/catch
+      // turns it into a value and the native binary prints nothing.
+      throw new ExitSignal(1, msg);
+    },
+    isFault(e: unknown): boolean {
+      return e instanceof ExitSignal && typeof e.msg === "string";
     },
     num(v: number | string): number {
       // A char value is a JS string; convert it to its character code so casts

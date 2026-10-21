@@ -11,7 +11,7 @@
 ## Framing
 
 HMX today is a **solid small language with an unusually mature packaging story**:
- 517 native + 160 packaging + 498 vitest tests, ASan/UBSan/valgrind/fuzz-gated
+ 524 native + 160 packaging + 505 vitest tests, ASan/UBSan/valgrind/fuzz-gated
 reference counting, signed releases, working installers for
 Linux/macOS/Windows, and a byte-identical browser compiler.
 

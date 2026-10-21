@@ -229,6 +229,41 @@ static Statement* find_defer_exit(const std::vector<StmtPtr>& stmts) {
     return nullptr;
 }
 
+// M18.2: a caught fault uses longjmp, which skips the try body's C teardown.
+// To keep recovery leak-free, the body may not introduce locals (any storage
+// it owns would be skipped) or defers (their cleanup would be skipped). Use
+// variables declared before the try instead.
+static Statement* find_try_disallowed(const std::vector<StmtPtr>& stmts) {
+    for (auto& sp : stmts) {
+        Statement* s = sp.get();
+        if (dynamic_cast<DeferStmt*>(s) || dynamic_cast<VarDecl*>(s) ||
+            dynamic_cast<DestructDecl*>(s) || dynamic_cast<ForeachStmt*>(s)) {
+            return s;
+        }
+        if (auto* f = dynamic_cast<ForStmt*>(s)) {
+            if (f->init && dynamic_cast<VarDecl*>(f->init.get())) return f->init.get();
+            if (auto* x = find_try_disallowed(f->body)) return x;
+        } else if (auto* i = dynamic_cast<IfStmt*>(s)) {
+            if (auto* x = find_try_disallowed(i->then_body)) return x;
+            if (auto* x = find_try_disallowed(i->else_body)) return x;
+        } else if (auto* sw = dynamic_cast<SwitchStmt*>(s)) {
+            for (auto& c : sw->cases) {
+                if (auto* x = find_try_disallowed(c.body)) return x;
+            }
+        } else if (auto* l = dynamic_cast<LoopStmt*>(s)) {
+            if (auto* x = find_try_disallowed(l->body)) return x;
+        } else if (auto* w = dynamic_cast<WhileStmt*>(s)) {
+            if (auto* x = find_try_disallowed(w->body)) return x;
+        } else if (auto* dw = dynamic_cast<DoWhileStmt*>(s)) {
+            if (auto* x = find_try_disallowed(dw->body)) return x;
+        } else if (auto* t = dynamic_cast<TryStmt*>(s)) {
+            // Nested try bodies have the same restriction; catch bodies do not.
+            if (auto* x = find_try_disallowed(t->body)) return x;
+        }
+    }
+    return nullptr;
+}
+
 // First `defer` reachable in this statement list without crossing a nested
 // function boundary. A nested function's own defers run before ITS longjmp, so
 // they are safe; only defers that belong to the loop-owning function are
@@ -320,6 +355,9 @@ void TypeResolver::analyze_nonlocal_stmts(const std::vector<StmtPtr>& stmts, Fun
             }
         } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
             analyze_nonlocal_stmts(d->body, enclosing, lex_stack, local_depth, switch_depths);
+        } else if (auto* t = dynamic_cast<TryStmt*>(stmt)) {
+            analyze_nonlocal_stmts(t->body, enclosing, lex_stack, local_depth, switch_depths);
+            analyze_nonlocal_stmts(t->handler, enclosing, lex_stack, local_depth, switch_depths);
         } else if (auto* brk = dynamic_cast<BreakStmt*>(stmt)) {
             if (lex_stack.empty()) {
                 throw err(stmt->line, "break outside of a loop", enclosing ? enclosing->file : "");
@@ -2088,6 +2126,22 @@ bool TypeResolver::resolve_stmt(Statement* stmt) {
         push_scope();
         for (auto& s : defer_stmt->body) resolve_stmt(s.get());
         pop_scope();
+    } else if (auto* try_stmt = dynamic_cast<TryStmt*>(stmt)) {
+        if (Statement* bad = find_try_disallowed(try_stmt->body)) {
+            if (dynamic_cast<DeferStmt*>(bad)) {
+                throw err(bad->line, "defer is not supported inside a try block");
+            }
+            throw err(bad->line,
+                "cannot declare a local inside a try block; declare it before the try");
+        }
+        push_scope();
+        for (auto& s : try_stmt->body) resolve_stmt(s.get());
+        pop_scope();
+        push_scope();
+        TypeDesc text_desc{TypeKind::Text, {}, {}, {}};
+        define(try_stmt->error_name, TypeKind::Text, false, {}, {}, text_desc);
+        for (auto& s : try_stmt->handler) resolve_stmt(s.get());
+        pop_scope();
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
         resolve_destruct_decl(td);
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
@@ -2790,6 +2844,9 @@ void TypeResolver::expand_type_refs_stmt(Statement* stmt) {
         if (es->expr) expand_type_refs_expr(es->expr.get());
     } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
         for (auto& s : d->body) expand_type_refs_stmt(s.get());
+    } else if (auto* t = dynamic_cast<TryStmt*>(stmt)) {
+        for (auto& s : t->body) expand_type_refs_stmt(s.get());
+        for (auto& s : t->handler) expand_type_refs_stmt(s.get());
     } else if (auto* td = dynamic_cast<DestructDecl*>(stmt)) {
         if (td->rhs) expand_type_refs_expr(td->rhs.get());
     } else if (auto* ma = dynamic_cast<MultiAssignStmt*>(stmt)) {
@@ -3218,6 +3275,9 @@ void TypeResolver::substitute_stmt(Statement* stmt,
         if (es->expr) substitute_expr(es->expr.get(), bind);
     } else if (auto* d = dynamic_cast<DeferStmt*>(stmt)) {
         for (auto& s : d->body) substitute_stmt(s.get(), bind);
+    } else if (auto* t = dynamic_cast<TryStmt*>(stmt)) {
+        for (auto& s : t->body) substitute_stmt(s.get(), bind);
+        for (auto& s : t->handler) substitute_stmt(s.get(), bind);
     }
 }
 

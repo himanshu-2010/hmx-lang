@@ -28,6 +28,7 @@ export function executeJs(src: string, stdin: string | string[]): VmResult {
   } catch (err) {
     if (err instanceof ExitSignal) {
       exit = err.code;
+      if (err.msg !== undefined) SD.error(err.msg);
     } else {
       // A genuine JS failure (e.g. the emitter caveats that are native *compile*
       // failures too). Report it without crashing the host.

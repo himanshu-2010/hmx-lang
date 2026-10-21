@@ -2068,6 +2068,48 @@
         "stderr": "",
         "exit": 0
       }
+    },
+    {
+      "name": "m18_try_caught",
+      "kind": "output",
+      "source": "fn main() {\n        let n = 0\n        let a = [1, 2, 3]\n        defer { print(\"main-defer\") }\n        try {\n            try {\n                print(a[9])\n                print(\"not reached\")\n            } catch (e) {\n                print(\"inner caught:\", e)\n            }\n            print(\"after inner:\", n)\n        } catch (e) {\n            print(\"outer caught:\", e)\n        }\n        try {\n            print(chr(300))\n            print(\"not reached\")\n        } catch (e) {\n            print(\"chr caught:\", e)\n        }\n        print(\"done\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "inner caught: Error: array index out of bounds (index 9, length 3)\nafter inner: 0\nchr caught: Error: chr expects a character code between 0 and 255, got 300\ndone\nmain-defer\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "m18_try_return",
+      "kind": "output",
+      "source": "fn ret(x: int) -> int {\n        try {\n            if (x > 0) { return 42 }\n            print(chr(300))\n            return 0\n        } catch (e) {\n            return 7\n        }\n        return 99\n    }\n    fn main() {\n        print(ret(1))\n        print(ret(0))\n        print(\"done\")\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "42\n7\ndone\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
+      "name": "m18_try_uncaught",
+      "kind": "exit",
+      "source": "fn main() {\n        print(chr(300))\n    }",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "",
+        "stderr": "Error: chr expects a character code between 0 and 255, got 300\n",
+        "exit": 1
+      }
     }
   ]
 }

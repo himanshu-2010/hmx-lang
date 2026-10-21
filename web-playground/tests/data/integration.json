@@ -730,6 +730,20 @@
       }
     },
     {
+      "name": "trycatch",
+      "kind": "fixture",
+      "source": "fn main() {\n    let n = 0\n    let a = [1, 2, 3]\n    defer { print(\"main-defer\") }\n    try {\n        try {\n            print(a[9])\n            print(\"not reached\")\n        } catch (e) {\n            print(\"inner caught:\", e)\n        }\n        print(\"after inner:\", n)\n    } catch (e) {\n        print(\"outer caught:\", e)\n    }\n    try {\n        print(chr(300))\n        print(\"not reached\")\n    } catch (e) {\n        print(\"chr caught:\", e)\n    }\n    print(\"done\")\n}\n",
+      "stdin": null,
+      "entry": null,
+      "modules": null,
+      "pattern": null,
+      "expected": {
+        "stdout": "inner caught: Error: array index out of bounds (index 9, length 3)\nafter inner: 0\nchr caught: Error: chr expects a character code between 0 and 255, got 300\ndone\nmain-defer\n",
+        "stderr": "",
+        "exit": 0
+      }
+    },
+    {
       "name": "tuple_dynamic_index",
       "kind": "fixture",
       "source": "fn triple(a: int, b: int, c: int) -> (int, int, int) {\n    return a, b, c\n}\nfn mk(a: int) -> (int, int) {\n    return a, a * 10\n}\nfn mk_pair(a: int) -> (int, int) {\n    return a, a + 1\n}\nfn nested() -> ((int, int), (int, int)) {\n    return mk_pair(1), mk_pair(5)\n}\nfn make_getter() -> fn() -> int {\n    let t = mk(7)\n    fn inner() -> int {\n        let i = 1\n        return t[i]\n    }\n    return inner\n}\nfn main() {\n    // plain homogeneous tuple, variable index\n    let t = triple(10, 20, 30)\n    let i = 1\n    print(t[i])\n    // expression index\n    print(t[i + 1])\n    // chained: array of homogeneous tuples\n    let grid: [(int, int)] = [mk(1), mk(2), mk(3)]\n    let j = 0\n    print(grid[2][j])\n    print(grid[2][j + 1])\n    // nested homogeneous tuple\n    let nt = nested()\n    print(nt[1][0], nt[1][1])\n    // dynamic index result feeds destructuring\n    let (x, y) = nt[0]\n    print(x, y)\n    // closure capture\n    let f = make_getter()\n    print(f())\n}",

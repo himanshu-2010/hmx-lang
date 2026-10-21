@@ -10,8 +10,8 @@ Hard constraints from the project:
 - **Vite + React + TypeScript, nothing else.** No backend server, no WASM, no
   CodeMirror/Monaco unless we decide the editor shell needs it (see "Editor").
 - The only source of truth for language behavior is the native compiler in
-  `src/`. The web compiler must pass **the same 484 test cases** (67 integration
-  fixtures, 271 negative, 146 stress) before it ships — parity is the contract.
+  `src/`. The web compiler must pass **the same 491 test cases** (68 integration
+  fixtures, 274 negative, 149 stress) before it ships — parity is the contract.
 - `.hmx` extension and the error-message strings (grep-able by the negative
   suite) must match the native compiler so the negative suite can run verbatim.
 

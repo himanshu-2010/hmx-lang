@@ -1721,6 +1721,17 @@ statement
             d->line = yylineno;
             $$ = d;
         }
+    | TRY '{' stmt_list '}' CATCH '(' IDENTIFIER ')' '{' stmt_list '}'
+        {
+            auto* t = new TryStmt();
+            for (auto& s : *$3) t->body.push_back(std::move(s));
+            delete $3;
+            t->error_name = $7;
+            for (auto& s : *$10) t->handler.push_back(std::move(s));
+            delete $10;
+            t->line = yylineno;
+            $$ = t;
+        }
     ;
 
 %%
