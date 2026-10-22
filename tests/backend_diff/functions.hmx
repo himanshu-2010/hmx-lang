@@ -1,0 +1,58 @@
+fn fib(n: int) -> int {
+    if (n < 2) {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn gcd(a: int, b: int) -> int {
+    while (b != 0) {
+        let t = a % b
+        a = b
+        b = t
+    }
+    return a
+}
+
+fn three(a: int, b: int, c: int) -> int {
+    return a * 100 + b * 10 + c
+}
+
+fn sprawl(x: int) -> int {
+    if (x > 50) {
+        return 1
+    } else {
+        if (x > 25) {
+            return 2
+        } else {
+            if (x > 10) {
+                return 3
+            } else {
+                return 4
+            }
+        }
+    }
+}
+
+fn noop() {
+    print("side effect")
+}
+
+fn main() -> int {
+    for (let i = 0; i < 20; i += 1) {
+        print(fib(i))
+    }
+    print(gcd(48, 36))
+    print(gcd(17, 5))
+    print(gcd(270, 192))
+    print(three(4, 5, 6))
+    print(sprawl(3))
+    print(sprawl(40))
+    print(sprawl(60))
+    print(sprawl(1000))
+    noop()
+    print(fib(fib(fib(5))))
+    print(1 + fib(7) + fib(10))
+    print(three(fib(4), gcd(6, 4), fib(6)))
+    return 0
+}

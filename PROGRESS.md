@@ -1762,6 +1762,54 @@ each distinct type-argument list becomes its own concrete struct.
   `gen-data.mts` parity **0 failures**; valgrind **74/74** (15 matrix + 59
   fixtures); oxlint clean.
 
+## P3 — x86-64 asm text backend (`-b asm`, ADR 0004)
+
+- **New artifact:** `src/backend.hpp/cpp` — a second codegen backend that
+  consumes the P0 IR tree + annotated AST expressions and emits AT&T-syntax
+  x86-64 assembly (`build_temp.s`), assembled by the system `as` and linked
+  with `runtime/hxrt.c`. Wired via `-b asm` / `--backend asm` (`main.cpp`);
+  sanitizer builds reject `-b asm` (the C path remains the sanitizer host).
+  The C emitter is untouched — all C-path gates are unchanged by definition,
+  verified post-merge.
+- **v1 subset (values int/bool/char/decimal/text):** literals, variables,
+  arithmetic (pre- and post-inc/dec, compound assign), text literal + concat +
+  `==`/`!=`, decimal arithmetic, comparisons, `&&`/`||`/`!`, unary minus,
+  numeric casts, conditional expr, user function calls, `length`/`substring`
+  /`ord`/`chr`/text indexing; let/const, assignment, print (printf varargs),
+  if/else, while, do-while, for, `loop N`, break/continue, return, recursion,
+  text params and text returns. Arrays, tuples, structs, foreach, switch,
+  closures/lambdas, defer/try trigger a clean `CompileError`
+  ("asm backend v1: …"), never silent miscompile.
+- **Scheduling invariants (mirroring the C emitter's ownership model):**
+  - every text expression leaves an *owned* `sd_str*` (+1) in `rax`; consumers
+    drop it exactly once. Locals own their slot value (release at epilogue,
+    zero-initialized at frame entry, release-before-store for re-executed
+    declarations inside loops); params are borrowed (callee retains for use,
+    caller drops the arg's +1 after the call from a per-call-site parking
+    slot reserved at scan time).
+  - stack push/pop argument spilling: pops are *positional*, so values are
+    never left in `rax` across a release call — every value consumed after a
+    release sequence is parked in a slot first (return values ride the
+    ret-slot, which parent frames reload after their text releases).
+  - `pending` counter tracks in-flight stack spills for 16-byte alignment
+    (`sub/add rsp,8` around odd-pending calls); printf gets `movl $xmm_count,
+    %eax`; text args to printf pack as (len, data) word pairs.
+  - labels are file-unique (backend-wide counter, `.L` prefix); GAS treats
+    even `.L` names as file-scope definitions, per-function counters collide.
+- **Block scoping:** declarations are scoped like the C path (sibling
+  branches/loops may redeclare; for-headers scope to header+body). Slots are
+  allocated per declaration node (`decl_slots_` map); both scan and emit passes
+  snapshot/restore the name map around block scopes; loop-body `let`s are
+  correct across iterations (release-before-store).
+- **Tests:** `tests/run_backend_diff.sh [--valgrind]` — differential suite over
+  `tests/backend_diff/*.hmx` (arithmetic, control_flow, functions, text,
+  block_scoping) requiring byte-identical stdout + equal exit codes vs the C
+  backend, plus 7 asm-backend negative cases (arrays, structs, foreach,
+  switch, defer, lambda, tuples) that must error cleanly, and an optional
+  valgrind gate over the asm-produced binaries. All 5/7/5 pass.
+- **Gates:** the four native suites unchanged (68/274/149/33), valgrind 74/74,
+  UBSan 3/3, web parity verbatim, vitest 505/505.
+
 ## Known issues / deferred
 - Type parameters on **`alias`** and **`enum`** declarations, variadic generic
   parameters, explicit instantiation syntax, and constraints/traits remain

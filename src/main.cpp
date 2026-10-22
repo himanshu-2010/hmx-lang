@@ -91,6 +91,7 @@ static const char* signal_name(int sig) {
 #include "ast.hpp"
 #include "type_resolver.hpp"
 #include "codegen.hpp"
+#include "backend.hpp"
 
 extern FILE* yyin;
 extern int yyparse();
@@ -108,8 +109,10 @@ static void print_usage(FILE* out) {
     fprintf(out, "  hmx -v | --version           Show the version\n");
     fprintf(out, "\n");
     fprintf(out, "Options:\n");
-    fprintf(out, "  -keep-c                Keep the intermediate .c file\n");
+    fprintf(out, "  -keep-c                Keep the intermediate .c/.s file\n");
     fprintf(out, "  -o <output>            Output binary path (with build)\n");
+    fprintf(out, "  -b <c|asm>             Code generator (default: c; asm = x86-64\n");
+    fprintf(out, "                         backend v1, reduced-feature — see SYNTAX/PROGRESS)\n");
     fprintf(out, "\n");
     fprintf(out, "HMX transpiles to C and needs a C compiler (gcc, cc or clang).\n");
 }
@@ -338,6 +341,7 @@ int main(int argc, char* argv[]) {
     std::string source_file;
     bool keep_c = false;
     std::string out_override;
+    std::string backend = "c";
 
     int i = 1;
     if (a1 == "run" || a1 == "build") {
@@ -360,6 +364,20 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             out_override = argv[++i];
+        } else if (a == "-b" || a == "--backend") {
+            // P3 (ADR 0004): `asm` = the x86-64 System V backend v1. Default
+            // stays the C emitter; the asm backend is a reduced-feature
+            // Tier A shim and reports anything it cannot lower as a clean
+            // compile error instead of a miscompile.
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: %s requires a backend name (c or asm)\n", a.c_str());
+                return 1;
+            }
+            backend = argv[++i];
+            if (backend != "c" && backend != "asm") {
+                fprintf(stderr, "Error: unknown backend '%s' (expected 'c' or 'asm')\n", backend.c_str());
+                return 1;
+            }
         } else if (a == "-h" || a == "--help") {
             print_usage(stdout);
             return 0;
@@ -424,14 +442,22 @@ int main(int argc, char* argv[]) {
     CodeGen codegen;
     std::string c_source;
     try {
-        c_source = codegen.generate(*program, source_file);
+        if (backend == "asm") {
+            // P3 (ADR 0004): x86-64 System V backend v1 (Tier A shim: assembly
+            // text + system toolchain). Same resolved program, checks, and
+            // compile errors as the C path.
+            c_source = emit_asm(*program, source_file);
+        } else {
+            c_source = codegen.generate(*program, source_file);
+        }
     } catch (const CompileError& e) {
         fprintf(stderr, "%s\n", e.what());
         return 1;
     }
 
     std::string base = get_basename(source_file);
-    std::string c_path = "build_temp.c";
+    std::string src_ext = (backend == "asm") ? ".s" : ".c";
+    std::string c_path = "build_temp" + src_ext;
     std::string exe_path = out_override.empty() ? base : out_override;
 
 #ifdef _WIN32
@@ -482,14 +508,25 @@ int main(int argc, char* argv[]) {
     // prebuilt libhmxrt.a. Under sanitizer builds the runtime itself must be
     // instrumented — the ASan/LeSan/UBSan gates exercise the refcounted
     // runtime — so we compile runtime/hxrt.c from source in that case.
+    // P3: the asm backend assembles the .s text and links the runtime as its
+    // own translation unit (plain C ABI, no sanitizer support in v1).
     std::string rt_inc = " -I\"" HMX_RUNTIME_INC "\"";
     std::string rt_lib = " \"" HMX_RUNTIME_LIB "\"";
-    std::string cc_cmd = cc + " -O2" + rt_inc + " -o " + exe_path + " " + c_path + rt_lib + " 2>&1";
+    std::string cc_cmd;
+    if (backend == "asm") {
+        cc_cmd = cc + " -O2" + " -o " + exe_path + " " + c_path + " \"" HMX_RUNTIME_SRC "\"" + " 2>&1";
+    } else {
+        cc_cmd = cc + " -O2" + rt_inc + " -o " + exe_path + " " + c_path + rt_lib + " 2>&1";
+    }
     const char* asan_env = getenv("HMX_ASAN");
     const char* ubsan_env = getenv("HMX_UBSAN");
     bool want_asan = asan_env && asan_env[0] != '\0' && std::strcmp(asan_env, "0") != 0;
     bool want_ubsan = ubsan_env && ubsan_env[0] != '\0' && std::strcmp(ubsan_env, "0") != 0;
     if (want_asan || want_ubsan) {
+        if (backend == "asm") {
+            fprintf(stderr, "Error: sanitizer builds require the default C backend (-b c)\n");
+            return 1;
+        }
         std::string flags;
         if (want_asan) flags += " -fsanitize=address -fno-omit-frame-pointer";
         if (want_ubsan) flags += " -fsanitize=undefined -fno-sanitize-recover=all";

@@ -1,0 +1,41 @@
+fn main() -> int {
+    print(7 + 3)
+    print(7 - 3)
+    print(7 * 3)
+    print(7 / 3)
+    print(7 % 3)
+    print((7 + 3) * (11 - 4))
+    print(2 + 3 * 4 - 6 / 2)
+    print(-8)
+    print(-(-5))
+    print(42 / 10)
+    print(101 % 7)
+    let x = 5
+    let y = 12
+    print(x + y)
+    print(y - x)
+    print(x * y)
+    print(y / x)
+    print(y % x)
+    x += 10
+    print(x)
+    y -= 3
+    print(y)
+    x *= 2
+    print(x)
+    x /= 4
+    print(x)
+    y %= 5
+    print(y)
+    print(10 == 10)
+    print(10 != 10)
+    print(1 < 2)
+    print(2 < 1)
+    print(2 <= 2)
+    print(3 <= 2)
+    print(4 > 3)
+    print(3 > 4)
+    print(3 >= 3)
+    print(2 >= 3)
+    return 27
+}

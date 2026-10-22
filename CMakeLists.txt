@@ -21,6 +21,7 @@ add_executable(hmx
     src/main.cpp
     src/ast.cpp
     src/ir.cpp
+    src/backend.cpp
     src/type_resolver.cpp
     src/codegen.cpp
     ${FLEX_Lexer_OUTPUTS}
