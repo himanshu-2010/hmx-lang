@@ -94,7 +94,7 @@ uv_checked=0
 for c in cc gcc clang; do
     command -v "$c" >/dev/null 2>&1 || continue
     uv_checked=$((uv_checked+1))
-    uv_out="$( "$c" -O2 -Werror=unused-value -fsyntax-only build_temp.c 2>&1 )" && uv_code=0 || uv_code=$?
+    uv_out="$( "$c" -O2 -I"$REPO/runtime" -Werror=unused-value -fsyntax-only build_temp.c 2>&1 )" && uv_code=0 || uv_code=$?
     if [ "$uv_code" = 0 ]; then
         echo "PASS (CLI): generated C has no unused-value warning ($c)"
         PASS=$((PASS+1))
@@ -172,7 +172,7 @@ case "$(uname -s)" in
       for c in cc gcc clang; do
         command -v "$c" >/dev/null 2>&1 || continue
         ln_checked=$((ln_checked+1))
-        ln_out="$( "$c" -O2 -fsyntax-only build_temp.c 2>&1 )" || true
+        ln_out="$( "$c" -O2 -I"$REPO/runtime" -fsyntax-only build_temp.c 2>&1 )" || true
         if printf '%s' "$ln_out" | grep -q "unknown escape sequence"; then
           echo "FAIL (CLI): #line filename is not escaped for a backslash path ($c)"
           printf '%s' "$ln_out" | grep "unknown escape" | head -3 | sed 's/^/   /'

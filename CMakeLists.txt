@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(hmx VERSION 0.10.0 LANGUAGES CXX)
+project(hmx VERSION 0.10.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,6 +25,20 @@ add_executable(hmx
     src/codegen.cpp
     ${FLEX_Lexer_OUTPUTS}
     ${BISON_Parser_OUTPUTS}
+)
+
+# ── P2 (ADR 0004): shared runtime ────────────────────────────────────
+# Built once here instead of being emitted inline into every generated
+# build_temp.c. User programs include runtime/hxrt.h and link libhmxrt.a,
+# which the compiler binary tells the host C compiler about through
+# HMX_RUNTIME_INC / HMX_RUNTIME_LIB paths baked in at hmx's build time.
+add_library(hmxrt STATIC runtime/hxrt.c)
+target_include_directories(hmxrt PRIVATE ${CMAKE_SOURCE_DIR}/runtime)
+add_dependencies(hmx hmxrt)
+target_compile_definitions(hmx PRIVATE
+    HMX_RUNTIME_INC="${CMAKE_SOURCE_DIR}/runtime"
+    HMX_RUNTIME_LIB="$<TARGET_FILE:hmxrt>"
+    HMX_RUNTIME_SRC="${CMAKE_SOURCE_DIR}/runtime/hxrt.c"
 )
 
 target_include_directories(hmx PRIVATE
@@ -90,6 +104,8 @@ endif()
 # ── Install ─────────────────────────────────────────────────
 include(GNUInstallDirs)
 install(TARGETS hmx RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS hmxrt ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(FILES ${CMAKE_SOURCE_DIR}/runtime/hxrt.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${CMAKE_SOURCE_DIR}/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR})
 
 # ── Packaging (cpack -G DEB) ────────────────────────────────

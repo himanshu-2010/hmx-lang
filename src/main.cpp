@@ -478,7 +478,13 @@ int main(int argc, char* argv[]) {
     // the program instead of silently producing a wrong answer. The CI
     // workflows use these to gate refcount errors/leaks and latent UB in the
     // reference-counted runtime. The two compose.
-    std::string cc_cmd = cc + " -O2 -o " + exe_path + " " + c_path + " 2>&1";
+    // P2 (ADR 0004): generated programs include runtime/hxrt.h and link the
+    // prebuilt libhmxrt.a. Under sanitizer builds the runtime itself must be
+    // instrumented — the ASan/LeSan/UBSan gates exercise the refcounted
+    // runtime — so we compile runtime/hxrt.c from source in that case.
+    std::string rt_inc = " -I\"" HMX_RUNTIME_INC "\"";
+    std::string rt_lib = " \"" HMX_RUNTIME_LIB "\"";
+    std::string cc_cmd = cc + " -O2" + rt_inc + " -o " + exe_path + " " + c_path + rt_lib + " 2>&1";
     const char* asan_env = getenv("HMX_ASAN");
     const char* ubsan_env = getenv("HMX_UBSAN");
     bool want_asan = asan_env && asan_env[0] != '\0' && std::strcmp(asan_env, "0") != 0;
@@ -487,7 +493,8 @@ int main(int argc, char* argv[]) {
         std::string flags;
         if (want_asan) flags += " -fsanitize=address -fno-omit-frame-pointer";
         if (want_ubsan) flags += " -fsanitize=undefined -fno-sanitize-recover=all";
-        cc_cmd = cc + " -O1 -g" + flags + " -o " + exe_path + " " + c_path + " 2>&1";
+        cc_cmd = cc + " -O1 -g" + flags + rt_inc + " -o " + exe_path + " " + c_path
+                 + " \"" HMX_RUNTIME_SRC "\"" + " 2>&1";
     }
     int cc_result = system(cc_cmd.c_str());
 
