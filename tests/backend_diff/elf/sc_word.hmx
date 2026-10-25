@@ -1,0 +1,52 @@
+fn main() -> int {
+    let c = true
+    if (c) {
+        let x = 1
+        print(x)
+    } else {
+        let x = 2
+        print(x)
+    }
+    if (!c) {
+        let x = 3
+        print(x)
+    } else {
+        let y = 4
+        print(y)
+    }
+    for (let i = 0; i < 2; i += 1) {
+        print(1)
+    }
+    for (let i = 0; i < 2; i += 1) {
+        print(2)
+    }
+    let rounds = 0
+    while (rounds < 2) {
+        let tag = 10
+        print(tag)
+        rounds += 1
+    }
+    let hits = 0
+    do {
+        let tag = 11
+        print(tag)
+        hits += 1
+    } while (hits < 2)
+    loop (2) {
+        let msg = 12
+        print(msg)
+    }
+    let touched = false
+    for (let k = 0; k < 3; k += 1) {
+        if (k == 1) {
+            let inner = 13
+            print(inner)
+            touched = true
+        } else {
+            let inner = 14
+            print(inner)
+        }
+    }
+    print(touched)
+    return 0
+}

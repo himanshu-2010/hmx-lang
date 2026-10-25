@@ -1827,6 +1827,50 @@ each distinct type-argument list becomes its own concrete struct.
 - **Gates:** unchanged counts (68/274/149/33), diff 5/7/5 valgrind-clean,
   web parity verbatim, vitest 505/505.
 
+## P5a — ELF backend v0 (machine-code encoder + static ELF writer)
+
+- **`src/backend/encoder.{hpp,cpp}`** — explicit x86-64 byte encoder for the
+  exact instruction forms the ELF path needs (mov forms, ALU family both
+  directions + imm, imul/cqo/idiv, setcc/jcc shared cc table, call/jmp rel32).
+  Labels: ids with rel32 fixups; backward branches write displacements
+  directly, forward ones patch at bind; `finish()` fails loudly if anything
+  stays unbound (a broken backend cannot silently emit bytes).
+- **`src/backend/elf_writer.{hpp,cpp}`** — static ET_EXEC x86-64: ELF header +
+  one PT_LOAD (R+X, vaddr 0x400000, the whole file) + PT_GNU_STACK (RW).
+  Everything before the image is fixed (176 bytes) so the entry stub sits at
+  `0x400000 + 0` in image coordinates.
+- **`src/backend/elf_backend.{hpp,cpp}`** — ELF backend v0 (`-b elf`). Mirrors
+  the P3 asm backend's scheduling (frames, scope snapshot/restore, loop
+  labels, pending-alignment, call plans) but emits encoded bytes; labels are
+  ids. Word-only subset: int/bool/char values, arithmetic, comparisons, logic,
+  conditional, casts (int↔char), `ord`, user calls (≤6 word args), let/assign
+  (incl. compound/++/--), print (word args), if/while/do-while/for/loop N,
+  break/continue/return. Everything else: clean CompileError with the source
+  line. Return parking slot + `_start` stub (`call main; exit_group(eax)`).
+- **`runtime/elfrt/enc_rt.c`** — freestanding helper runtime, compiled at
+  COMPILER build time (`-ffreestanding -nostdlib`) and linked into a flat
+  image (`tools/elfrtgen.c` + CMake custom command) embedded into the compiler
+  binary; `-b elf` appends the image verbatim after generated code and binds
+  call sites via the nm symbol offsets. Bytes stay exact because all
+  references inside the image are position-relative. Helpers: `_hmx_w_i64`
+  (glibc `%d`-shape digits via raw `write(2)` syscalls), `_hmx_w_char`
+  (one byte, `%c`/unsigned-char semantics), `_hmx_write`, `_hmx_panic_chr`
+  (message + exit code 1 matching hxrt's `_sd_panicf`).
+- **`-b elf` wiring** (`main.cpp`): backend accepted in flag/env resolution,
+  validates like the others; writes the executable directly (chmod 0755),
+  runs it with the same fork/exec + WIFSIGNALED crash contract, rejects
+  sanitizer builds (C-emitter gate only).
+- **Differential gate** — `tests/run_elf_diff.sh` + `tests/backend_diff/elf/`
+  (arith/cf/fn/block-scoping/words fixtures): stdout byte-identical + equal
+  exit codes vs `-b c` (5/5), plus 9 negative CompileError cases (text,
+  decimal, chr panic path, arrays, structs, switch, defer, lambda, closures).
+- **New repo: under hmx-lang for now; the direct-backend repo vendored it next
+  (`hmx-compiler` vendors `src/`, `runtime/`, CMakeLists fully, so `-b elf`
+  rode along automatically). No C compiler/assembler/linker touches user
+  programs on `-b elf` — WebAssembly/std-elf toolchain independence begins.
+- **Gates:** 68/274/149/33, valgrind 74/74, UBSan 3/3, web parity verbatim,
+  vitest 505/505, oxlint clean.
+
 ## Known issues / deferred
 - Type parameters on **`alias`** and **`enum`** declarations, variadic generic
   parameters, explicit instantiation syntax, and constraints/traits remain

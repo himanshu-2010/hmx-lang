@@ -28,6 +28,44 @@ add_executable(hmx
     ${BISON_Parser_OUTPUTS}
 )
 
+# ── P5a (ADR 0004): freestanding ELF runtime image ──────────────────
+# runtime/elfrt/enc_rt.c is compiled once at hmx build time (freestanding,
+# no libc) and linked into a tiny flat image whose bytes are embedded into
+# the compiler binary; every -b elf program gets those bytes appended after
+# its generated code. tools/elfrtgen turns the image + nm symbols into a
+# generated C++ source the backend #includes.
+add_executable(elfrtgen tools/elfrtgen.c)
+set(ELFRT_CC ${CMAKE_C_COMPILER})
+set(ELFRT_OBJ ${CMAKE_CURRENT_BINARY_DIR}/enc_rt.o)
+set(ELFRT_ELF ${CMAKE_CURRENT_BINARY_DIR}/enc_rt.elf)
+set(ELFRT_BIN ${CMAKE_CURRENT_BINARY_DIR}/enc_rt.bin)
+set(ELFRT_SYMS ${CMAKE_CURRENT_BINARY_DIR}/enc_rt.syms)
+set(ELFRT_BLOB ${CMAKE_CURRENT_BINARY_DIR}/encrt_blob.cpp)
+add_custom_command(
+    OUTPUT ${ELFRT_BLOB}
+    COMMAND ${ELFRT_CC} -c -O2 -ffreestanding -fno-builtin -fno-stack-protector
+            -fno-asynchronous-unwind-tables -fno-plt -fno-ident
+            -fcf-protection=none -o ${ELFRT_OBJ}
+            ${CMAKE_SOURCE_DIR}/runtime/elfrt/enc_rt.c
+    COMMAND ${CMAKE_LINKER} -nostdlib -Ttext=0 -o ${ELFRT_ELF} ${ELFRT_OBJ}
+    COMMAND ${CMAKE_OBJCOPY} -O binary ${ELFRT_ELF} ${ELFRT_BIN}
+    COMMAND sh -c "nm --defined-only -n ${ELFRT_ELF} > ${ELFRT_SYMS}"
+    COMMAND elfrtgen ${ELFRT_BIN} ${ELFRT_SYMS} ${ELFRT_BLOB}
+            _hmx_w_char _hmx_w_i64
+    DEPENDS elfrtgen ${ELFRT_CC}
+            ${CMAKE_SOURCE_DIR}/runtime/elfrt/enc_rt.c
+    COMMENT "elfrt: embedding freestanding runtime image into the compiler"
+    VERBATIM
+)
+target_include_directories(hmx PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_sources(hmx PRIVATE
+    src/backend/encoder.cpp
+    src/backend/elf_writer.cpp
+    src/backend/elf_backend.cpp
+)
+# The ${ELFRT_BLOB} is included into elf_backend.cpp (single TU), so it is
+# kept out of target_sources on purpose.
+
 # ── P2 (ADR 0004): shared runtime ────────────────────────────────────
 # Built once here instead of being emitted inline into every generated
 # build_temp.c. User programs include runtime/hxrt.h and link libhmxrt.a,

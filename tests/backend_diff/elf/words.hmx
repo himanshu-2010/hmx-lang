@@ -1,0 +1,31 @@
+fn main() -> int {
+    print('A')
+    print('Z' as int)
+    let c = 'q'
+    print(c as int)
+    // ord: unsigned byte value of a char
+    print(ord('A'))
+    print(ord(c))
+    // 65 as char: int -> char truncation + sign extension
+    print(65 as char)
+    // chars in comparisons (word semantics)
+    let d = 'B'
+    print(c < d)
+    print(c == d)
+    // bool canonicalization through logic ops
+    print(true && true)
+    print(true && false)
+    print(false || true)
+    print(!false)
+    // conditional expression stays word-shape
+    let n = 7
+    print((n > 5) ? (1) : (2))
+    // ++/-- statements
+    let k = 5
+    k += 1
+    k += 1
+    print(k)
+    k -= 3
+    print(k)
+    return 33
+}

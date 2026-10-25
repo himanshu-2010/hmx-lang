@@ -33,6 +33,9 @@
 // the value as-is instead; see the _WIN32 branch in run_file().
 #ifndef _WIN32
 #include <sys/wait.h>
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 #endif
 
 // Human-readable name for a termination signal (avoids strsignal's dependency
@@ -92,6 +95,9 @@ static const char* signal_name(int sig) {
 #include "type_resolver.hpp"
 #include "codegen.hpp"
 #include "backend.hpp"
+#include "backend/elf_backend.hpp"
+
+namespace backend_ns = backend;   // elf backend (P5a Tier B) entry point
 
 extern FILE* yyin;
 extern int yyparse();
@@ -398,13 +404,15 @@ int main(int argc, char* argv[]) {
             // permanently as the sanitizer host and differential oracle
             // (ADR 0004). The asm backend reports anything it cannot lower as
             // a clean compile error instead of a miscompile.
+            // `elf` = the P5a Tier B path: machine-code encoder + static ELF
+            // writer with an embedded freestanding runtime (no toolchain).
             if (i + 1 >= argc) {
-                fprintf(stderr, "Error: %s requires a backend name (c or asm)\n", a.c_str());
+                fprintf(stderr, "Error: %s requires a backend name (c, asm or elf)\n", a.c_str());
                 return 1;
             }
             backend = argv[++i];
-            if (backend != "c" && backend != "asm") {
-                fprintf(stderr, "Error: unknown backend '%s' (expected 'c' or 'asm')\n", backend.c_str());
+            if (backend != "c" && backend != "asm" && backend != "elf") {
+                fprintf(stderr, "Error: unknown backend '%s' (expected 'c', 'asm' or 'elf')\n", backend.c_str());
                 return 1;
             }
         } else if (a == "-h" || a == "--help") {
@@ -468,6 +476,95 @@ int main(int argc, char* argv[]) {
                                std::make_move_iterator(module_stmts.end()));
     g_program = program;
 
+    // ── elf backend (P5a Tier B) ────────────────────────────────────────────
+    // Emits machine code directly and writes a self-contained static ELF with
+    // an embedded freestanding runtime. No C compiler, assembler or linker
+    // takes part in the user-program path; sanitizers are a C-emitter gate.
+    if (backend == "elf") {
+        const char* asan_env = getenv("HMX_ASAN");
+        const char* ubsan_env = getenv("HMX_UBSAN");
+        bool want_san = (asan_env && asan_env[0] != '\0' && std::strcmp(asan_env, "0") != 0) ||
+                        (ubsan_env && ubsan_env[0] != '\0' && std::strcmp(ubsan_env, "0") != 0);
+        if (want_san) {
+            fprintf(stderr, "Error: sanitizer builds require the default C backend (-b c)\n");
+            return 1;
+        }
+        std::string base = get_basename(source_file);
+        std::string exe_path = out_override.empty() ? base : out_override;
+#ifdef _WIN32
+        if (exe_path.size() < 4 || exe_path.compare(exe_path.size() - 4, 4, ".exe") != 0) {
+            exe_path += ".exe";
+        }
+#endif
+        std::vector<uint8_t> binary;
+        try {
+            binary = backend_ns::emit_elf(*program, source_file);
+        } catch (const CompileError& e) {
+            fprintf(stderr, "%s\n", e.what());
+            return 1;
+        }
+        std::ofstream out(exe_path, std::ios::binary);
+        if (!out) {
+            fprintf(stderr, "Error: cannot write %s\n", exe_path.c_str());
+            return 1;
+        }
+        out.write(reinterpret_cast<const char*>(binary.data()),
+                  (std::streamsize)binary.size());
+        out.close();
+        if (!out) {
+            fprintf(stderr, "Error: failed while writing %s\n", exe_path.c_str());
+            return 1;
+        }
+        // The raw-bytes write does not carry the exec bit; set it explicitly.
+#ifndef _WIN32
+        if (chmod(exe_path.c_str(), 0755) != 0) {
+            fprintf(stderr, "Error: cannot make %s executable\n", exe_path.c_str());
+            return 1;
+        }
+#endif
+
+        if (command == "run") {
+            int exit_code;
+#ifndef _WIN32
+            // Same fork/exec contract as the C path: real signal deaths stay
+            // visible (WIFSIGNALED), exit codes pass through untouched.
+            std::string run_cmd = "./" + exe_path;
+            pid_t pid = fork();
+            if (pid == 0) {
+                execlp(run_cmd.c_str(), run_cmd.c_str(), (char*)nullptr);
+                fprintf(stderr, "Error: failed to execute %s\n", run_cmd.c_str());
+                _exit(127);
+            }
+            int status = 0;
+            while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+            if (WIFEXITED(status)) {
+                exit_code = WEXITSTATUS(status);
+            } else if (WIFSIGNALED(status)) {
+                int sig = WTERMSIG(status);
+                fprintf(stderr, "Error: program crashed with signal %d (%s)\n",
+                        sig, signal_name(sig));
+                exit_code = 128 + sig;
+            } else {
+                fprintf(stderr, "Error: program terminated abnormally\n");
+                exit_code = 1;
+            }
+#else
+            std::string run_cmd = exe_path;
+            int run_result = system(run_cmd.c_str());
+            if (run_result == -1) {
+                fprintf(stderr, "Error: failed to execute %s\n", run_cmd.c_str());
+                exit_code = 127;
+            } else {
+                exit_code = run_result;
+            }
+#endif
+            remove(exe_path.c_str());
+            return exit_code;
+        }
+        fprintf(stderr, "Built: %s\n", exe_path.c_str());
+        return 0;
+    }
+
     CodeGen codegen;
     std::string c_source;
     try {
@@ -494,6 +591,7 @@ int main(int argc, char* argv[]) {
         exe_path += ".exe";
     }
 #endif
+
 
     std::string cc = find_c_compiler();
     if (cc.empty()) {
