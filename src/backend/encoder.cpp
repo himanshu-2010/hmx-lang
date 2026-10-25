@@ -145,6 +145,26 @@ void Encoder::mov_r_r(int dst, int src) {
     emit_modrm(3, src, dst);
 }
 
+// lea dst, [rip+disp32]: mod=00 rm=101 → RIP-relative; rel32 patched to the
+// label (write_rel computes rel = target - (stored position + 4), which is
+// exactly the RIP-relative displacement since RIP = stored position + 4).
+void Encoder::lea_rip(int dst, int label) {
+    emit_rex(true, dst, -1, -1);    // REX.W + REX.R when dst >= 8
+    emit8(0x8D);
+    emit_modrm(0, dst, 5);
+    write_rel(label);
+}
+
+// RIP-relative MOVSD load: mod=00 rm=101 → [rip+disp32]; rel32 patched to
+// the pool label (same displacement accounting as lea_rip).
+void Encoder::movsd_rip_xmm(int xmm, int label) {
+    emit_rex(false, xmm, -1, -1);   // REX.R when xmm >= 8
+    emit8(0xF2);
+    emit8(0x0F);
+    emit8(0x10);
+    emit_modrm(0, xmm, 5);
+    write_rel(label);
+}
 void Encoder::mov_r_mem(int dst, int base, int32_t disp) {
     emit_rex_w(true, dst, base);
     emit8(0x8B);                    // MOV r64, r/m64
@@ -167,6 +187,16 @@ void Encoder::movsx_q_b(int dst, int src) {
     emit_rex_w(true, dst, src);
     emit8(0x0F); emit8(0xBE);       // MOVSX r64, r/m8
     emit_modrm(3, dst, src);
+}
+
+// movsbq dst, [base + index*1] — the SIB form the s[i] payload load uses.
+// mod=10 (disp32=0) so the SIB byte can encode base+index; scale = 1.
+void Encoder::movsx_q_memidx(int dst, int base, int index) {
+    emit_rex(true, dst, index, base);
+    emit8(0x0F); emit8(0xBE);
+    emit_modrm(2, dst, 4);                 // rm=101x → SIB byte follows
+    emit8(uint8_t(((index & 7) << 3) | (base & 7)));
+    emit_disp32(0);
 }
 
 // ── ALU ─────────────────────────────────────────────────────────────────────
@@ -281,5 +311,68 @@ void Encoder::mov_eax_imm(int32_t v) {
 
 void Encoder::mov_rsi_r(int r) { mov_r_r(RSI, r); }
 void Encoder::mov_rdi_r(int r) { mov_r_r(RDI, r); }
+
+// ── SSE2 (single-precision-shape prefixes; one fixed operand shape each) ─────
+// Memory operand = [base + disp32]; register operand = mod=11.
+
+void Encoder::movsd_xmm_mem(int xmm, int base, int32_t disp) {
+    emit_rex(false, xmm, -1, base); // REX.R for xmm >= 8, REX.B for base >= 8
+    emit8(0xF2); emit8(0x0F); emit8(0x10);   // MOVSD xmm, r/m64
+    emit_mem(xmm, base, disp);
+}
+
+void Encoder::movsd_mem_xmm(int base, int32_t disp, int xmm) {
+    emit_rex(false, xmm, -1, base);
+    emit8(0xF2); emit8(0x0F); emit8(0x11);   // MOVSD r/m64, xmm
+    emit_mem(xmm, base, disp);
+}
+
+// MOVSD xmm2 ← xmm1 with reg = dst (F2 0F 10 on mod=11 loads reg from rm).
+void Encoder::movsd_xmm_xmm(int dst, int src) {
+    emit_rex(false, dst, -1, src);
+    emit8(0xF2); emit8(0x0F); emit8(0x10);
+    emit_modrm(3, dst, src);
+}
+
+// dst = dst <op> src, reg field = dst (ADDSD/SUBSD/MULSD/DIVSD F2 0F 58/5C/59/5E).
+void Encoder::addsd_rr(int dst, int src) {
+    emit_rex(false, dst, -1, src);
+    emit8(0xF2); emit8(0x0F); emit8(0x58);
+    emit_modrm(3, dst, src);
+}
+
+void Encoder::subsd_rr(int dst, int src) {
+    emit_rex(false, dst, -1, src);
+    emit8(0xF2); emit8(0x0F); emit8(0x5C);
+    emit_modrm(3, dst, src);
+}
+
+void Encoder::mulsd_rr(int dst, int src) {
+    emit_rex(false, dst, -1, src);
+    emit8(0xF2); emit8(0x0F); emit8(0x59);
+    emit_modrm(3, dst, src);
+}
+
+void Encoder::divsd_rr(int dst, int src) {
+    emit_rex(false, dst, -1, src);
+    emit8(0xF2); emit8(0x0F); emit8(0x5E);
+    emit_modrm(3, dst, src);
+}
+
+// XORPD: bitwise xor (used for the -0.0 sign flip in unary minus).
+void Encoder::xorpd_rr(int dst, int src) {
+    emit_rex(false, dst, -1, src);
+    emit8(0x66); emit8(0x0F); emit8(0x57);
+    emit_modrm(3, dst, src);
+}
+
+// UCOMISD: compares dst against src, ZF/PF/CF as for an unordered-capable
+// compare. dst is the left operand of the comparison.
+void Encoder::ucomisd_rr(int dst, int src) {
+    emit_rex(false, dst, -1, src);
+    emit8(0x66); emit8(0x0F); emit8(0x2E);
+    emit_modrm(3, dst, src);
+}
+
 
 }  // namespace backend

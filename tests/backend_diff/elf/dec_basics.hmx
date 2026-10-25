@@ -1,0 +1,48 @@
+// Differential fixture: decimals on the direct-encode path.
+// Covers literals, arithmetic (incl. unary minus), comparisons (NaN-free
+// cases), mixed word/decimal/text prints, decimal parameters and returns,
+// conditionals whose branches are decimals, and %f formatting shapes.
+fn scale(f: decimal, k: decimal) -> decimal {
+    return f * k
+}
+fn classify(d: decimal) -> int {
+    if (d > 100.0) {
+        return 2
+    }
+    if (d > 10.0) {
+        return 1
+    }
+    return 0
+}
+fn main() -> int {
+    let a = 0.5
+    let b = 0.25
+    print(a + b)
+    print(a - b)
+    print(a * b)
+    print(a / b)
+    print(-a)
+    print(a == 0.5)
+    print(a != 0.5)
+    print(a < b)
+    print(a <= b)
+    print(a > b)
+    print(a >= b)
+    print(scale(1.25, 4.0))
+    print(classify(5.5), classify(50.5), classify(500.5))
+    print(1234.5, true, 'z', "mix", 3.14159)
+    let g = a > b ? a : b
+    print(g)
+    print(1.0 / 3.0)
+    print(2.0 / 3.0)
+    print(100.0 * 1.5)
+    print(0.1 + 0.2)
+    loop (2) {
+        print(1.5)
+    }
+    for (let i = 0; i < 2; i += 1) {
+        let half = 0.5 * 1.0
+        print(half + 0.25)
+    }
+    return 0
+}

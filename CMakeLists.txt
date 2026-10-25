@@ -45,13 +45,16 @@ add_custom_command(
     OUTPUT ${ELFRT_BLOB}
     COMMAND ${ELFRT_CC} -c -O2 -ffreestanding -fno-builtin -fno-stack-protector
             -fno-asynchronous-unwind-tables -fno-plt -fno-ident
+            -fno-tree-loop-distribute-patterns
             -fcf-protection=none -o ${ELFRT_OBJ}
             ${CMAKE_SOURCE_DIR}/runtime/elfrt/enc_rt.c
     COMMAND ${CMAKE_LINKER} -nostdlib -Ttext=0 -o ${ELFRT_ELF} ${ELFRT_OBJ}
     COMMAND ${CMAKE_OBJCOPY} -O binary ${ELFRT_ELF} ${ELFRT_BIN}
     COMMAND sh -c "nm --defined-only -n ${ELFRT_ELF} > ${ELFRT_SYMS}"
     COMMAND elfrtgen ${ELFRT_BIN} ${ELFRT_SYMS} ${ELFRT_BLOB}
-            _hmx_w_char _hmx_w_i64
+            _hmx_w_char _hmx_w_i64 _hmx_w_f64 _hmx_w_text _hmx_panic_chr
+            sd_make_str sd_retain_str sd_release_str sd_concat sd_str_equals
+            sd_str_cmp sd_str_view sd_check_index
     DEPENDS elfrtgen ${ELFRT_CC}
             ${CMAKE_SOURCE_DIR}/runtime/elfrt/enc_rt.c
     COMMENT "elfrt: embedding freestanding runtime image into the compiler"

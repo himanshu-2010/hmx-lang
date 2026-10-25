@@ -131,9 +131,10 @@ static void print_usage(FILE* out) {
     fprintf(out, "Options:\n");
     fprintf(out, "  -keep-c                Keep the intermediate .c/.s file\n");
     fprintf(out, "  -o <output>            Output binary path (with build)\n");
-    fprintf(out, "  -b <c|asm>             Code generator (default: %s; asm = x86-64\n",
+    fprintf(out, "  -b <c|asm|elf>         Code generator (default: %s; asm = x86-64\n",
             default_backend());
-    fprintf(out, "                         backend v1, reduced-feature — see SYNTAX/PROGRESS)\n");
+    fprintf(out, "                         backend v1, reduced-feature; elf = static machine-code\n");
+    fprintf(out, "                         binary, reduced-feature — see SYNTAX/PROGRESS)\n");
     fprintf(out, "\n");
     fprintf(out, "HMX transpiles to C%s.\n",
             default_backend() == std::string("asm")

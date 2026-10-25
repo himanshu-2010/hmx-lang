@@ -66,8 +66,8 @@ done
 
 echo "== default backend sanity =="
 usage_shown=$("$HMX" -h) || true
-if ! printf '%s' "$usage_shown" | grep -q '\-b <c|asm>' || \
-   ! printf '%s' "$usage_shown" | grep -Eq 'default: (c|asm)'; then
+if ! printf '%s' "$usage_shown" | grep -q '\-b <c|asm|elf>' || \
+   ! printf '%s' "$usage_shown" | grep -Eq 'default: (c|asm|elf)'; then
     echo "FAIL usage text (missing backend/default line)"
     fail=$((fail + 1))
 else

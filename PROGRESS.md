@@ -1871,6 +1871,92 @@ each distinct type-argument list becomes its own concrete struct.
 - **Gates:** 68/274/149/33, valgrind 74/74, UBSan 3/3, web parity verbatim,
   vitest 505/505, oxlint clean.
 
+## P5b — ELF backend v1: decimal + text on the direct-encode path
+
+- **`runtime/elfrt/enc_rt.c` grew the v1 surface** (still freestanding, zero
+  libc, no file-scope mutable state because objcopy's binary dump skips
+  `.bss`):
+  - **Allocator** — one anonymous `mmap` per allocation (SYS_mmap/
+    SYS_munmap via inline syscalls), mapping length stashed at the block
+    base. No reuse, so a use-after-free cannot corrupt live data and the
+    differential gate stays honest; fixture workloads make a few thousand
+    allocations.
+  - **Refcounted text ABI port of hxrt** — `sd_str` layout refs@0/owner@8/
+    len@16/data@24 kept byte-identical (codegen derefs len/data at +16/+24);
+    `sd_make_str` (payload rides inside the header allocation),
+    `sd_retain_str`, `sd_release_str` (owner chain, then free),
+    `sd_concat` (length-overflow check), `sd_str_view` (O(1) view pinning
+    the base through owner; out-of-bounds = silent `exit(1)` parity),
+    `sd_str_equals`/`sd_str_cmp` (length-aware, views are not
+    NUL-terminated), `sd_check_index` (hxrt's exact panic text:
+    `Error: array index out of bounds (index %d, length %d)` + exit 1).
+  - **Byte-exact `%f`** — `_hmx_w_f64` formats 6 fractional digits with
+    round-half-even on the EXACT binary value: a fixed 24-limb (1536-bit)
+    bignum multiplies the mantissa by 10^6 and shifts by the binary
+    exponent with half-to-even rounding on the dropped bits; digit chunks
+    extracted by 10^9 long division. Validated byte-identical against
+    glibc `snprintf("%f")` over 150k random-bit-pattern doubles plus
+    subnormal/inf/nan/-0.0 edge cases (0 mismatches).
+  - **`_hmx_w_text`** — `%.*s` shape (at most len bytes, truncated at the
+    first NUL like printf's precision).
+  - **gcc pitfalls fixed** — `-fno-tree-loop-distribute-patterns` on the
+    encrt compile: gcc at -O2 rewrote my `memset` byte-loop body into a
+    tail-call `jmp memset@PLT` (self-recursion); the same knob guards
+    `memcpy`/`memmove`. Also fixed a UB `carry >> 64` spin in the bignum
+    small-multiply and a `bn_shl` bug that dropped the top limb's carry
+    bits when `src == old_n`.
+  - known-gcc emit target: `memcpy`/`memset`/`memmove` symbols provided in
+    the image in case gcc emits calls it does not inline.
+- **`src/backend/encoder.{hpp,cpp}`** — SSE2 forms (`movsd` xmm↔mem/rip/
+  reg, `addsd/subsd/mulsd/divsd`, `xorpd` for the -0.0 sign flip,
+  `ucomisd`), `lea_rip`/`movsd_rip_xmm` (RIP-relative rel32 fixups — same
+  displacement math as branches, so `write_rel` is reused verbatim),
+  `movsx_q_memidx` (`movsbq [base+index]` for s[i] payloads), CC_P/CC_NP.
+- **`src/backend/elf_backend.cpp` v1** — kinds extended to word/decimal/
+  text end to end:
+  - **literal pool** — string bytes (+NUL) and exact double bits appended
+    between the generated code and the runtime image; RIP-relative
+    references bound after emission (`pool_str`/`pool_double` dedup by
+    content).
+  - **text** — literals via `sd_make_str`, `+` via `sd_concat`,
+    comparisons via `sd_str_equals`/`sd_str_cmp` (the `<` family is
+    resolver-rejected for text, kept for asm-v1 parity), `length`,
+    `substring` (`sd_str_view`, duplicate-push release trick ported),
+    `s[i]` (retain → `sd_check_index` → movsbq payload), prints, calls
+    (text params ride word regs; caller-side +1 dropped from reserved
+    per-call-site slots; result parked across the releases), declarations
+    and assignments with release-then-store refcount dance, frame-epilogue
+    slot releases (slots zeroed at entry so loop-redeclared text frees
+    safely).
+  - **decimal** — arithmetic via SSE (left parked in a per-frame slot,
+    right in xmm0, op lands in xmm1), unary minus via `xorpd` against a
+    pooled -0.0 (exact, `-0.0` preserved), comparisons via `ucomisd`
+    + `jp`-guarded setcc so NaN behaviour matches C exactly (== false,
+    != true, < <= > >= false under unordered), print via `_hmx_w_f64`.
+  - **print** — printf replaced by per-argument helper calls with an
+    identical byte stream. Args are evaluated left-to-right and spilled on
+    the machine stack; the write phase walks them in argument order via
+    rsp-relative loads (args stay pushed during the phase, so no
+    per-arg frame parking and no text-arity cap — the asm v1 3-text-arg
+    print limit is gone). Interleaved nested prints in arguments observe
+    spec evaluation order.
+  - **enhanced over asm v1**: decimal comparisons (asm v1 rejects them),
+    unbounded print arity; everything else rejects with the same shapes
+    (arrays/structs/switch/defer/lambda/closures/generics/`d % d`
+    compound-assign, `++/--` on decimals).
+- **`-b <c|asm|elf>` usage text** (main.cpp) + `run_backend_diff.sh`
+  sanity grep extended; the elfrtgen symbol list grew to 13 table entries
+  (`sd_make_str` was initially missing from RT_SYMS/CMake — caught by the
+  first text build).
+- **Differential gate** — `run_elf_diff.sh` now walks BOTH
+  `tests/backend_diff/elf/*.hmx` AND the full asm-v1 fixture set
+  `tests/backend_diff/*.hmx` (12/12 byte-identical stdout + equal exit
+  codes, incl. `text.hmx`, `dec_basics.hmx` new fixture for decimal
+  shapes, and `idx_panic.hmx` for the runtime panic path) + 10 negative
+  CompileError cases.
+- **Gates:** 68/274/149/33, valgrind 74/74, UBSan 3/3, asm diff 5/5,
+  web parity verbatim, vitest 505/505, oxlint clean.
+
 ## Known issues / deferred
 - Type parameters on **`alias`** and **`enum`** declarations, variadic generic
   parameters, explicit instantiation syntax, and constraints/traits remain

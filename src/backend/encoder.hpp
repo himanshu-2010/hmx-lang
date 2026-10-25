@@ -29,7 +29,8 @@ enum Reg {
 // condition-code constants
 enum CC : uint8_t {
     CC_O = 0, CC_B = 2, CC_AE = 3, CC_E = 4, CC_NE = 5, CC_BE = 6, CC_A = 7,
-    CC_S = 8, CC_NS = 9, CC_L = 12, CC_GE = 13, CC_LE = 14, CC_G = 15,
+    CC_S = 8, CC_NS = 9, CC_P = 10, CC_NP = 11, CC_L = 12, CC_GE = 13,
+    CC_LE = 14, CC_G = 15,
 };
 
 // ALU op index (same indexing everywhere): 0=add 1=or 2=and 3=sub 4=xor 5=cmp
@@ -58,6 +59,23 @@ public:
     void mov_mem_r(int base, int32_t disp, int src);   // [base+disp] <- src
     void movzx_q_b(int dst, int src);                  // movzbq: dst <- (u8)src (48 0F B6)
     void movsx_q_b(int dst, int src);                  // movsbq: dst <- (s8)src (48 0F BE)
+    void movsx_q_memidx(int dst, int base, int index); // movsbq <- [base+index*1]
+    void lea_rip(int dst, int label);                  // lea dst, [rip+label] (RIP-rel. data refs)
+
+    // ── SSE2 (the decimal forms the ELF backend emits; result in xmm reg) ─
+    // Every move/binop encodes one fixed shape: prefix F2/66, 0F, opcode,
+    // modrm with reg = dst and rm = src/mem. Loads/stores go through a
+    // rbp/rsp/base register with disp32; pool references use the RIP forms.
+    void movsd_xmm_mem(int xmm, int base, int32_t disp); // xmm <- [base+disp] (F2 0F 10)
+    void movsd_mem_xmm(int base, int32_t disp, int xmm); // [base+disp] <- xmm (F2 0F 11)
+    void movsd_xmm_xmm(int dst, int src);                // dst <- src
+    void movsd_rip_xmm(int xmm, int label);              // xmm <- [rip+label]
+    void addsd_rr(int dst, int src);                     // dst += src (F2 0F 58)
+    void subsd_rr(int dst, int src);                     // dst -= src (F2 0F 5C)
+    void mulsd_rr(int dst, int src);                     // dst *= src (F2 0F 59)
+    void divsd_rr(int dst, int src);                     // dst /= src (F2 0F 5E)
+    void xorpd_rr(int dst, int src);                     // dst ^= src, bitwise (66 0F 57)
+    void ucomisd_rr(int dst, int src);                   // cmp dst vs src -> flags (66 0F 2E)
 
     // ── ALU (both directions + imm forms) ─────────────────────────────────
     void alu_rr(int op, int rm, int reg);              // rm <op>= reg     (01/r)

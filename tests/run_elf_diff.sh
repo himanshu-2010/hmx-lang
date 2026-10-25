@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
-# Differential tests: ELF backend (-b elf, P5a Tier B: machine-code encoder +
+# Differential tests: ELF backend (-b elf, P5 Tier B: machine-code encoder +
 # static ELF writer + freestanding runtime) vs the C transpile backend.
-# Both must produce byte-identical stdout and equal exit codes on the
-# word-only fixture subset (int/bool/char, control flow, functions).
+# Both must produce byte-identical stdout and equal exit codes on the v1
+# fixture surface (int/bool/char + decimal + text, control flow, functions).
+#
+# The driver walks BOTH fixture directories:
+#   tests/backend_diff/elf/*.hmx  (the word-only P5a subset + decimal cases)
+#   tests/backend_diff/*.hmx     (the full asm-v1 differential set — the elf
+#                                 backend covers the same v1 surface plus
+#                                 decimal, so these must also hold)
 #
 # Usage: ./tests/run_elf_diff.sh
 # Run suites SEQUENTIALLY: the compiler writes build_temp.* into the current
@@ -11,14 +17,14 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 
 HMX=./build/hmx
-FIXDIR=tests/backend_diff/elf
 OUT_C=$(mktemp)
 OUT_E=$(mktemp)
 trap 'rm -f "$OUT_C" "$OUT_E" /tmp/hmx_elf_neg_case.hmx 2>/dev/null' EXIT
 
 pass=0; fail=0
 echo "== differential (elf backend vs C backend) =="
-for fx in "$FIXDIR"/*.hmx; do
+for FIXGLOB in tests/backend_diff/elf/*.hmx tests/backend_diff/*.hmx; do
+    fx=$FIXGLOB
     name=$(basename "$fx" .hmx)
     # explicit -b c so the oracle arm behaves identically in both repos
     if ! "$HMX" build "$fx" -b c >/dev/null 2>&1; then
@@ -60,11 +66,13 @@ check_error() {
     # if a negative case unexpectedly succeeded, remove the binary it left
     rm -f -- hmx_elf_neg_case
 }
-check_error "text"    'fn main() { let s = "abc"
-    print(s) }'
-check_error "decimal" 'fn main() { let d = 1.5
+check_error "dec-unsupported-op" 'fn main() { let d = 1.5
+    print(d % 2.0) }'
+check_error "dec-compound"    'fn main() { let d = 1.5
+    d += 0.5
     print(d) }'
-check_error "chr-panic-path" 'fn main() { print(chr(300)) }'
+check_error "too-many-args"   'fn f(a: int, b: int, c: int, d: int, e: int, g: int, h: int) -> int { return a }
+fn main() { print(f(1,2,3,4,5,6,7)) }'
 check_error "arrays"  'fn main() { let a: [int] = [1, 2]
     print(a[0]) }'
 check_error "structs" 'struct P { x: int }

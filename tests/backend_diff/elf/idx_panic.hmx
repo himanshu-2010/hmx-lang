@@ -1,0 +1,13 @@
+// Differential fixture: runtime panic paths on the direct-encode path.
+// The out-of-bounds text index panics with the same stderr text and exit
+// code 1 on both backends; stdout is partial-identical (everything printed
+// before the panic).
+fn main() -> int {
+    let s = "abcd"
+    print(length(s))
+    print(s[2])
+    print(s[3])
+    print(s[4])   // index 4, length 4 -> panic, exit 1
+    print("unreachable")
+    return 0
+}
