@@ -94,14 +94,21 @@ target_compile_options(hmx PRIVATE -Wall -Wextra -Wpedantic)
 
 target_compile_definitions(hmx PRIVATE HMX_VERSION="${PROJECT_VERSION}")
 
-# ── Default backend (P4) ─────────────────────────────────────
+# ── Default backend (P4, P5c) ───────────────────────────────
 # The direct-backend repo (hmx-compiler, marked by its roadmap doc) flips the
-# default backend to the asm Tier A shim via HMX_DEFAULT_BACKEND=asm;
-# hmx-lang keeps the full-language C emitter as its default until the asm
-# backend reaches feature parity. The source stays identical in both repos —
-# vendoring never changes this branch's outcome per repo.
+# default backend to a reduced-feature tier: the asm Tier A shim per P4, and
+# the elf Tier B machine-code path per P5c ("compiled-default: elf" in its
+# roadmap). hmx-lang keeps the full-language C emitter as its default. The
+# source stays identical in both repos — the vendored CMakeLists keys the
+# flip on the vendored repo's roadmap CONTENT, so future vendors keep the
+# source byte-identical here.
 if(EXISTS "${CMAKE_SOURCE_DIR}/docs/COMPILER_ROADMAP.md")
-    target_compile_definitions(hmx PRIVATE HMX_DEFAULT_BACKEND="asm")
+    set(_default_backend "asm")
+    file(READ "${CMAKE_SOURCE_DIR}/docs/COMPILER_ROADMAP.md" _roadmap_content)
+    if(_roadmap_content MATCHES "compiled-default: elf")
+        set(_default_backend "elf")
+    endif()
+    target_compile_definitions(hmx PRIVATE HMX_DEFAULT_BACKEND="${_default_backend}")
 endif()
 
 # ── Optional front-end fuzz target (Clang libFuzzer) ────────

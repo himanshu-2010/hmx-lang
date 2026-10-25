@@ -75,7 +75,8 @@ else
         sed 's/^/pass usage lists both backends (/;s/$/ as compiled default)/'
 fi
 # both compiled defaults must at least build a v1-subset fixture
-# (hmx-lang ships default c; hmx-compiler flips it to asm per P4)
+# (hmx-lang ships default c; the hmx-compiler default is keyed on its roadmap
+# content — asm per P4, elf per P5c)
 if ! "$HMX" build "$FIXDIR/control_flow.hmx" >/dev/null 2>&1; then
     echo "FAIL default-backend build of a v1-supported fixture"
     fail=$((fail + 1))
