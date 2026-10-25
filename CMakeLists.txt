@@ -57,14 +57,16 @@ add_custom_command(
     COMMENT "elfrt: embedding freestanding runtime image into the compiler"
     VERBATIM
 )
+# The blob is included into elf_backend.cpp (single TU, so it must NOT be
+# compiled as its own object); this target only forces its generation.
+add_custom_target(elfrt_blob ALL DEPENDS ${ELFRT_BLOB})
+add_dependencies(hmx elfrt_blob)
 target_include_directories(hmx PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_sources(hmx PRIVATE
     src/backend/encoder.cpp
     src/backend/elf_writer.cpp
     src/backend/elf_backend.cpp
 )
-# The ${ELFRT_BLOB} is included into elf_backend.cpp (single TU), so it is
-# kept out of target_sources on purpose.
 
 # ── P2 (ADR 0004): shared runtime ────────────────────────────────────
 # Built once here instead of being emitted inline into every generated
