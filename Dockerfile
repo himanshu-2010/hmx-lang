@@ -43,6 +43,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /opt/hmx/bin/hmx /usr/local/bin/hmx
+# The compiler shells out to gcc on user programs: keep the installed runtime
+# header and static library next to the binary. main.cpp resolves them
+# relative to the executable when the build-tree paths it was compiled with
+# no longer exist (they live under /src in the build stage only).
+COPY --from=build /opt/hmx/include/hxrt.h /usr/local/include/hxrt.h
+COPY --from=build /opt/hmx/lib/libhmxrt.a /usr/local/lib/libhmxrt.a
 
 # Run as an unprivileged user; /src is the mount point for the caller's code.
 RUN useradd --create-home --uid 1000 hmx \

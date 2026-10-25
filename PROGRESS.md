@@ -1976,6 +1976,40 @@ each distinct type-argument list becomes its own concrete struct.
   negatives, elf diff 12/12 + 9 negatives, valgrind --fixtures 74/74,
   UBSan 3/3, `hmx examples/hello.hmx` on the elf default.
 
+## CI repairs — portability and container gates (post-P5c)
+
+GitHub Actions had three standing failures (some predating P5a):
+
+- **Container broken since P2 (`95b1bf1`)** — the Docker smoke test failed
+  with `hxrt.h: No such file or directory`: hxrt include/lib paths are baked
+  into the `hmx` binary at build time (`/src/runtime`, `/src/build/libhmxrt.a`)
+  and stage 2 ships only the binary, so relocation always broke it.
+  Fix: `main.cpp` now resolves the runtime as
+  `HMX_RUNTIME_INC`/`HMX_RUNTIME_LIB` env override › baked path if it exists ›
+  the installed layout relative to the executable (`../include/hxrt.h`,
+  `../lib/libhmxrt.a`), and the Dockerfile copies those two files next to
+  `/usr/local/bin/hmx`. Locally verified: `docker build` + `docker run`
+  smoke test exits 7 with decimal/text output.
+- **macOS portability broken since P5a** — the elfrt pipeline needs a System
+  V ELF toolchain (GNU ld `-Ttext`, `objcopy -O binary`, GCC-only
+  `-fno-tree-loop-distribute-patterns`); AppleClang rejects the flag and the
+  runner has no objcopy (`CMAKE_OBJCOPY-NOTFOUND`).
+- **MinGW portability broken since P5a**: MinGW `ld` emits a PE whose `nm`
+  output is empty, so elfrtgen emitted a zero-size `encrt_syms[] = {}` array
+  (ill-formed C++, MinGW gcc hard-error). The freestanding runtime makes raw
+  Linux syscalls, so `-b elf` cannot work on these hosts anyway.
+  Fix for both: the real image pipeline is behind `HMX_ELF_BACKEND`
+  (auto-ON only on Linux + gcc + objcopy; `-DHMX_ELF_BACKEND=OFF` forces
+  it off); other hosts embed a sealed-empty placeholder image and `-b elf`
+  fails at compile time with a clear "built without the freestanding ELF
+  runtime image" error instead of a broken binary. `tools/elfrtgen.c` now
+  always emits a sentinel table entry and seals a 0-byte image with one
+  filler byte — no zero-size arrays regardless of input.
+- Regated after the changes: 68/274/149/33, backend diff 5/5 + 7, elf diff
+  12/12 + 9, valgrind 74/74, UBSan 3/3, web parity verbatim, vitest 505/505;
+  plus `build-off` (`-DHMX_ELF_BACKEND=OFF`) builds clean and reports the
+  clear `-b elf` error.
+
 ## Known issues / deferred
 - Type parameters on **`alias`** and **`enum`** declarations, variadic generic
   parameters, explicit instantiation syntax, and constraints/traits remain

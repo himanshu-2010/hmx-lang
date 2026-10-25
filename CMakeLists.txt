@@ -34,6 +34,14 @@ add_executable(hmx
 # the compiler binary; every -b elf program gets those bytes appended after
 # its generated code. tools/elfrtgen turns the image + nm symbols into a
 # generated C++ source the backend #includes.
+#
+# The real pipeline needs a System V x86-64 ELF toolchain (raw Linux
+# syscalls in enc_rt.c, GNU ld -Ttext + objcopy -O binary, GCC's
+# -fno-tree-loop-distribute-patterns), so it only enables automatically on
+# a Linux host with gcc. Everywhere else the image embeds as a sealed
+# empty placeholder: the compiler still builds for the portability gates
+# (-b c/-b asm are host-independent) and invoking -b elf fails at compile
+# time with a clear error instead of emitting a broken executable.
 add_executable(elfrtgen tools/elfrtgen.c)
 set(ELFRT_CC ${CMAKE_C_COMPILER})
 set(ELFRT_OBJ ${CMAKE_CURRENT_BINARY_DIR}/enc_rt.o)
@@ -41,25 +49,48 @@ set(ELFRT_ELF ${CMAKE_CURRENT_BINARY_DIR}/enc_rt.elf)
 set(ELFRT_BIN ${CMAKE_CURRENT_BINARY_DIR}/enc_rt.bin)
 set(ELFRT_SYMS ${CMAKE_CURRENT_BINARY_DIR}/enc_rt.syms)
 set(ELFRT_BLOB ${CMAKE_CURRENT_BINARY_DIR}/encrt_blob.cpp)
-add_custom_command(
-    OUTPUT ${ELFRT_BLOB}
-    COMMAND ${ELFRT_CC} -c -O2 -ffreestanding -fno-builtin -fno-stack-protector
-            -fno-asynchronous-unwind-tables -fno-plt -fno-ident
-            -fno-tree-loop-distribute-patterns
-            -fcf-protection=none -o ${ELFRT_OBJ}
-            ${CMAKE_SOURCE_DIR}/runtime/elfrt/enc_rt.c
-    COMMAND ${CMAKE_LINKER} -nostdlib -Ttext=0 -o ${ELFRT_ELF} ${ELFRT_OBJ}
-    COMMAND ${CMAKE_OBJCOPY} -O binary ${ELFRT_ELF} ${ELFRT_BIN}
-    COMMAND sh -c "nm --defined-only -n ${ELFRT_ELF} > ${ELFRT_SYMS}"
-    COMMAND elfrtgen ${ELFRT_BIN} ${ELFRT_SYMS} ${ELFRT_BLOB}
-            _hmx_w_char _hmx_w_i64 _hmx_w_f64 _hmx_w_text _hmx_panic_chr
-            sd_make_str sd_retain_str sd_release_str sd_concat sd_str_equals
-            sd_str_cmp sd_str_view sd_check_index
-    DEPENDS elfrtgen ${ELFRT_CC}
-            ${CMAKE_SOURCE_DIR}/runtime/elfrt/enc_rt.c
-    COMMENT "elfrt: embedding freestanding runtime image into the compiler"
-    VERBATIM
-)
+set(ELFRT_SYMBOLS
+    _hmx_w_char _hmx_w_i64 _hmx_w_f64 _hmx_w_text _hmx_panic_chr
+    sd_make_str sd_retain_str sd_release_str sd_concat sd_str_equals
+    sd_str_cmp sd_str_view sd_check_index)
+set(HMX_ELFRT_DEFAULT OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux"
+        AND CMAKE_OBJCOPY
+        AND CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    set(HMX_ELFRT_DEFAULT ON)
+endif()
+option(HMX_ELF_BACKEND "embed the freestanding ELF runtime image for -b elf"
+       ${HMX_ELFRT_DEFAULT})
+if(HMX_ELF_BACKEND)
+    add_custom_command(
+        OUTPUT ${ELFRT_BLOB}
+        COMMAND ${ELFRT_CC} -c -O2 -ffreestanding -fno-builtin -fno-stack-protector
+                -fno-asynchronous-unwind-tables -fno-plt -fno-ident
+                -fno-tree-loop-distribute-patterns
+                -fcf-protection=none -o ${ELFRT_OBJ}
+                ${CMAKE_SOURCE_DIR}/runtime/elfrt/enc_rt.c
+        COMMAND ${CMAKE_LINKER} -nostdlib -Ttext=0 -o ${ELFRT_ELF} ${ELFRT_OBJ}
+        COMMAND ${CMAKE_OBJCOPY} -O binary ${ELFRT_ELF} ${ELFRT_BIN}
+        COMMAND sh -c "nm --defined-only -n ${ELFRT_ELF} > ${ELFRT_SYMS}"
+        COMMAND elfrtgen ${ELFRT_BIN} ${ELFRT_SYMS} ${ELFRT_BLOB}
+                ${ELFRT_SYMBOLS}
+        DEPENDS elfrtgen ${ELFRT_CC}
+                ${CMAKE_SOURCE_DIR}/runtime/elfrt/enc_rt.c
+        COMMENT "elfrt: embedding freestanding runtime image into the compiler"
+        VERBATIM
+    )
+else()
+    add_custom_command(
+        OUTPUT ${ELFRT_BLOB}
+        COMMAND ${CMAKE_COMMAND} -E touch ${ELFRT_BIN}
+        COMMAND ${CMAKE_COMMAND} -E touch ${ELFRT_SYMS}
+        COMMAND elfrtgen ${ELFRT_BIN} ${ELFRT_SYMS} ${ELFRT_BLOB}
+        DEPENDS elfrtgen
+        COMMENT
+            "elfrt: no System V x86-64 ELF toolchain; '-b elf' will be unavailable"
+        VERBATIM
+    )
+endif()
 # The blob is included into elf_backend.cpp (single TU, so it must NOT be
 # compiled as its own object); this target only forces its generation.
 add_custom_target(elfrt_blob ALL DEPENDS ${ELFRT_BLOB})

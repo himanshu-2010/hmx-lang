@@ -81,6 +81,15 @@ public:
     }
 
     std::vector<uint8_t> run() {
+        // Placeholder builds (hosts without a System V x86-64 ELF toolchain
+        // — see the HMX_ELF_BACKEND gate in CMakeLists.txt) carry an image
+        // with no bindable runtime symbols; fail before emitting anything
+        // so the user gets this message instead of a broken executable.
+        if (encrt_syms_count == 0)
+            err(0, "elf backend unavailable: this hmx binary was built without "
+                   "the freestanding ELF runtime image (needs a System V x86-64 "
+                   "Linux host with GNU binutils); build with -b c instead");
+
         TypeResolver resolver;
         resolver.resolve(program_);
 

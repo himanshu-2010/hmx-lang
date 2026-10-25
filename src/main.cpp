@@ -38,6 +38,52 @@
 #endif
 #endif
 
+// ── relocated-runtime resolution (P2 follow-up) ─────────────────────
+// HMX_RUNTIME_INC/_LIB are baked in at build time and name the build tree.
+// A relocated binary — `cmake --install`, a distro package, the container
+// image — cannot rely on those paths existing. Resolution order:
+//   1. HMX_RUNTIME_INC / HMX_RUNTIME_LIB environment overrides,
+//   2. the baked path when it exists (normal in-tree builds),
+//   3. the installed layout relative to the executable
+//      (../include/hxrt.h, ../lib/libhmxrt.a),
+// falling back to the baked path so diagnostics look like before when
+// nothing exists.
+static const char* g_argv0;
+
+static bool rt_path_exists(const std::string& p) {
+    std::error_code ec;
+    return !p.empty() && std::filesystem::exists(p, ec);
+}
+
+static std::string exe_dir() {
+    std::error_code ec;
+    auto self = std::filesystem::canonical("/proc/self/exe", ec);
+    if (!ec) return self.parent_path().string();
+    if (g_argv0 && *g_argv0) {
+        auto via_argv0 = std::filesystem::canonical(g_argv0, ec);
+        if (!ec) return via_argv0.parent_path().string();
+    }
+    return ".";
+}
+
+static std::string resolve_rt_inc() {
+    const char* env = getenv("HMX_RUNTIME_INC");
+    if (env && *env && rt_path_exists(env)) return env;
+    if (rt_path_exists(HMX_RUNTIME_INC)) return HMX_RUNTIME_INC;
+    std::string cand = exe_dir() + "/../include";
+    if (rt_path_exists(cand + "/hxrt.h")) return cand;
+    return HMX_RUNTIME_INC;
+}
+
+static std::string resolve_rt_lib() {
+    const char* env = getenv("HMX_RUNTIME_LIB");
+    if (env && *env && rt_path_exists(env)) return env;
+    if (rt_path_exists(HMX_RUNTIME_LIB)) return HMX_RUNTIME_LIB;
+    std::string cand = exe_dir() + "/../lib/libhmxrt.a";
+    if (rt_path_exists(cand)) return cand;
+    return HMX_RUNTIME_LIB;
+}
+
 // Human-readable name for a termination signal (avoids strsignal's dependency
 // on POSIX feature-test macros that vary with the compiler's -std flag).
 static const char* signal_name(int sig) {
@@ -343,6 +389,7 @@ static int cmd_new(std::string name) {
 }
 
 int main(int argc, char* argv[]) {
+    g_argv0 = argc > 0 ? argv[0] : nullptr;
     if (argc < 2) {
         print_usage(stderr);
         return 1;
@@ -638,8 +685,8 @@ int main(int argc, char* argv[]) {
     // runtime — so we compile runtime/hxrt.c from source in that case.
     // P3: the asm backend assembles the .s text and links the runtime as its
     // own translation unit (plain C ABI, no sanitizer support in v1).
-    std::string rt_inc = " -I\"" HMX_RUNTIME_INC "\"";
-    std::string rt_lib = " \"" HMX_RUNTIME_LIB "\"";
+    std::string rt_inc = " -I\"" + resolve_rt_inc() + "\"";
+    std::string rt_lib = " \"" + resolve_rt_lib() + "\"";
     std::string cc_cmd;
     if (backend == "asm") {
         cc_cmd = cc + " -O2" + " -o " + exe_path + " " + c_path + " \"" HMX_RUNTIME_SRC "\"" + " 2>&1";

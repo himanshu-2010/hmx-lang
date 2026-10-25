@@ -66,18 +66,22 @@ int main(int argc, char** argv) {
     fprintf(out, "// (runtime/elfrt/enc_rt.c). Do not edit by hand.\n");
     fprintf(out, "#include <cstddef>\n\n");
     fprintf(out, "namespace backend {\n\n");
+    /* A zero-length image (placeholder builds on hosts without a System V
+     * ELF toolchain) must not emit `encrt_image[] = {}` — zero-size arrays
+     * are ill-formed, and MinGW gcc rejects them as hard errors. Seal a
+     * 0-byte image with one filler byte; the image is unusable for
+     * execution anyway because no runtime symbols exist to bind. */
+    long emit = image_len > 0 ? image_len : 1;
     fprintf(out, "const unsigned char encrt_image[] = {");
-    long wrap = 0;
-    for (long i = 0; i < image_len; i++) {
+    for (long i = 0; i < emit; i++) {
         if (i) {
             if (i % 16 == 0) fprintf(out, ",\n    ");
             else fprintf(out, ",");
         }
-        fprintf(out, "%u", image_buf[i]);
-        (void)wrap;
+        fprintf(out, "%u", i < image_len ? (unsigned)image_buf[i] : 0u);
     }
     fprintf(out, "};\n");
-    fprintf(out, "unsigned long encrt_image_len = %ldUL;\n\n", image_len);
+    fprintf(out, "unsigned long encrt_image_len = %ldUL;\n\n", emit);
 
     fprintf(out, "struct ElfRtSym { const char* name; unsigned long off; };\n");
     fprintf(out, "const ElfRtSym encrt_syms[] = {\n");
@@ -101,6 +105,11 @@ int main(int argc, char** argv) {
             }
         }
     }
+    /* A table with zero matched symbols would be `%s[] = {}` — a zero-size
+     * array, ill-formed C++ (MinGW gcc hard-errors on it). Always terminate
+     * with a sentinel so the array is never empty; the count below governs
+     * how many entries are bound. */
+    fprintf(out, "    {NULL, 0UL},\n");
     fprintf(out, "};\n");
     fprintf(out, "unsigned long encrt_syms_count = %dUL;\n\n", count);
     fprintf(out, "}  // namespace backend\n");
