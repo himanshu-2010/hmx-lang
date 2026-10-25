@@ -22,8 +22,9 @@ valgrind_on=0
 echo "== differential (asm backend vs C backend) =="
 for fx in "$FIXDIR"/*.hmx; do
     name=$(basename "$fx" .hmx)
-    # default backend (C transpile)
-    if ! "$HMX" build "$fx" >/dev/null 2>&1; then
+    # default backend (C transpile): explicit, so this suite behaves the same
+    # in both repos regardless of which backend is compiled as the default
+    if ! "$HMX" build "$fx" -b c >/dev/null 2>&1; then
         echo "FAIL $name (C backend failed to build)"
         fail=$((fail + 1)); continue
     fi
@@ -62,6 +63,24 @@ for fx in "$FIXDIR"/*.hmx; do
         rm -f -- "$name"
     fi
 done
+
+echo "== default backend sanity =="
+usage_shown=$("$HMX" -h) || true
+if ! printf '%s' "$usage_shown" | grep -q '\-b <c|asm>' || \
+   ! printf '%s' "$usage_shown" | grep -Eq 'default: (c|asm)'; then
+    echo "FAIL usage text (missing backend/default line)"
+    fail=$((fail + 1))
+else
+    printf '%s' "$usage_shown" | grep -o 'default: [a-z]*' | head -1 | \
+        sed 's/^/pass usage lists both backends (/;s/$/ as compiled default)/'
+fi
+# both compiled defaults must at least build a v1-subset fixture
+# (hmx-lang ships default c; hmx-compiler flips it to asm per P4)
+if ! "$HMX" build "$FIXDIR/control_flow.hmx" >/dev/null 2>&1; then
+    echo "FAIL default-backend build of a v1-supported fixture"
+    fail=$((fail + 1))
+fi
+rm -f -- control_flow
 
 echo "== asm backend negative cases (must compile-error cleanly) =="
 negpass=0; negfail=0

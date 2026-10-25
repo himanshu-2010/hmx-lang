@@ -1810,6 +1810,23 @@ each distinct type-argument list becomes its own concrete struct.
 - **Gates:** the four native suites unchanged (68/274/149/33), valgrind 74/74,
   UBSan 3/3, web parity verbatim, vitest 505/505.
 
+## P4 — default backend resolution (flag › env › compiled default)
+
+- **CLI:** the effective backend resolves as `-b` flag › `HMX_BACKEND` env ›
+  compiled default. The compiled default is selected by CMake: the
+  direct-backend repo (hmx-compiler, marker = `docs/COMPILER_ROADMAP.md`)
+  sets `HMX_DEFAULT_BACKEND="asm"`; hmx-lang keeps the full-language C
+  emitter as its default until the asm backend reaches feature parity. The
+  vendored sources stay identical across both repositories.
+- **Usage text** states the compiled default and is backend-aware about the
+  toolchain requirement (C emitter vs asm + system toolchain).
+- **Suites** pin `HMX_BACKEND="${HMX_BACKEND:-c}"` so the C-oracle gates stay
+  byte-for-byte meaningful in both repos; the asm backend keeps its own
+  differential gate (`tests/run_backend_diff.sh`, now checking the usage
+  text/backend line and building its fixtures with the compiled default).
+- **Gates:** unchanged counts (68/274/149/33), diff 5/7/5 valgrind-clean,
+  web parity verbatim, vitest 505/505.
+
 ## Known issues / deferred
 - Type parameters on **`alias`** and **`enum`** declarations, variadic generic
   parameters, explicit instantiation syntax, and constraints/traits remain

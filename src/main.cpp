@@ -97,6 +97,20 @@ extern FILE* yyin;
 extern int yyparse();
 extern Program* g_program;
 
+// Backend default (P4): compiled defaults live in the CMake definitions.
+// hmx-lang keeps the C emitter as its default until the asm backend reaches
+// feature parity; the direct-backend repo sets HMX_DEFAULT_TO_ASM.
+#ifndef HMX_DEFAULT_TO_ASM
+#define HMX_DEFAULT_TO_ASM 0
+#endif
+static const char* default_backend() {
+#ifdef HMX_DEFAULT_BACKEND
+    return HMX_DEFAULT_BACKEND;
+#else
+    return HMX_DEFAULT_TO_ASM ? "asm" : "c";
+#endif
+}
+
 static void print_usage(FILE* out) {
     fprintf(out, "HMX — a small statically typed systems language (v%s)\n", HMX_VERSION);
     fprintf(out, "\n");
@@ -111,10 +125,14 @@ static void print_usage(FILE* out) {
     fprintf(out, "Options:\n");
     fprintf(out, "  -keep-c                Keep the intermediate .c/.s file\n");
     fprintf(out, "  -o <output>            Output binary path (with build)\n");
-    fprintf(out, "  -b <c|asm>             Code generator (default: c; asm = x86-64\n");
+    fprintf(out, "  -b <c|asm>             Code generator (default: %s; asm = x86-64\n",
+            default_backend());
     fprintf(out, "                         backend v1, reduced-feature — see SYNTAX/PROGRESS)\n");
     fprintf(out, "\n");
-    fprintf(out, "HMX transpiles to C and needs a C compiler (gcc, cc or clang).\n");
+    fprintf(out, "HMX transpiles to C%s.\n",
+            default_backend() == std::string("asm")
+                ? " by default or emits x86-64 assembly (-b asm; the C path is the -b c oracle)"
+                : " and needs a C compiler (gcc, cc or clang)");
 }
 
 std::string get_basename(const std::string& path) {
@@ -341,7 +359,17 @@ int main(int argc, char* argv[]) {
     std::string source_file;
     bool keep_c = false;
     std::string out_override;
-    std::string backend = "c";
+    // Backend resolution: explicit -b flag > HMX_BACKEND env > compiled
+    // default (P4: the direct-backend repo flips its default to asm).
+    std::string backend = default_backend();
+    const char* env_backend = getenv("HMX_BACKEND");
+    if (env_backend && *env_backend) {
+        if (std::string(env_backend) != "c" && std::string(env_backend) != "asm") {
+            fprintf(stderr, "Error: unknown backend '%s' in HMX_BACKEND (expected 'c' or 'asm')\n", env_backend);
+            return 1;
+        }
+        backend = env_backend;
+    }
 
     int i = 1;
     if (a1 == "run" || a1 == "build") {
@@ -365,10 +393,11 @@ int main(int argc, char* argv[]) {
             }
             out_override = argv[++i];
         } else if (a == "-b" || a == "--backend") {
-            // P3 (ADR 0004): `asm` = the x86-64 System V backend v1. Default
-            // stays the C emitter; the asm backend is a reduced-feature
-            // Tier A shim and reports anything it cannot lower as a clean
-            // compile error instead of a miscompile.
+            // `asm` = the x86-64 System V backend v1 (Tier A shim: assembly text
+            // + system toolchain). `c` = the full-language C emitter, kept
+            // permanently as the sanitizer host and differential oracle
+            // (ADR 0004). The asm backend reports anything it cannot lower as
+            // a clean compile error instead of a miscompile.
             if (i + 1 >= argc) {
                 fprintf(stderr, "Error: %s requires a backend name (c or asm)\n", a.c_str());
                 return 1;

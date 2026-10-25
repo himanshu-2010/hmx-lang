@@ -7,6 +7,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO="$(pwd)"
 BIN="$REPO/build/hmx"
+# P4: suites pin the C emitter (-b oracle). The asm backend has its
+# own differential gate (tests/run_backend_diff.sh).
+export HMX_BACKEND="${HMX_BACKEND:-c}"
 TMPDIR="/tmp/hmx_cli_tests"
 rm -rf "$TMPDIR"
 mkdir -p "$TMPDIR"

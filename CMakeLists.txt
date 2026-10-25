@@ -51,6 +51,16 @@ target_compile_options(hmx PRIVATE -Wall -Wextra -Wpedantic)
 
 target_compile_definitions(hmx PRIVATE HMX_VERSION="${PROJECT_VERSION}")
 
+# ── Default backend (P4) ─────────────────────────────────────
+# The direct-backend repo (hmx-compiler, marked by its roadmap doc) flips the
+# default backend to the asm Tier A shim via HMX_DEFAULT_BACKEND=asm;
+# hmx-lang keeps the full-language C emitter as its default until the asm
+# backend reaches feature parity. The source stays identical in both repos —
+# vendoring never changes this branch's outcome per repo.
+if(EXISTS "${CMAKE_SOURCE_DIR}/docs/COMPILER_ROADMAP.md")
+    target_compile_definitions(hmx PRIVATE HMX_DEFAULT_BACKEND="asm")
+endif()
+
 # ── Optional front-end fuzz target (Clang libFuzzer) ────────
 # Off by default: GCC ships no libFuzzer, and the target is not part of a normal
 # build. Enable it with Clang, e.g.
