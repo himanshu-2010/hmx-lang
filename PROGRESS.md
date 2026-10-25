@@ -1957,6 +1957,25 @@ each distinct type-argument list becomes its own concrete struct.
 - **Gates:** 68/274/149/33, valgrind 74/74, UBSan 3/3, asm diff 5/5,
   web parity verbatim, vitest 505/505, oxlint clean.
 
+## P5c — hmx-compiler: `-b elf` as the compiled default (tag `0.2.0-independence`)
+
+- **Groundwork (hmx-lang `40b8c96`)** — the default-backend branch in
+  `CMakeLists.txt` no longer hardcodes `asm` for the marker-file repo: it
+  reads `docs/COMPILER_ROADMAP.md`'s content and flips to `elf` when it
+  carries `compiled-default: elf`. Vendored CMakeLists stays byte-identical
+  across both repos; `run_backend_diff.sh`'s comment updated.
+- **hmx-compiler** — vendored `hmx-lang @ 40b8c96` via
+  `bash tools/vendor.sh`; roadmap doc got the `compiled-default: elf`
+  marker + P5b/P5c landing notes; AGENTS.md + README updated. Commit
+  `ac0dd19`, GPG-signed tag `0.2.0-independence` pushed.
+- **Result:** a statically-linked `hmx` now compiles and runs plain
+  programs with NO C compiler, assembler, linker or libc on the target
+  machine (`-b elf`, incl. decimal + text). `-b c` remains the sanitizer
+  host + differential oracle; `-b asm` remains the Tier A shim.
+- **Gates in the vendored tree:** 68/274/149/33, backend diff 5/5 + 7
+  negatives, elf diff 12/12 + 9 negatives, valgrind --fixtures 74/74,
+  UBSan 3/3, `hmx examples/hello.hmx` on the elf default.
+
 ## Known issues / deferred
 - Type parameters on **`alias`** and **`enum`** declarations, variadic generic
   parameters, explicit instantiation syntax, and constraints/traits remain
